@@ -25,9 +25,10 @@ std::string_view trim_text(std::string_view text)
 
 } // namespace
 
-void load_projectile_visuals(SceneBuilder& builder, const GameObjectCatalog& catalog, const std::span<const std::uint32_t> keys, ProjectileVisualTable& table, std::uint32_t& atlas)
+void load_projectile_visuals(SceneBuilder& builder, const GameObjectCatalog& catalog, const SurfaceEffectCatalog* surfaces, const std::span<const std::uint32_t> keys, ProjectileVisualTable& table,
+                             std::uint32_t& atlas)
 {
-    read_projectile_visuals(catalog, keys, table, builder.scene.warnings);
+    read_projectile_visuals(catalog, keys, table, builder.scene.warnings, surfaces);
     if (!table.empty())
     {
         atlas = particle_library_texture(builder, std::string(projectile_atlas_texture), "projectile bolts");

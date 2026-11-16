@@ -374,6 +374,11 @@ inline float wrap_angle(float angle) noexcept
 
 namespace eaw {
 
+// How far past its aim point a missed shot flies on, on land, looking for the ground before it is
+// lost (world units): an engine choice, so shots fired level or upward end. Most shots have no
+// maximum flight of their own (Projectile_Max_Flight_Distance 0).
+inline constexpr float stray_flight_limit = 2000.0F;
+
 template <class Data, typename Accepts>
 std::optional<std::size_t> SimulationWorld::choose_target(Data& data, const SpatialGrid& grid, std::vector<std::uint32_t>& query, const std::size_t index, const Vector3& center, const float reach,
                                                           const Accepts& accepts)

@@ -99,7 +99,7 @@ void BattleEffects::set_ground(ParticleGroundHeight ground)
     particles_.set_ground(std::move(ground));
 }
 
-void BattleEffects::play_tick_events(const SimSnapshot& snapshot)
+void BattleEffects::play_tick_events(const SimSnapshot& snapshot, const GroundMap* ground)
 {
     for (const auto& death : snapshot.deaths)
     {
@@ -115,9 +115,20 @@ void BattleEffects::play_tick_events(const SimSnapshot& snapshot)
     }
     for (const auto& impact : snapshot.impacts)
     {
-        if (const auto found = projectile_visuals_.find(impact.visual); found != projectile_visuals_.end())
+        const auto found = projectile_visuals_.find(impact.visual);
+        if (found == projectile_visuals_.end())
+        {
+            continue;
+        }
+        if (impact.kind != ImpactKind::ground)
         {
             play_object(impact_effect(found->second, impact.kind), impact.position);
+            continue;
+        }
+        const auto liquid = ground != nullptr ? ground->liquid_at(impact.position.x, impact.position.y) : std::nullopt;
+        for (const auto effect : ground_impact_effects(found->second, liquid ? to_string(*liquid) : std::string_view{"default"}))
+        {
+            play_object(effect, impact.position);
         }
     }
 }

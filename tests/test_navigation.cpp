@@ -104,6 +104,14 @@ void test_ground_movement()
     eaw::GroundMap flooded = ground;
     flooded.liquid_level = 12.0F;
     require(flooded.surface_height(0.0F, 0.0F) == 12.0F && flooded.surface_height(100.0F, 0.0F) == 25.0F, "the surface is the higher of terrain and liquid");
+    flooded.liquid_kind = eaw::LiquidKind::lava;
+    require(flooded.liquid_at(0.0F, 0.0F) == eaw::LiquidKind::lava && !flooded.liquid_at(100.0F, 0.0F) && !ground.liquid_at(0.0F, 0.0F), "liquid lies only over lower terrain");
+    // A falling segment meets the liquid's surface; one above it, or a start below it, do not search.
+    const auto landed = flooded.surface_crossing({0.0F, 0.0F, 50.0F}, {0.0F, 0.0F, -50.0F});
+    require(landed && std::fabs(landed->z - 12.0F) < 0.1F, "a falling segment must stop at the surface");
+    require(!flooded.surface_crossing({0.0F, 0.0F, 100.0F}, {100.0F, 0.0F, 110.0F}), "a segment above the surface must not meet it");
+    const auto buried = flooded.surface_crossing({0.0F, 0.0F, 5.0F}, {0.0F, 0.0F, 50.0F});
+    require(buried && buried->z == 5.0F, "a segment starting below the surface meets it at once");
 }
 
 void test_pathfinding()

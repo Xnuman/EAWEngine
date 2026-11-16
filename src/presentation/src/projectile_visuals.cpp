@@ -38,7 +38,8 @@ constexpr float max_drawn_sway = 50.0F;
 
 } // namespace
 
-void read_projectile_visuals(const GameObjectCatalog& catalog, const std::span<const std::uint32_t> keys, ProjectileVisualTable& table, std::vector<std::string>& warnings)
+void read_projectile_visuals(const GameObjectCatalog& catalog, const std::span<const std::uint32_t> keys, ProjectileVisualTable& table, std::vector<std::string>& warnings,
+                             const SurfaceEffectCatalog* surfaces)
 {
     for (const auto key : keys)
     {
@@ -67,7 +68,18 @@ void read_projectile_visuals(const GameObjectCatalog& catalog, const std::span<c
             return name.empty() ? 0U : game_object_name_crc(name);
         };
         visual.impact_effects = {particle_key("Projectile_Absorbed_By_Shields_Particle"), particle_key("Projectile_Object_Detonation_Particle"),
-                                 particle_key("Projectile_Object_Armor_Reduced_Detonation_Particle"), particle_key("Projectile_Lifetime_Detonation_Particle")};
+                                 particle_key("Projectile_Object_Armor_Reduced_Detonation_Particle"), particle_key("Projectile_Lifetime_Detonation_Particle"),
+                                 particle_key("Projectile_Ground_Detonation_Particle")};
+        if (const auto surface_fx = fields.text("Projectile_Ground_Detonation_SurfaceFX"); surfaces != nullptr && !surface_fx.empty())
+        {
+            for (const auto& setting : surfaces->settings(surface_fx))
+            {
+                if (!setting.particle.empty())
+                {
+                    visual.ground_surfaces.push_back({setting.surface, game_object_name_crc(setting.particle)});
+                }
+            }
+        }
         const auto positive = [&](const std::string_view field)
         {
             const auto value = fields.number(field).value_or(0.0F);
@@ -150,6 +162,10 @@ void collect_impact_effect_keys(const ProjectileVisualTable& table, std::vector<
 {
     for (const auto& [key, visual] : table)
     {
+        for (const auto& surface : visual.ground_surfaces)
+        {
+            keys.push_back(surface.particle);
+        }
         for (const auto effect : visual.impact_effects)
         {
             if (effect != 0)
@@ -164,6 +180,25 @@ std::uint32_t impact_effect(const ProjectileVisual& visual, const ImpactKind kin
 {
     const auto index = static_cast<std::size_t>(kind);
     return index < visual.impact_effects.size() ? visual.impact_effects[index] : 0U;
+}
+
+std::array<std::uint32_t, 2> ground_impact_effects(const ProjectileVisual& visual, const std::string_view surface) noexcept
+{
+    const auto particle_on = [&](const std::string_view name) -> std::uint32_t
+    {
+        const auto found = std::ranges::find(visual.ground_surfaces, name, &ProjectileVisual::SurfaceParticle::surface);
+        return found != visual.ground_surfaces.end() ? found->particle : 0U;
+    };
+    const auto detonation = impact_effect(visual, ImpactKind::ground);
+    if (surface != "default")
+    {
+        if (const auto liquid = particle_on(surface); liquid != 0)
+        {
+            return {liquid, 0U};
+        }
+    }
+    const auto surface_particle = particle_on("default");
+    return {detonation, surface_particle != detonation ? surface_particle : 0U};
 }
 
 void append_projectile_sprites(const std::span<const ProjectileSnapshot> current, const ProjectileVisualTable& table, const std::uint32_t atlas, const float interpolation, const float tick_seconds,

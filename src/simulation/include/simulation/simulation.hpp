@@ -523,6 +523,8 @@ enum class ImpactKind : std::uint8_t
     hull_reduced,
     // It flew its maximum distance without hitting anything.
     expired,
+    // A miss that flew on and met the ground (or the liquid over it) on land.
+    ground,
 };
 
 // A shot that ended in the last tick, for impact effects (a derived output, not part of the state
@@ -649,6 +651,8 @@ public:
         std::uint64_t hardpoints_destroyed{};
         // Entities run over by crushers.
         std::uint64_t crushed{};
+        // Missed shots that flew on and met the ground (land).
+        std::uint64_t ground_hits{};
         std::size_t projectiles{};
         // Overlapping ground pairs pushed apart in the last tick.
         std::size_t separated_pairs{};
@@ -794,6 +798,10 @@ private:
         // target (WeaponProfile::inaccuracy).
         Vector3 stray;
         bool misses{};
+        // A miss flying on past its aim point along `direction` until it meets the ground, its
+        // maximum flight, or `flight_end` (flown distance; stray_flight_limit past the aim point).
+        bool flying_on{};
+        float flight_end{};
         // Presentation key (WeaponProfile::projectile_visual) and launch number; not hashed.
         std::uint32_t visual{};
         std::uint32_t serial{};
@@ -826,6 +834,8 @@ private:
             miss,
         };
         Kind kind{Kind::hit};
+        // A miss that met the ground (ImpactKind::ground).
+        bool ground{};
         EntityId victim;
         float damage{};
         std::uint16_t damage_type{};
@@ -1774,6 +1784,7 @@ private:
         std::uint64_t kills{};
         std::uint64_t hardpoints_destroyed{};
         std::uint64_t crushed{};
+        std::uint64_t ground_hits{};
     };
     CombatCounters combat_counters_;
     struct DamageQueue
@@ -2201,7 +2212,8 @@ private:
     {
     public:
         using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Read<RouteColumns>, Write<ComponentPool<CombatColumns>>, Read<ComponentPool<FootprintColumns>>, Write<ProjectileState>,
-                                Write<TickEvents>, Read<SlotTable>, Read<Rules>, Write<CombatRandom>, Read<Clock>, Write<CombatCounters>, Write<DamageQueue>, Read<ComponentPool<SquadColumns>>>;
+                                Write<TickEvents>, Read<SlotTable>, Read<Rules>, Write<CombatRandom>, Read<Clock>, Write<CombatCounters>, Write<DamageQueue>, Read<ComponentPool<SquadColumns>>,
+                                Read<GroundState>>;
         // Shield refresh, then every armed entity's target, turret, and weapons, then the projectiles
         // in flight.
         void run(const View& view, float dt);

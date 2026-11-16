@@ -808,3 +808,13 @@ rewritten to describe the current state; the source document is noted in bracket
   remarks in the tag tables, the sandbox's --panel and mode help, a stale comment on skipped heat
   and occluded meshes, and a code comment citing the wrong research section. The AT-AT idle-clip
   problem is fixed (the owner's report). [coordinator]
+- Ground hits (the owner's choice: misses fly on to the ground): on land a missed shot, or one whose
+  target died, flies on past its aim point until it meets the terrain or liquid, its maximum flight,
+  the map's edge, or 2,000 units (an engine choice); instant misses trace the line at once. Ground
+  impacts play Projectile_Ground_Detonation_Particle and the Projectile_Ground_Detonation_SurfaceFX
+  particle and sound for the map's liquid or default (a splash over water alone). Only large
+  Utapau's hash changed, 0xc3fc271e6fcc9bd0 to 0xddbc9df8ed7e2bc7 (255 of about 2,800 misses landed
+  in 1,800 ticks); the reference, fighters, capital ships, and AT-ATs are unchanged (the new
+  projectile state is hashed only for shots flying on). Projectile_Ground_Detonation_Particle had
+  been marked done but played only for death explosions naming a projectile; no shot reached the
+  ground before.

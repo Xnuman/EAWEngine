@@ -340,7 +340,8 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
         {
             collect_projectile_keys(type.combat, keys);
         }
-        load_projectile_visuals(builder, catalog, keys, asset.projectile_visuals, asset.projectile_atlas);
+        const auto surfaces = battle.land ? std::optional(SurfaceEffectCatalog::build(*catalog_entry->database)) : std::nullopt;
+        load_projectile_visuals(builder, catalog, surfaces ? &*surfaces : nullptr, keys, asset.projectile_visuals, asset.projectile_atlas);
         load_projectile_models(builder, catalog, battle.land, meshes, asset.projectile_visuals);
         // The debris destroyed hardpoints break off (their models join before the rigs).
         std::vector<const CombatProfile*> combats;
@@ -492,7 +493,8 @@ Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const s
         {
             collect_projectile_keys(type.combat, keys);
         }
-        load_projectile_visuals(builder, catalog_entry->catalog, keys, package.projectile_visuals, package.projectile_atlas);
+        const auto surfaces = land ? std::optional(SurfaceEffectCatalog::build(*catalog_entry->database)) : std::nullopt;
+        load_projectile_visuals(builder, catalog_entry->catalog, surfaces ? &*surfaces : nullptr, keys, package.projectile_visuals, package.projectile_atlas);
         load_projectile_models(builder, catalog_entry->catalog, land, meshes, package.projectile_visuals);
         std::vector<const CombatProfile*> combats;
         for (const auto& type : package.types)

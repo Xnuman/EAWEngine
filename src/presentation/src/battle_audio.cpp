@@ -432,6 +432,24 @@ void BattleAudio::play_tick_events(const SimSnapshot& snapshot, const Simulation
         {
             continue;
         }
+        if (impact.kind == ImpactKind::ground)
+        {
+            // A miss that met the ground: its ground detonation sound and its SurfaceFX's sound for
+            // the surface there (a ricochet on ground; the stock liquids name none).
+            if (const auto* sounds = projectile_sounds(impact.visual))
+            {
+                if (!sounds->ground.empty())
+                {
+                    (void)play_event(sounds->ground, impact.position);
+                }
+                const auto liquid = world.ground().liquid_at(impact.position.x, impact.position.y);
+                if (const auto* surface = surface_effects_.find(sounds->ground_surface_fx, liquid ? to_string(*liquid) : std::string_view{"default"}); surface != nullptr && !surface->sound.empty())
+                {
+                    (void)play_event(surface->sound, impact.position);
+                }
+            }
+            continue;
+        }
         if (const auto* sounds = projectile_sounds(impact.visual))
         {
             const auto& name = impact.kind == ImpactKind::hull_reduced && !sounds->reduced.empty() ? sounds->reduced : sounds->detonate;
@@ -546,6 +564,8 @@ const BattleAudio::ProjectileSounds* BattleAudio::projectile_sounds(const std::u
     {
         sounds.detonate = type_field(*catalog_, *definitions.front(), "Projectile_SFXEvent_Detonate");
         sounds.reduced = type_field(*catalog_, *definitions.front(), "Projectile_SFXEvent_Detonate_Reduced_By_Armor");
+        sounds.ground = type_field(*catalog_, *definitions.front(), "Projectile_Ground_Detonation_SFXEvent");
+        sounds.ground_surface_fx = type_field(*catalog_, *definitions.front(), "Projectile_Ground_Detonation_SurfaceFX");
     }
     return &projectile_sounds_.emplace(visual, std::move(sounds)).first->second;
 }

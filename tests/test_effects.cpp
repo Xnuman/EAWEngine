@@ -655,6 +655,23 @@ void test_projectile_sprites()
     eaw::collect_impact_effect_keys(table, keys);
     std::ranges::sort(keys);
     require(keys == std::vector<std::uint32_t>{11U, 12U, 14U, 22U}, "impact effect keys failed");
+
+    // Ground hits: the ground detonation and the SurfaceFX's default particle on ground; the
+    // liquid's particle alone over a liquid; a surface the SurfaceFX does not name falls back.
+    eaw::ProjectileVisual grounded;
+    grounded.impact_effects[static_cast<std::size_t>(eaw::ImpactKind::ground)] = 15U;
+    grounded.ground_surfaces = {{"default", 16U}, {"water", 17U}};
+    require(eaw::ground_impact_effects(grounded, "default") == std::array<std::uint32_t, 2>{15U, 16U} && eaw::ground_impact_effects(grounded, "water") == std::array<std::uint32_t, 2>{17U, 0U} &&
+                eaw::ground_impact_effects(grounded, "lava") == std::array<std::uint32_t, 2>{15U, 16U},
+            "ground impacts must play by surface");
+    grounded.ground_surfaces.front().particle = 15U;
+    require(eaw::ground_impact_effects(grounded, "default") == std::array<std::uint32_t, 2>{15U, 0U}, "one particle named twice must play once");
+    eaw::ProjectileVisualTable grounded_table;
+    grounded_table.emplace(1U, grounded);
+    keys.clear();
+    eaw::collect_impact_effect_keys(grounded_table, keys);
+    std::ranges::sort(keys);
+    require(keys == std::vector<std::uint32_t>{15U, 15U, 17U}, "ground surface particles must be collected for loading");
 }
 
 // Impacts and deaths play the Particle objects their projectile and type name, scaled; bolts draw

@@ -27,8 +27,8 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 | Status | Tags |
 | --- | --- |
 | `done` | 189 |
-| `partial` | 25 |
-| `gap` | 178 |
+| `partial` | 26 |
+| `gap` | 177 |
 | `needs` | 705 |
 | `n/a` | 20 |
 | total | 1117 |
@@ -425,7 +425,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Projectiles and damage delivery
 
-31 done, 3 partial, 10 gap, 49 needs, 2 n/a.
+31 done, 4 partial, 9 gap, 49 needs, 2 n/a.
 
 ### Firing cadence (on the shooter)
 
@@ -540,9 +540,9 @@ Systems that `needs` rows wait for, by tag count:
 | `Projectile_Object_Detonation_Particle` | `done` |  |
 | `Projectile_Object_Armor_Reduced_Detonation_Particle` | `done` |  |
 | `Projectile_Absorbed_By_Shields_Particle` | `done` |  |
-| `Projectile_Ground_Detonation_Particle` | `done` |  |
+| `Projectile_Ground_Detonation_Particle` | `done` | ground hits (misses flying on to the ground on land), and death explosions naming a projectile |
 | `Projectile_Lifetime_Detonation_Particle` | `done` |  |
-| `Projectile_Ground_Detonation_SurfaceFX` | `gap` |  |
+| `Projectile_Ground_Detonation_SurfaceFX` | `partial` | ground hits play its particle and sound for the map's liquid or default; terrain surface kinds (dirt, snow, ...) are not known |
 | `Projectile_Object_Creation_Particle` | `done` |  |
 | `Explosion_Jitter_Factor` | `gap` |  |
 | `Explosion_Scorch_Mark` | `done` | through SurfaceFX's default surface to its decal, on land within 40 units of the ground |

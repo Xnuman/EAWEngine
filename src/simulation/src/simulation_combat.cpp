@@ -493,6 +493,12 @@ void SimulationWorld::CombatSystem::launch(const View& view, const std::size_t s
             shot.kind = DamageEvent::Kind::hit;
             shot.victim = identity.ids[*other];
         }
+        else if (const auto landed = view.get<GroundState>().map.surface_crossing(point, point + shot.direction * stray_flight_limit))
+        {
+            // On land an instant miss goes on along its line to the ground at once.
+            shot.point = *landed;
+            shot.ground = true;
+        }
         damage.events.push_back(shot);
         return;
     }
@@ -604,11 +610,45 @@ void SimulationWorld::CombatSystem::run_projectiles(const View& view)
     auto& damage = view.get<DamageQueue>();
     const auto dt = static_cast<float>(clock.tick_seconds);
     std::size_t kept = 0;
+    const auto& ground = view.get<GroundState>().map;
     for (std::size_t index = 0; index < projectiles.flying.size(); ++index)
     {
         auto projectile = projectiles.flying[index];
+        if (projectile.flying_on)
+        {
+            // A miss on land: straight on until the ground, its maximum flight, or the map's edge.
+            const auto step_length = projectile.speed * dt;
+            const auto next = projectile.position + projectile.direction * step_length;
+            DamageEvent shot{.kind = DamageEvent::Kind::miss,
+                             .damage = projectile.damage,
+                             .damage_type = projectile.damage_type,
+                             .damages_shield = projectile.damages_shield,
+                             .damages_health = projectile.damages_health,
+                             .point = next,
+                             .direction = projectile.direction,
+                             .visual = projectile.visual,
+                             .owner = projectile.owner,
+                             .blast = projectile.blast};
+            if (const auto landed = ground.surface_crossing(projectile.position, next))
+            {
+                shot.point = *landed;
+                shot.ground = true;
+                damage.events.push_back(shot);
+                continue;
+            }
+            projectile.position = next;
+            projectile.flown += step_length;
+            const bool expired = projectile.lifetime_ticks > 0U && --projectile.lifetime_ticks == 0U;
+            if (expired || projectile.flown > projectile.flight_end || (projectile.max_flight > 0.0F && projectile.flown > projectile.max_flight) || !ground.cell_at(next.x, next.y))
+            {
+                damage.events.push_back(shot);
+                continue;
+            }
+            projectiles.flying[kept++] = projectile;
+            continue;
+        }
         // Shots home on their target's current aim point; a dead target's shot flies on to the
-        // last point and is lost there.
+        // last point, and a miss past it: on land on to the ground, in space it is lost there.
         auto victim = dense_index(view, projectile.target);
         if (!victim && projectile.scan_range > 0.0F)
         {
@@ -675,6 +715,16 @@ void SimulationWorld::CombatSystem::run_projectiles(const View& view)
                 shot.kind = DamageEvent::Kind::hit;
                 shot.victim = identity.ids[*other];
             }
+            else if (ground.valid())
+            {
+                projectile.position = projectile.aim;
+                projectile.flown += distance;
+                projectile.target = {};
+                projectile.flying_on = true;
+                projectile.flight_end = projectile.flown + stray_flight_limit;
+                projectiles.flying[kept++] = projectile;
+                continue;
+            }
             damage.events.push_back(shot);
             continue;
         }
@@ -734,7 +784,8 @@ void SimulationWorld::resolve(const DamageEvent& event)
         break;
     }
     case DamageEvent::Kind::miss:
-        events_.impacts.push_back({event.point, event.direction, event.visual, ImpactKind::expired});
+        combat_counters_.ground_hits += event.ground ? 1U : 0U;
+        events_.impacts.push_back({event.point, event.direction, event.visual, event.ground ? ImpactKind::ground : ImpactKind::expired});
         break;
     case DamageEvent::Kind::blast:
         break;

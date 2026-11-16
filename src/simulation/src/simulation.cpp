@@ -392,6 +392,7 @@ SimulationWorld::Stats SimulationWorld::stats() const noexcept
             .kills = combat_counters_.kills,
             .hardpoints_destroyed = combat_counters_.hardpoints_destroyed,
             .crushed = combat_counters_.crushed,
+            .ground_hits = combat_counters_.ground_hits,
             .projectiles = projectiles_.flying.size(),
             .separated_pairs = contact_.separated_pairs,
             .waiting_members = navigation_.waiting_members,
@@ -740,6 +741,11 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
         hasher.add(projectile.flown);
         hasher.add(projectile.stray);
         hasher.add(projectile.misses);
+        // Only for misses flying on (land), so battles without any hash as before.
+        if (projectile.flying_on)
+        {
+            hasher.add(projectile.flight_end);
+        }
     }
     hasher.subject = StateSubject::random;
     hasher.add(combat_random_.stream.state());

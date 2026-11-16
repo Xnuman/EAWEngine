@@ -7,6 +7,7 @@
 
 #include "assets/xml_asset_database.hpp"
 
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -36,6 +37,8 @@ public:
     // A trigger's settings for a surface, else its "default" settings; null when the trigger has
     // neither.
     [[nodiscard]] const SurfaceEffectSettings* find(std::string_view trigger, std::string_view surface = "default") const;
+    // Every surface's settings of a trigger (empty when it is not defined).
+    [[nodiscard]] std::span<const SurfaceEffectSettings> settings(std::string_view trigger) const;
     [[nodiscard]] std::size_t size() const noexcept;
 
 private:

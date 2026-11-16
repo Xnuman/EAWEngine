@@ -167,6 +167,10 @@ private:
     {
         std::string detonate;
         std::string reduced;
+        // Ground hits: Projectile_Ground_Detonation_SFXEvent, and the SurfaceFX whose sound plays
+        // for the surface hit (Projectile_Ground_Detonation_SurfaceFX).
+        std::string ground;
+        std::string ground_surface_fx;
     };
     struct Voice
     {

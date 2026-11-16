@@ -99,6 +99,54 @@ std::optional<std::uint32_t> GroundMap::cell_at(const float x, const float y) co
     return static_cast<std::uint32_t>(row) * width + static_cast<std::uint32_t>(column);
 }
 
+std::optional<LiquidKind> GroundMap::liquid_at(const float x, const float y) const
+{
+    if (!liquid_level || !valid() || terrain_height(x, y) >= *liquid_level)
+    {
+        return std::nullopt;
+    }
+    return liquid_kind;
+}
+
+std::optional<Vector3> GroundMap::surface_crossing(const Vector3& from, const Vector3& to) const
+{
+    // Halvings of the last sampled step (a half cell, 10 units on stock maps, to under 0.1): an
+    // engine choice for where effects play.
+    constexpr int bisections = 8;
+    if (!valid())
+    {
+        return std::nullopt;
+    }
+    const auto above = [&](const Vector3& point)
+    {
+        return point.z > surface_height(point.x, point.y);
+    };
+    if (!above(from))
+    {
+        return from;
+    }
+    const auto delta = to - from;
+    const auto samples = std::max(1, static_cast<int>(std::ceil(length(delta) / (spacing * 0.5F))));
+    auto clear = from;
+    for (int sample = 1; sample <= samples; ++sample)
+    {
+        const auto point = from + delta * (static_cast<float>(sample) / static_cast<float>(samples));
+        if (above(point))
+        {
+            clear = point;
+            continue;
+        }
+        auto below = point;
+        for (int step = 0; step < bisections; ++step)
+        {
+            const auto middle = (clear + below) * 0.5F;
+            (above(middle) ? clear : below) = middle;
+        }
+        return below;
+    }
+    return std::nullopt;
+}
+
 std::optional<std::uint32_t> GroundMap::passability_at(const float x, const float y) const
 {
     const auto cell = cell_at(x, y);

@@ -649,10 +649,26 @@ void test_inaccuracy()
 {
     eaw::Hostility hostility;
     hostility.set(1, 2, true);
-    const auto fire = [&](const float distance, const std::uint32_t categories, const bool bystander = false)
+    const auto fire = [&](const float distance, const std::uint32_t categories, const bool bystander = false, const bool land = false)
     {
         eaw::SimulationWorld world(0.1);
         world.set_hostility(hostility);
+        if (land)
+        {
+            // Flat ground around both, sloping up beyond the target, so misses flying on meet it.
+            eaw::GroundMap ground;
+            ground.width = 40;
+            ground.height = 40;
+            ground.spacing = 20.0F;
+            for (std::uint32_t y = 0; y < ground.height; ++y)
+            {
+                for (std::uint32_t x = 0; x < ground.width; ++x)
+                {
+                    ground.heights.push_back(x > 8U ? static_cast<float>(x - 8U) * 10.0F : 0.0F);
+                }
+            }
+            world.set_ground(ground);
+        }
         eaw::CombatProfile gun;
         gun.health = 50.0F;
         gun.weapons = {eaw::WeaponProfile{.range = 300.0F, .recharge_seconds = 0.1F, .damage = 1.0F, .inaccuracy = {{categories, distance}}}};
@@ -672,20 +688,27 @@ void test_inaccuracy()
         {
             world.step();
         }
-        return std::tuple(world.stats().shots_fired, world.stats().hits, world.state_hash());
+        return std::tuple(world.stats().shots_fired, world.stats().hits, world.state_hash(), world.stats().ground_hits);
     };
-    const auto [sure_shots, sure_hits, sure_hash] = fire(0.0F, 0x80U);
+    const auto [sure_shots, sure_hits, sure_hash, sure_landed] = fire(0.0F, 0x80U);
     require(sure_shots > 20 && sure_hits == sure_shots, "a weapon without inaccuracy must hit every shot");
-    const auto [wide_shots, wide_hits, wide_hash] = fire(100.0F, 0x80U);
+    const auto [wide_shots, wide_hits, wide_hash, wide_landed] = fire(100.0F, 0x80U);
     require(wide_shots == sure_shots && wide_hits < wide_shots / 4U, "a wide stray against a small target must mostly miss");
-    const auto [other_shots, other_hits, other_hash] = fire(100.0F, 0x100U);
+    const auto [other_shots, other_hits, other_hash, other_landed] = fire(100.0F, 0x100U);
     require(other_hits == other_shots, "inaccuracy for other categories must not apply");
-    const auto [again_shots, again_hits, again_hash] = fire(100.0F, 0x80U);
+    const auto [again_shots, again_hits, again_hash, again_landed] = fire(100.0F, 0x80U);
     require(again_hits == wide_hits && again_hash == wide_hash, "misses must replay");
-    const auto [all_shots, all_hits, all_hash] = fire(100.0F, eaw::all_categories);
+    const auto [all_shots, all_hits, all_hash, all_landed] = fire(100.0F, eaw::all_categories);
     require(all_hits < all_shots / 4U, "a fixed radius must apply to every target");
-    const auto [crowd_shots, crowd_hits, crowd_hash] = fire(100.0F, 0x80U, true);
+    const auto [crowd_shots, crowd_hits, crowd_hash, crowd_landed] = fire(100.0F, 0x80U, true);
     require(crowd_hits == crowd_shots, "a stray shot must hit the hostile it lands on");
+    // On land a miss flies on past its aim point until it meets the ground; without ground (space)
+    // it is lost at its aim point.
+    require(wide_landed == 0U, "without ground no miss may land");
+    const auto [land_shots, land_hits, land_hash, land_landed] = fire(100.0F, 0x80U, false, true);
+    require(land_hits == wide_hits && land_landed > 0U && land_landed <= land_shots - land_hits, "on land misses must fly on and land on the ground");
+    const auto [land_again_shots, land_again_hits, land_again_hash, land_again_landed] = fire(100.0F, 0x80U, false, true);
+    require(land_again_hash == land_hash && land_again_landed == land_landed, "misses flying on must replay");
 }
 
 // A unit's targeting priorities pick its target before distance does; excluded targets are never

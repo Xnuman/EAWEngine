@@ -14,6 +14,7 @@
 #include "render/visual_frame.hpp"
 #include "assets/game_object_catalog.hpp"
 #include "assets/particle_rules.hpp"
+#include "assets/surface_effects.hpp"
 #include "simulation/simulation.hpp"
 
 #include <array>
@@ -37,9 +38,17 @@ struct ProjectileVisual
     // XML Particle objects (CRC-32 of the name, 0 none) played where a shot ends, by ImpactKind:
     // absorbed by shields (Projectile_Absorbed_By_Shields_Particle), on the hull
     // (Projectile_Object_Detonation_Particle), on the hull with armor reducing it
-    // (Projectile_Object_Armor_Reduced_Detonation_Particle), and at the end of its flight
-    // (Projectile_Lifetime_Detonation_Particle).
-    std::array<std::uint32_t, 4> impact_effects{};
+    // (Projectile_Object_Armor_Reduced_Detonation_Particle), at the end of its flight
+    // (Projectile_Lifetime_Detonation_Particle), and on the ground (Projectile_Ground_Detonation_Particle).
+    std::array<std::uint32_t, 5> impact_effects{};
+    // On the ground, the particle of its Projectile_Ground_Detonation_SurfaceFX for each surface kind
+    // the SurfaceFX names (lower case: default, water, lava, ice); see ground_impact_effects.
+    struct SurfaceParticle
+    {
+        std::string surface;
+        std::uint32_t particle{};
+    };
+    std::vector<SurfaceParticle> ground_surfaces;
     float width{1.0F};
     float length{1.0F};
     std::uint32_t column{};
@@ -74,7 +83,9 @@ using ProjectileVisualTable = std::unordered_map<std::uint32_t, ProjectileVisual
 
 // Reads the visual of each projectile type in `keys` (its bolt when it has a custom render, and its
 // impact effects); problems become warnings naming the type and field.
-void read_projectile_visuals(const GameObjectCatalog& catalog, std::span<const std::uint32_t> keys, ProjectileVisualTable& table, std::vector<std::string>& warnings);
+// `surfaces` resolves the ground SurfaceFX (null: none, as in space).
+void read_projectile_visuals(const GameObjectCatalog& catalog, std::span<const std::uint32_t> keys, ProjectileVisualTable& table, std::vector<std::string>& warnings,
+                             const SurfaceEffectCatalog* surfaces = nullptr);
 
 // The projectile visual keys of every weapon in `profile`.
 void collect_projectile_keys(const CombatProfile& profile, std::vector<std::uint32_t>& keys);
@@ -84,6 +95,12 @@ void collect_impact_effect_keys(const ProjectileVisualTable& table, std::vector<
 
 // The Particle object played for an impact of `kind` (0 none).
 [[nodiscard]] std::uint32_t impact_effect(const ProjectileVisual& visual, ImpactKind kind) noexcept;
+
+// The Particle objects a ground hit plays on `surface` (default, or the liquid's kind): over a
+// liquid its SurfaceFX particle alone (a splash, not an explosion on the water), else the ground
+// detonation and the SurfaceFX's default particle when it is another one. An engine choice: how the
+// two tags combine is not known; every stock user names both. 0 for none.
+[[nodiscard]] std::array<std::uint32_t, 2> ground_impact_effects(const ProjectileVisual& visual, std::string_view surface) noexcept;
 
 // Where a shot is drawn between the previous tick and this one (`interpolation` 0..1), with its
 // flight shape, and the direction it faces there.

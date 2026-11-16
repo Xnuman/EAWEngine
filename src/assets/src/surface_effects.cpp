@@ -72,6 +72,12 @@ const SurfaceEffectSettings* SurfaceEffectCatalog::find(const std::string_view t
     return chosen != settings.end() ? &*chosen : nullptr;
 }
 
+std::span<const SurfaceEffectSettings> SurfaceEffectCatalog::settings(const std::string_view trigger) const
+{
+    const auto found = effects_.find(ascii_lower(ascii_trim(trigger)));
+    return found == effects_.end() ? std::span<const SurfaceEffectSettings>{} : std::span<const SurfaceEffectSettings>(found->second);
+}
+
 std::size_t SurfaceEffectCatalog::size() const noexcept
 {
     return effects_.size();

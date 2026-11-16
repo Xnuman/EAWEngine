@@ -133,6 +133,7 @@ GroundMap map_ground(const TedMapData& map)
     if (liquid && !field.heights.empty() && map.water.level >= *std::ranges::min_element(field.heights))
     {
         field.liquid_level = map.water.level;
+        field.liquid_kind = map.water.type == TedWaterType::lava ? LiquidKind::lava : map.water.type == TedWaterType::ice ? LiquidKind::ice : LiquidKind::water;
     }
     if (map.passability_map.size() == samples)
     {

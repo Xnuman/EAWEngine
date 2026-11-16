@@ -1038,6 +1038,13 @@ cohesion stall (to be reworked with group movement).
   the target's footprint and then hits the nearest hostile collidable entity it lands on
   (`Collidable_By_Projectile_Living`). That reading is inference: it fits the data (infantry blasters
   miss air units, turbolasers fighters) but is unverified.
+- **Misses on land** (the owner's choice): a shot that misses, or whose target died, flies on past
+  its aim point along its line until it meets the surface (the terrain, or the liquid over it:
+  `GroundMap::surface_crossing`, sampled every half cell and bisected), its maximum flight, the map's
+  edge, or 2,000 units past the aim point (`stray_flight_limit`, an engine choice, so level shots
+  end); an instant weapon's miss traces the same line at once. Meeting the surface is a ground
+  impact (`ImpactKind::ground`, counted as `ground_hits`; its blast goes off there). Shots flying on
+  hit nothing on the way. In space a miss is still lost at its aim point.
 - **Muzzles**: a unit's own weapon fires from its model's `MuzzleA_nn` bones, one shot each in number
   order (the T4-B's two barrels, the T2-B's four guns, an X-wing's four), else from a turret's
   `Barrel_Bone_Name`, else from the body at `Ranged_Target_Z_Adjust` (compatibility-research.md,
@@ -1324,9 +1331,15 @@ tracks.
 - Impacts and deaths: gameplay effects are XML `Particle` objects (`Space_Model_Name`/
   `Land_Model_Name`, `Scale_Factor`). Snapshots list each tick's impacts (position, direction,
   projectile key, the entity struck, `ImpactKind` shield, hull, hull_reduced (armor modifier below 1,
-  provisional), or expired); builds resolve the projectiles' `Projectile_Absorbed_By_Shields_Particle`,
-  `_Object_Detonation_`, `_Object_Armor_Reduced_Detonation_`, and `_Lifetime_Detonation_Particle`
-  objects and the types' death explosions (the first `Death_Explosions` entry; one naming a
+  provisional), expired, or ground); builds resolve the projectiles' `Projectile_Absorbed_By_Shields_Particle`,
+  `_Object_Detonation_`, `_Object_Armor_Reduced_Detonation_`, `_Lifetime_Detonation_`, and
+  `_Ground_Detonation_Particle` objects, and on land the particles their
+  `Projectile_Ground_Detonation_SurfaceFX` names per surface kind. A ground hit's surface is the
+  map's liquid (water, lava, ice: `GroundMap::liquid_at`) where the terrain lies below it, else
+  default (terrain surface kinds such as dirt or snow are not known); over a liquid it plays that
+  surface's particle alone (a splash), on ground the ground detonation and the SurfaceFX's default
+  particle when it is another one (`ground_impact_effects`; how the two tags combine is an engine
+  choice). The rest: objects and the types' death explosions (the first `Death_Explosions` entry; one naming a
   Projectile plays its detonation particle) and spin-away explosions (`load_effect_objects`); each
   plays once at its point, upright, sized by `Scale_Factor`. Objects that cannot play are reported.
 - Shield hits show the projectile's absorb particle; the shield-mesh flash (growing through 1.0, 1.1,
@@ -1458,7 +1471,9 @@ or sound (WeatherAudio.xml).
   ranges, predelays, and chains, voices following their sources and the camera:
   - weapon fire (a hardpoint's `Fire_SFXEvent`, else the type's `SFXEvent_Fire`; one play per shooter
     and sound per tick), deaths and death explosions, shot impacts (`Projectile_SFXEvent_Detonate`, or
-    `_Reduced_By_Armor`; lapsed shots play nothing, an engine choice), destroyed hardpoints'
+    `_Reduced_By_Armor`; lapsed shots play nothing, an engine choice; ground hits play
+    `Projectile_Ground_Detonation_SFXEvent` and their SurfaceFX's sound for the surface, a ricochet
+    on ground), destroyed hardpoints'
     `Death_Explosion_SFXEvent`, spin-away starts (`Spin_Away_On_Death_SFXEvent_Start_Die`), damage-state
     sounds, and wreck ends;
   - loops on the 16 units nearest the listener: `SFXEvent_Engine_Moving_Loop` while moving (for a type

@@ -215,7 +215,7 @@ void print_run(const BattleRun& run, const std::uint64_t ticks_run)
               << "Entities: " << run.starting_entities << " at start, " << stats.entities << " at end | orders " << run.log.entries.size() << ", commands applied " << stats.commands_applied
               << ", stale references " << stats.stale_references << ", rejected spawns " << stats.rejected_spawns << '\n'
               << "Combat: " << stats.shots_fired << " shots, " << stats.hits << " hits, " << stats.kills << " kills, " << stats.hardpoints_destroyed << " hardpoints destroyed, " << stats.crushed
-              << " crushed, " << stats.projectiles << " in flight\n"
+              << " crushed, " << stats.ground_hits << " misses landed, " << stats.projectiles << " in flight\n"
               << "Paths: " << stats.path_searches << " planned, " << stats.partial_paths << " partial, " << stats.shared_routes << " shared, " << stats.path_expansions << " nodes expanded, "
               << stats.blocked_moves << " blocked moves\n";
     // Each tick layer: average milliseconds per tick, and the slowest tick's.

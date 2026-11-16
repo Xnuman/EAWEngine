@@ -4,6 +4,7 @@
 // the drawn liquid level, and the TED passability raster. Graphics-free; the simulation moves ground
 // units over it and presentation uses it for clicks and placement.
 
+#include "math/vector.hpp"
 #include "core/status.hpp"
 
 #include <cstdint>
@@ -38,6 +39,19 @@ inline constexpr std::uint32_t impassable = 0x100;
 // types a movement class may enter. Unknown names are an error naming them.
 [[nodiscard]] Result<std::uint32_t> parse_passability_list(std::string_view text);
 
+// The kind of a map's liquid (TED water: water, lava, ice); also the SurfaceFX surface name.
+enum class LiquidKind : std::uint8_t
+{
+    water,
+    lava,
+    ice,
+};
+
+[[nodiscard]] constexpr std::string_view to_string(const LiquidKind kind) noexcept
+{
+    return kind == LiquidKind::lava ? "lava" : kind == LiquidKind::ice ? "ice" : "water";
+}
+
 struct GroundMap
 {
     bool operator==(const GroundMap&) const = default;
@@ -49,6 +63,7 @@ struct GroundMap
     std::vector<float> heights;
     // Height of the drawn liquid surface (water, lava, ice), when there is one.
     std::optional<float> liquid_level;
+    LiquidKind liquid_kind{LiquidKind::water};
     // Row-major raw passability values (width * height), or empty when the map has none.
     std::vector<std::uint32_t> passability;
 
@@ -67,6 +82,12 @@ struct GroundMap
     [[nodiscard]] std::optional<std::uint32_t> cell_at(float x, float y) const;
     // Raw passability of the cell nearest to world X/Y (nothing outside the grid or without data).
     [[nodiscard]] std::optional<std::uint32_t> passability_at(float x, float y) const;
+    // The liquid over the terrain at world X/Y, if any (the terrain lies below the liquid level).
+    [[nodiscard]] std::optional<LiquidKind> liquid_at(float x, float y) const;
+    // Where the segment from `from` to `to` first meets the surface (surface_height: the terrain, or
+    // the liquid where it is higher): sampled every half cell, then refined by bisection; `from`
+    // itself when it starts at or below the surface; nothing when the segment stays above it.
+    [[nodiscard]] std::optional<Vector3> surface_crossing(const Vector3& from, const Vector3& to) const;
 };
 
 } // namespace eaw

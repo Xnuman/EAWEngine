@@ -42,7 +42,7 @@ void present_tick(const BattleRuntime& runtime, BattlePresenters& presenters, co
             }
         }
     }
-    presenters.effects.play_tick_events(world.snapshot());
+    presenters.effects.play_tick_events(world.snapshot(), &world.ground());
     // Shield hits show the projectile's absorb particle (play_tick_events); the shield mesh flash
     // (flash_shields) belongs to shield abilities, which are not implemented yet (the owner's
     // reading, 2026-11-14).

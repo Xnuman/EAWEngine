@@ -46,7 +46,7 @@ $battles = @(
 )
 if ($Extended) {
     $battles += @(
-        @{ Name = 'large Utapau'; Expected = '0xc3fc271e6fcc9bd0'
+        @{ Name = 'large Utapau'; Expected = '0xddbc9df8ed7e2bc7'
             Arguments = @('--map', $utapau, '--spawn', 'Rebel_Infantry_Squad:80@1', '--spawn', 'Imperial_Stormtrooper_Squad:80@2', '--spawn', 'T2B_Tank:60@1',
                 '--spawn', 'AT_ST_Walker:40@2', '--auto-move', '--ticks', '1800') },
         @{ Name = 'Kuat fighters'; Expected = '0x9259b7aa5bbe80d9'

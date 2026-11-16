@@ -81,7 +81,8 @@ public:
 
     // Plays the impacts and deaths of the tick `snapshot` ends; call after every tick so none is
     // missed when a frame runs several.
-    void play_tick_events(const SimSnapshot& snapshot);
+    // `ground` (null in space) decides the surface ground hits land on (GroundMap::liquid_at).
+    void play_tick_events(const SimSnapshot& snapshot, const GroundMap* ground = nullptr);
     // Keeps attached effects on this frame's drawn units (see AttachedEffects::update).
     void attach(std::span<const VisualInstance> instances, std::span<const EntityId> entities, std::span<const Matrix4> palette, std::span<const EntitySnapshot> snapshot, double seconds);
     // Keeps the proxy effects of this frame's wrecks (`wrecks` keyed by `keys`, the dead units' ids;

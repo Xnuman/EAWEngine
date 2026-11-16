@@ -138,7 +138,8 @@ std::uint32_t particle_library_texture(SceneBuilder& builder, const std::string&
 
 // Reads the projectile visuals `keys` name into `table` and, when any exists, loads the bolt atlas
 // into builder.particles (its index in `atlas`).
-void load_projectile_visuals(SceneBuilder& builder, const GameObjectCatalog& catalog, std::span<const std::uint32_t> keys, ProjectileVisualTable& table, std::uint32_t& atlas);
+void load_projectile_visuals(SceneBuilder& builder, const GameObjectCatalog& catalog, const SurfaceEffectCatalog* surfaces, std::span<const std::uint32_t> keys, ProjectileVisualTable& table,
+                             std::uint32_t& atlas);
 // Gives the table's model projectiles (no bolt) their look: the mesh of their model, appended to the
 // scene once per model (`meshes` deduplicates, as for types), or the particle system it names, and
 // their Scale_Factor. Call before the rigs are built, so model proxies (trails) get attachments.
