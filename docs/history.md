@@ -881,3 +881,7 @@ rewritten to describe the current state; the source document is noted in bracket
   value-noise patches and the vertex's crest value are gone. A rough test sea (wind 60, choppiness
   1.4) showed a regular field of dark spots from the overview, likely the 263-unit cascade folding
   and repeating; recorded as open.
+- The rough sea's dark spots were not folding (they stayed with choppiness 0) but the body's slope
+  shading: an added term pushed lee slopes below zero, clipped to black. The shading now scales the
+  body's color (1 plus eight times the change in facing, at least 0.35 of it), which keeps rough
+  seas free of black and the default sea's swells visible.

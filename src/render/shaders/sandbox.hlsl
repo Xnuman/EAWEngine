@@ -603,10 +603,12 @@ static const float WATER_GLINT_POWER = 256.0f;
 // The open sea body's share of the key light's direct term (see water_ps): an engine choice,
 // calibrated by eye against the legacy water's deep blue.
 static const float WATER_OCEAN_BODY_KEY = 0.1f;
-// The waves' shading on the open sea's body: the key light's change in facing between the wave's
-// normal and the flat surface, this much of it, so slopes toward the light brighten and slopes away
-// darken around the body's color (an engine choice, by eye).
-static const float WATER_OCEAN_SLOPE_SHADE = 3.0f;
+// The waves' shading on the open sea's body: the body's color scaled by 1 plus this much of the key
+// light's change in facing between the wave's normal and the flat surface, so slopes toward the light
+// brighten and slopes away darken around it, never below WATER_OCEAN_SLOPE_FLOOR of it (steep seas
+// otherwise clipped lee slopes to black). Engine choices, by eye.
+static const float WATER_OCEAN_SLOPE_SHADE = 8.0f;
+static const float WATER_OCEAN_SLOPE_FLOOR = 0.35f;
 // Open sea (ocean_shore.w): each normal layer fades out as its repeat shrinks on screen, so far water
 // keeps only its longer layers and the waves and no repeat reads as a grid; the slopes a faded layer
 // took away widen the sun's glint instead (its specular power from the slope variance, as Toksvig
@@ -745,9 +747,8 @@ PixelOutput water_ps(PixelInput input)
         const float3 key_light = safe_normalize(key_direction.xyz, float3(0.0f, 0.0f, 1.0f));
         const float slope_facing = saturate(dot(normal, key_light)) - saturate(dot(surface_normal, key_light));
         body = legacy_lit_color_scaled(base.rgb, surface_normal, input.world_position, 0.0f, material.diffuse.rgb, float3(0.0f, 0.0f, 0.0f), material.emissive.rgb, tint, input.position.xy, true,
-                                       WATER_OCEAN_BODY_KEY) +
-               base.rgb * material.diffuse.rgb * key_diffuse.rgb * tint * (2.0f * WATER_OCEAN_SLOPE_SHADE * slope_facing);
-        body = max(body, float3(0.0f, 0.0f, 0.0f));
+                                       WATER_OCEAN_BODY_KEY) *
+               max(1.0f + WATER_OCEAN_SLOPE_SHADE * slope_facing, WATER_OCEAN_SLOPE_FLOOR);
     }
     // The sky the surface reflects, from the map's lights (an engine choice until there is a sky
     // probe).

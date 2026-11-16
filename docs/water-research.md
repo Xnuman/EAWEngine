@@ -216,10 +216,7 @@ engine's would mark water kinds by brush.
    default sea state (peak wavelength about 300, significant height about 7) the slopes are gentle
    and the surface reads calm from above.
 3. Foam that builds up and fades, injected from the cascades' Jacobian, in place of the procedural
-   crest patches: done (status.md, "Ocean waves"). Open: a rough sea (wind 60, choppiness 1.4) shows
-   a regular field of dark spots from the overview, likely the 263-unit cascade folding over (its
-   triangles turned inside out) and repeating; fading a cascade's displacement with distance, as
-   Atlas does, or bounding the choppiness are the candidates.
+   crest patches: done (status.md, "Ocean waves").
 4. Each map's depth beneath the water and distance to the coast, baked at load, so waves die down
    over shelves by their wavelength instead of by a fixed depth.
 5. The rest: the water grid culled by tiles, wave motion in the motion vectors if TAA ghosts, ocean
