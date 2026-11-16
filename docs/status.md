@@ -383,7 +383,8 @@ improvements, off or optional unless stated; legacy is the default.
   bottom is steep, with lines rolling in every 2.5 units of depth. Refraction and reflections only
   when the scene renders into its own target (bloom or anti-aliasing on). At the tactical camera's
   pitch reflectance is 2-6%.
-- **Ocean waves** (enhanced water on ocean maps; docs/water-research.md, "The ocean plan"): an FFT
+- **Ocean waves** (enhanced water on ocean maps, off by default since the owner parked it; the Graphics
+  panel's Waves setting turns it on; docs/water-research.md, "The ocean plan"): an FFT
   ocean of three cascades (patches of 1000, 263, and 67 world units without a common factor, bands of
   200-1000, 50-200, and 4-50 units; `render/ocean_spectrum.hpp`). Their starting spectra (JONSWAP
   limited by depth, Hasselmann spreading around the map's wind, a swell term; seeded) upload when the
@@ -412,8 +413,8 @@ improvements, off or optional unless stated; legacy is the default.
   full depths (0 and 10 by default, the owner's tuning), the Jacobian below which crests foam, and
   Defaults. The mesh's bounds allow 40 units of wave height (`water_wave_reach`).
   Waves run only on open sea (the owner's choice): `ocean_map` names the ocean planets by the map's
-  file name, Kamino and Manaan, and sets `VisualLightRig::ocean`; the panel's setting is ocean maps
-  (default), on, or off. A corpus survey showed why a measure cannot decide it: the share under water
+  file name, Kamino and Manaan, and sets `VisualLightRig::ocean`; the panel's setting is ocean maps,
+  on, or off (the default while the ocean is parked). A corpus survey showed why a measure cannot decide it: the share under water
   puts the MP Dagobah swamp (57% at least 5 deep) beside Kamino (60%) and Mon Calamari (61%). With
   waves full from shallow depths, a shelf in the sea floor shows as a sharp line between calm and
   waves. Not yet: wave motion in the motion vectors (water is blended, so TAA reprojects it by

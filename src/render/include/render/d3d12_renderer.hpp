@@ -44,7 +44,9 @@ struct VisualOceanWaves
     float calm_depth{0.0F};
     float full_depth{10.0F};
     float foam_jacobian{0.6F};
-    VisualOceanWavesMode mode{VisualOceanWavesMode::automatic};
+    // Off by default: the FFT ocean is parked until the water is researched again (the owner, see
+    // docs/water-research.md, "The ocean plan"); enhanced water then looks as it did before it.
+    VisualOceanWavesMode mode{VisualOceanWavesMode::off};
 };
 
 // The rendering features that may change from frame to frame (D3d12Renderer::set_graphics_settings).

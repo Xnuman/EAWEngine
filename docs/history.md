@@ -885,3 +885,7 @@ rewritten to describe the current state; the source document is noted in bracket
   shading: an added term pushed lee slopes below zero, clipped to black. The shading now scales the
   body's color (1 plus eight times the change in facing, at least 0.35 of it), which keeps rough
   seas free of black and the default sea's swells visible.
+- The owner judged the tuned FFT ocean still poor (tiling from the short-fetch sea's 67-unit
+  cascade, low-poly up close, flat and grey far away, no screen-space reflections, implausible foam)
+  and parked it: waves are off by default, so enhanced water is back to its look before the ocean
+  work, and the code stays. The water will be researched again before it resumes.

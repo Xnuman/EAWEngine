@@ -153,11 +153,23 @@ choices.
   matched in the map's file name, Kamino and Manaan as the owner chose, and sets
   `VisualLightRig::ocean`; elsewhere the water lies flat without crest foam. A measure cannot decide
   it: by the share of the map under water, the multiplayer Dagobah swamp (57% at least 5 units deep)
-  sits beside Kamino (60%, none 20 deep) and Mon Calamari (61%). The waves setting is ocean maps
-  (default), on, or off. Test: `test_ocean_maps`.
+  sits beside Kamino (60%, none 20 deep) and Mon Calamari (61%). The waves setting is ocean maps,
+  on, or off (the default while the ocean is parked). Test: `test_ocean_maps`.
 
 The owner's verdict: the ocean needs a lot more work (strong tiling and patterns). The plan below
 follows from research into how games build oceans.
+
+Parked (the owner, after stages 1-3): the waves are off by default, so enhanced water looks as it
+did before the ocean work; the code stays, and the Graphics panel's Waves setting still turns it on.
+The owner's findings with his best tuning (wind 69, fetch 23,790, swell 0.5, choppiness 1.69,
+height 1.75, calm and full from 1, foam below 0.5): tiling remains (a short-fetch sea puts its energy
+in the 67-unit cascade, whose repeat shows; no combination of periodic FFT patches removes it), the
+water looks low-poly up close (12-unit grid), flat and grey far away (detail fades out, legacy
+lighting), there is no screen-space reflection beyond the planar one, and the foam does not look
+plausible. Coming back needs new research first; the known directions are non-periodic modulation of
+the cascades (world-space noise, offset and rotated tiles), a camera-centered finer mesh, HDR and
+physically based lighting with general screen-space reflections (Rendering stage 5), and foam with a
+texture of its own.
 
 ## The ocean plan
 

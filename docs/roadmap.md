@@ -129,9 +129,8 @@ honor are worked through tag by tag from [xml-tag-status.md](xml-tag-status.md) 
       38-47 ms with 3,300 entities) are in its section 1.
    h. Enhanced water as an ocean on ocean maps (Kamino, Manaan): an FFT ocean with sea-state
       sliders and an ocean-maps/on/off setting (status.md). The owner judges
-      the ocean far from done; in progress: the five stages of water-research.md, "The ocean plan"
-      (fading normal detail, FFT cascades, persistent foam, baked depth, the rest), on ocean maps
-      only (the owner).
+      the ocean far from done. Parked with waves off by default after stages 1-3 of water-research.md,
+      "The ocean plan" (the owner): it resumes with new research, together with Rendering stage 5.
    This closes M2.
 3. Input bindings (Platform and input stage 2).
 4. Simulation stage 1's remainder: combat presentation and fidelity (closes M3 with M2).
