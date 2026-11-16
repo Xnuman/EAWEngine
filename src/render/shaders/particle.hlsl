@@ -244,16 +244,6 @@ float4 particle_heat_ps(ParticlePixelInput input) : SV_TARGET
     return float4(texel.rgb, texel.a * input.color.a);
 }
 
-// Enhanced heat (docs/heat-research.md): the bend of the particle's bump texture plus a faint second
-// layer of it, finer and drifting (shimmer), sized in world units and turned into a texture-space
-// shift by the particle's distance (so zooming out does not make heat swim), capped in pixels,
-// faded by opacity; added up in a signed 16-bit buffer. Engine choices.
-static const float HEAT_WORLD_SHIFT = 2.0f;      // world units a full bend moves what lies behind
-static const float HEAT_MAX_PIXELS = 12.0f;      // the most a single particle shifts, in pixels
-static const float HEAT_SHIMMER_SHARE = 0.35f;
-static const float HEAT_SHIMMER_SCALE = 1.7f;
-static const float2 HEAT_SHIMMER_DRIFT = float2(0.05f, 0.08f);
-
 [RootSignature(SANDBOX_ROOT_SIGNATURE)]
 float4 particle_heat_enhanced_ps(ParticlePixelInput input) : SV_TARGET
 {
@@ -261,12 +251,5 @@ float4 particle_heat_enhanced_ps(ParticlePixelInput input) : SV_TARGET
     {
         return float4(0.0f, 0.0f, 0.0f, 0.0f);
     }
-    const float4 texel = sample_texture(input.texture, input.uv);
-    const float2 shimmer = sample_texture(input.texture, input.uv * HEAT_SHIMMER_SCALE + HEAT_SHIMMER_DRIFT * camera_position_time.w).rg * 2.0f - 1.0f;
-    const float2 bend = (texel.rg * 2.0f - 1.0f) + shimmer * HEAT_SHIMMER_SHARE;
-    // A world-sized shift at this depth (clip w), in texture units of the screen's height.
-    const float shift = HEAT_WORLD_SHIFT * heat_parameters.x / max(input.position.w, 1.0e-3f) * 0.5f;
-    const float capped = min(shift, HEAT_MAX_PIXELS / heat_parameters.z);
-    const float strength = capped * texel.a * input.color.a;
-    return float4(bend.x * strength / heat_parameters.y, -bend.y * strength, 0.0f, 0.0f);
+    return enhanced_heat_shift(input.texture, input.uv, input.position.w, input.color.a);
 }

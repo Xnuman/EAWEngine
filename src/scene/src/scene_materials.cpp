@@ -277,6 +277,7 @@ VisualMaterial make_visual_material(SceneBuilder& builder, const LegacyMaterial&
 {
     VisualMaterial result;
     result.name = material.source_shader;
+    result.heat = material.family == LegacyMaterialFamily::heat;
     result.blend = visual_blend(material.blend);
     result.two_sided = material.two_sided();
     result.alpha_test_threshold = material.render.alpha_test_threshold.value_or(0.5F);

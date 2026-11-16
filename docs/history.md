@@ -889,3 +889,9 @@ rewritten to describe the current state; the source document is noted in bracket
   cascade, low-poly up close, flat and grey far away, no screen-space reflections, implausible foam)
   and parked it: waves are off by default, so enhanced water is back to its look before the ocean
   work, and the code stays. The water will be researched again before it resumes.
+- Heat meshes draw: the 3 stock MeshHeat uses (the bacta tank's glass, NB_BACTATANK.ALO, found by
+  scanning every model) blend their distortion texture into the heat buffer in both heat modes; the
+  enhanced heat formula moved into legacy_common.hlsli, shared by particles and meshes. The heat
+  pass, now started by heat meshes alone, crashed on a frame without particles (a null particle
+  buffer) until it skipped the particles there. The only MeshAdditiveReflection user found is
+  W_BESPIN_REFINERY.ALO.

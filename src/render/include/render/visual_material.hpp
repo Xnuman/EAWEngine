@@ -159,6 +159,10 @@ struct VisualMaterial
     // The map's water surface: drawn after the opaque surfaces and before the transparent ones,
     // where enhanced water reads the depth of what lies beneath it.
     bool water{};
+    // A heat-distortion surface (the legacy MeshHeat and RSkinHeat): drawn only into the heat
+    // buffer, as heat particles are, with its distortion texture (the base color texture) scrolled,
+    // at its vertex alpha.
+    bool heat{};
     // Wind bend (the Tree material's BendScale; render/wind_bend.hpp): vertices sway with the wind
     // by their height above the model's origin, squared; 0 holds still.
     float bend_scale{};

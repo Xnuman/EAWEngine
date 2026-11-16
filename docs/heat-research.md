@@ -15,8 +15,8 @@ an engine choice), after the transparent part and before bloom and anti-aliasing
 
 This is the design most shipped engines use: one accumulated screen buffer applied once (Jericho,
 Batman: Arkham Knight, Unreal Engine 3, Dishonored 2, Quantum Break, Doom 2016). The legacy profile
-keeps it. The three stock heat meshes (`MeshHeat`) are not drawn yet
-([legacy-shader-mapping.md](legacy-shader-mapping.md)).
+keeps it. The three stock heat meshes (`MeshHeat`: the bacta tank's glass, `NB_BACTATANK.ALO`) draw
+into the same buffer, before the particles ([legacy-shader-mapping.md](legacy-shader-mapping.md)).
 
 ## Where better engines differ, by value for cost at RTS distances
 

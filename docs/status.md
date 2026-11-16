@@ -345,7 +345,9 @@ improvements, off or optional unless stated; legacy is the default.
   (shimmer, a third as strong); the apply pass fades near the screen's edges (3%) and where the
   shifted sample is nearer than the pixel (over 4 units); TAA weighs the new frame up to 0.6 where
   heat shifts the image. Only when the scene renders into its own target (bloom or anti-aliasing
-  on). Heat meshes (`MeshHeat`) are still skipped. All constants engine choices.
+  on). Heat meshes (`MeshHeat`, `VisualMaterial::heat`: the bacta tank's glass) draw into the same
+  buffer before the particles, their distortion texture scrolled at their vertex alpha, and nowhere
+  else (no scene, shadow, or silhouette pass). All constants engine choices.
 - Not yet: cube reflections, fog of war, and the materials the roadmap's Rendering track lists.
 
 ### Terrain, water, and tracks

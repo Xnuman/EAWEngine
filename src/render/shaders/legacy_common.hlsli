@@ -503,6 +503,29 @@ float3 legacy_lit_color_scaled(const float3 albedo, const float3 normal, const f
     return albedo * diffuse_light * 2.0f * tint + highlight;
 }
 
+// Enhanced heat (docs/heat-research.md), for heat particles and heat meshes alike: the bend of the
+// bump texture plus a faint second layer of it, finer and drifting (shimmer), sized in world units
+// and turned into a texture-space shift by the surface's distance (clip w, so zooming out does not
+// make heat swim), capped in pixels, faded by `opacity`; added up in a signed 16-bit buffer. Engine
+// choices.
+static const float HEAT_WORLD_SHIFT = 2.0f; // world units a full bend moves what lies behind
+static const float HEAT_MAX_PIXELS = 12.0f; // the most a single surface shifts, in pixels
+static const float HEAT_SHIMMER_SHARE = 0.35f;
+static const float HEAT_SHIMMER_SCALE = 1.7f;
+static const float2 HEAT_SHIMMER_DRIFT = float2(0.05f, 0.08f);
+
+float4 enhanced_heat_shift(const uint texture, const float2 uv, const float clip_w, const float opacity)
+{
+    const float4 texel = sample_texture(texture, uv);
+    const float2 shimmer = sample_texture(texture, uv * HEAT_SHIMMER_SCALE + HEAT_SHIMMER_DRIFT * camera_position_time.w).rg * 2.0f - 1.0f;
+    const float2 bend = (texel.rg * 2.0f - 1.0f) + shimmer * HEAT_SHIMMER_SHARE;
+    // A world-sized shift at this depth, in texture units of the screen's height.
+    const float shift = HEAT_WORLD_SHIFT * heat_parameters.x / max(clip_w, 1.0e-3f) * 0.5f;
+    const float capped = min(shift, HEAT_MAX_PIXELS / heat_parameters.z);
+    const float strength = capped * texel.a * opacity;
+    return float4(bend.x * strength / heat_parameters.y, -bend.y * strength, 0.0f, 0.0f);
+}
+
 float3 legacy_lit_color(const float3 albedo, const float3 normal, const float3 world_position, const float gloss, const float3 diffuse, const float3 specular,
                         const float3 emissive, const float3 tint, const float2 pixel, const bool receives_shadows)
 {

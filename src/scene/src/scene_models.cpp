@@ -179,12 +179,13 @@ Result<std::uint32_t> append_model(SceneBuilder& builder, const Model& model, co
             for (const auto& submesh : mesh.submeshes)
             {
                 const auto& material = submesh.material;
-                if (!drawn_submesh(submesh))
+                // Heat-distortion meshes draw only into the heat buffer (VisualMaterial::heat).
+                const bool heat = material.family == LegacyMaterialFamily::heat && !submesh.vertices.empty() && !submesh.indices.empty();
+                if (!drawn_submesh(submesh) && !heat)
                 {
-                    // Heat-distortion meshes and ALO occluded materials are not drawn: the renderer's
-                    // heat buffer takes heat particles, and its occluded silhouettes come from a mask
-                    // pass over units, not from these meshes.
-                    if (!submesh.vertices.empty() && !submesh.indices.empty() && (material.family == LegacyMaterialFamily::heat || material.family == LegacyMaterialFamily::occluded))
+                    // ALO occluded materials are not drawn: the renderer's occluded silhouettes come
+                    // from a mask pass over units, not from these meshes.
+                    if (!submesh.vertices.empty() && !submesh.indices.empty() && material.family == LegacyMaterialFamily::occluded)
                     {
                         scene.warnings.push_back(mesh.name + ": skipped " + material.source_shader + " (" + std::string(to_string(material.family)) + " meshes are not drawn)");
                     }

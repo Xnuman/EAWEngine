@@ -170,8 +170,7 @@ honor are worked through tag by tag from [xml-tag-status.md](xml-tag-status.md) 
      Graphics panel, so the owner can tune them by eye and the chosen values become the defaults;
    - the distance fade's defaults (5,000 to 7,000 units, guesses), for the owner to tune with the
      Graphics panel's sliders;
-   - heat distortion on the 3 `MeshHeat` meshes (heat particles are done); shockwave rings as an
-     enhanced option;
+   - heat distortion: shockwave rings as an enhanced option (heat particles and meshes are done);
    - shields: the FoC stealth meshes' visibility (when the original shows them), and reading
      `Shield_Flash_*` from GameConstants;
    - reflections: `MeshAdditiveReflection` (3 stock uses; no stock material uses the reflective

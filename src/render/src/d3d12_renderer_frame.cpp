@@ -1169,7 +1169,7 @@ bool D3d12Renderer::Impl::render()
         for (std::size_t index = begin; index < end; ++index)
         {
             const auto& draw = frame_draws[index];
-            if (draw.water != water)
+            if (draw.water != water || draw.heat)
             {
                 continue;
             }
@@ -1413,11 +1413,12 @@ bool D3d12Renderer::Impl::render()
     // Heat distortion: heat particles blend their bump colors into the heat buffer, the scene is
     // copied, and a fullscreen pass redraws it shifted by the buffer (only when the scene renders
     // into its own target).
-    const bool has_heat = scene != back_buffer && std::ranges::any_of(particles,
-                                                                      [](const VisualParticle& particle)
-                                                                      {
-                                                                          return particle.blend == VisualParticleBlend::heat;
-                                                                      });
+    const bool heat_meshes = scene_loaded && std::ranges::any_of(frame_draws, &GpuDraw::heat);
+    const bool has_heat = scene != back_buffer && (heat_meshes || std::ranges::any_of(particles,
+                                                                                      [](const VisualParticle& particle)
+                                                                                      {
+                                                                                          return particle.blend == VisualParticleBlend::heat;
+                                                                                      }));
     const bool enhanced_heat = has_heat && options.graphics.heat == VisualHeatMode::enhanced;
     std::optional<std::uint32_t> heat_for_taa;
     if (has_heat)
@@ -1438,6 +1439,38 @@ bool D3d12Renderer::Impl::render()
                                  constexpr std::array zero{0.0F, 0.0F, 0.0F, 0.0F};
                                  command_list->OMSetRenderTargets(1, &target, FALSE, &read_only_depth);
                                  command_list->ClearRenderTargetView(target, enhanced_heat ? zero.data() : neutral.data(), 0, nullptr);
+                                 // Heat meshes first, while the scene's materials are bound (the particles
+                                 // take their root slot next).
+                                 if (heat_meshes)
+                                 {
+                                     command_list->SetPipelineState(enhanced_heat ? heat_mesh_enhanced_pipeline.Get() : heat_mesh_pipeline.Get());
+                                     std::uint32_t bound_block = std::numeric_limits<std::uint32_t>::max();
+                                     for (const auto& draw : frame_draws)
+                                     {
+                                         if (!draw.heat)
+                                         {
+                                             continue;
+                                         }
+                                         if (draw.block != bound_block)
+                                         {
+                                             const auto& vertex_view = draw.block == 0 ? scene_vertex_view : added_blocks[draw.block - 1U].vertex_view;
+                                             const auto& index_view = draw.block == 0 ? scene_index_view : added_blocks[draw.block - 1U].index_view;
+                                             command_list->IASetVertexBuffers(0, 1, &vertex_view);
+                                             command_list->IASetIndexBuffer(&index_view);
+                                             bound_block = draw.block;
+                                         }
+                                         const std::array<std::uint32_t, 2> draw_constants{draw.first_instance, draw.material};
+                                         command_list->SetGraphicsRoot32BitConstants(5, 2, draw_constants.data(), 0);
+                                         command_list->DrawIndexedInstanced(draw.geometry.index_count, draw.instance_count, draw.geometry.first_index, draw.geometry.base_vertex, 0);
+                                         ++draw_calls;
+                                     }
+                                 }
+                                 // Heat meshes alone start this pass; a frame without particles has no
+                                 // particle buffer.
+                                 if (!frame.particle_buffer)
+                                 {
+                                     return;
+                                 }
                                  command_list->SetGraphicsRootShaderResourceView(3, frame.particle_buffer->GetGPUVirtualAddress());
                                  command_list->SetPipelineState(enhanced_heat ? heat_particle_enhanced_pipeline.Get() : heat_particle_pipeline.Get());
                                  std::size_t run_start = 0;

@@ -11,6 +11,8 @@
 // points embed the root signature, which the renderer creates from the vertex shader blob.
 #include "g_eaw_debug_ps.h"
 #include "g_eaw_debug_vs.h"
+#include "g_eaw_heat_mesh_enhanced_ps.h"
+#include "g_eaw_heat_mesh_ps.h"
 #include "g_eaw_ocean_columns_cs.h"
 #include "g_eaw_ocean_evolve_cs.h"
 #include "g_eaw_ocean_pack_cs.h"
@@ -314,6 +316,31 @@ void D3d12Renderer::Impl::create_pipeline()
     auto water = description;
     water.PS = {g_eaw_water_ps, sizeof(g_eaw_water_ps)};
     create_pipeline_state(L"water", water, water_pipeline);
+    // Heat meshes: the scene's vertices into the heat buffer, as heat particles blend (legacy: by
+    // alpha into the neutral buffer; enhanced: signed shifts added up).
+    {
+        auto heat = description;
+        heat.NumRenderTargets = 1;
+        heat.RTVFormats[0] = back_buffer_format;
+        heat.RTVFormats[1] = DXGI_FORMAT_UNKNOWN;
+        heat.RTVFormats[2] = DXGI_FORMAT_UNKNOWN;
+        heat.PS = {g_eaw_heat_mesh_ps, sizeof(g_eaw_heat_mesh_ps)};
+        auto& target = heat.BlendState.RenderTarget[0];
+        target.BlendEnable = TRUE;
+        target.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+        target.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+        target.SrcBlendAlpha = D3D12_BLEND_ONE;
+        target.DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
+        target.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+        create_pipeline_state(L"heat meshes", heat, heat_mesh_pipeline);
+        heat.PS = {g_eaw_heat_mesh_enhanced_ps, sizeof(g_eaw_heat_mesh_enhanced_ps)};
+        heat.RTVFormats[0] = heat_signed_format;
+        target.SrcBlend = D3D12_BLEND_ONE;
+        target.DestBlend = D3D12_BLEND_ONE;
+        target.SrcBlendAlpha = D3D12_BLEND_ONE;
+        target.DestBlendAlpha = D3D12_BLEND_ONE;
+        create_pipeline_state(L"heat meshes (enhanced)", heat, heat_mesh_enhanced_pipeline);
+    }
     check_device_hresult(device->CreateRootSignature(0, g_eaw_water_clear_cs, sizeof(g_eaw_water_clear_cs), IID_PPV_ARGS(&water_reflection_root_signature)), device,
                          "CreateRootSignature(water reflections)");
     D3D12_COMPUTE_PIPELINE_STATE_DESC compute{};

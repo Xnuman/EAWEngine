@@ -242,6 +242,8 @@ struct D3d12Renderer::Impl
         std::uint32_t block{};
         // The map's water surface (VisualMaterial::water), drawn in the water pass.
         bool water{};
+        // A heat-distortion surface (VisualMaterial::heat), drawn only in the heat pass.
+        bool heat{};
     };
 
     // Structured-buffer layout shared with the vertex shader (180 bytes, packed).
@@ -503,6 +505,9 @@ struct D3d12Renderer::Impl
     // over the scene.
     ComPtr<ID3D12PipelineState> silhouette_pipeline;
     ComPtr<ID3D12PipelineState> silhouette_composite_pipeline;
+    // Heat distortion: heat meshes (VisualMaterial::heat) into the heat buffer, legacy and enhanced.
+    ComPtr<ID3D12PipelineState> heat_mesh_pipeline;
+    ComPtr<ID3D12PipelineState> heat_mesh_enhanced_pipeline;
     // Heat distortion: heat particles into the heat buffer, then the scene shifted by it.
     ComPtr<ID3D12PipelineState> heat_particle_pipeline;
     ComPtr<ID3D12PipelineState> heat_apply_pipeline;

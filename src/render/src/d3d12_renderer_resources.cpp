@@ -485,6 +485,7 @@ Status D3d12Renderer::Impl::commit_scene(VisualScene& scene, UploadBatch upload,
             const auto& draw = scene.draws[draw_index];
             auto result = GpuDraw{draw, draw.material, scene.materials[draw.material].blend, 0, 0, false};
             result.water = scene.materials[draw.material].water;
+            result.heat = scene.materials[draw.material].heat;
             return result;
         };
         new_mesh_levels[mesh_index] = mesh_levels(mesh, gpu_draw);
@@ -511,6 +512,7 @@ Status D3d12Renderer::Impl::commit_scene(VisualScene& scene, UploadBatch upload,
             }
             new_draws.push_back({draw, draw.material, scene.materials[draw.material].blend, first_instance, instance_count, background});
             new_draws.back().water = scene.materials[draw.material].water;
+            new_draws.back().heat = scene.materials[draw.material].heat;
         }
     }
     // Backgrounds first in scene (mesh) order so later layers paint over earlier ones; then the
@@ -717,6 +719,7 @@ Result<std::uint32_t> D3d12Renderer::Impl::add_meshes(VisualScene fragment)
             GpuDraw result{draw, first_material + draw.material, fragment.materials[draw.material].blend, 0, 0, false};
             result.block = block_index;
             result.water = fragment.materials[draw.material].water;
+            result.heat = fragment.materials[draw.material].heat;
             return result;
         };
         auto levels = mesh_levels(mesh, gpu_draw);

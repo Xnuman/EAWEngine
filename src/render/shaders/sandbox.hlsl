@@ -822,6 +822,24 @@ PixelOutput water_ps(PixelInput input)
     return output;
 }
 
+// Heat meshes (the legacy MeshHeat): their distortion texture (the material's base texture, scrolled)
+// at the vertex alpha, blended into the heat buffer like heat particles (particle.hlsl).
+[RootSignature(SANDBOX_ROOT_SIGNATURE)]
+float4 heat_mesh_ps(PixelInput input) : SV_TARGET
+{
+    const MaterialData material = materials[material_index];
+    const float4 texel = sample_texture(material.base_texture, input.uv * material.specular.w + material.uv_scroll * camera_position_time.w);
+    return float4(texel.rgb, texel.a * input.vertex_color.a * material.tint.a * input.tint.a);
+}
+
+[RootSignature(SANDBOX_ROOT_SIGNATURE)]
+float4 heat_mesh_enhanced_ps(PixelInput input) : SV_TARGET
+{
+    const MaterialData material = materials[material_index];
+    return enhanced_heat_shift(material.base_texture, input.uv * material.specular.w + material.uv_scroll * camera_position_time.w, input.position.w,
+                               input.vertex_color.a * material.tint.a * input.tint.a);
+}
+
 // Occlusion silhouettes (the legacy OccludedUnit shaders): where a flagged unit is hidden, its team
 // color at half strength (the legacy default color's alpha; the original's color for players is not
 // established: an engine choice). Hidden means the pixel shows another object, at least

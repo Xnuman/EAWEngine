@@ -129,6 +129,8 @@ eaw_compile_shader(eaw_render_d3d12 dxc shaders/sandbox.hlsl ps_main ps_6_0 g_ea
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/sandbox.hlsl shadow_vs vs_6_0 g_eaw_shadow_vs)
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/sandbox.hlsl shadow_ps ps_6_0 g_eaw_shadow_ps)
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/sandbox.hlsl water_ps ps_6_0 g_eaw_water_ps)
+eaw_compile_shader(eaw_render_d3d12 dxc shaders/sandbox.hlsl heat_mesh_ps ps_6_0 g_eaw_heat_mesh_ps)
+eaw_compile_shader(eaw_render_d3d12 dxc shaders/sandbox.hlsl heat_mesh_enhanced_ps ps_6_0 g_eaw_heat_mesh_enhanced_ps)
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/ocean.hlsl evolve_cs cs_6_0 g_eaw_ocean_evolve_cs)
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/ocean.hlsl fft_rows_cs cs_6_0 g_eaw_ocean_rows_cs)
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/ocean.hlsl fft_columns_cs cs_6_0 g_eaw_ocean_columns_cs)
