@@ -96,7 +96,8 @@ honor are worked through tag by tag from [xml-tag-status.md](xml-tag-status.md) 
       space hardpoints, the walker locomotion cleanup): done. Open: the T4-B's missile launcher is
       the `ROCKET_ATTACK` unit ability, which waits for the unit abilities (Simulation stage 2);
       shield hits play only the absorb particle, and the shield mesh flash waits for the shield
-      abilities.
+      abilities (its scale and step, `shield_flash_scales`, are then read from GameConstants'
+      `Shield_Flash_*`; nothing triggers the flash before).
    c. The entity-component design: done, [ecs-design.md](ecs-design.md) and
       [ecs-research.md](ecs-research.md). Modder-defined component tags only have room in the
       design, not a design of their own yet.
@@ -166,13 +167,11 @@ honor are worked through tag by tag from [xml-tag-status.md](xml-tag-status.md) 
      needs a screenshot of the original); screen-space
      decals if the renderer becomes deferred;
    - water: the TED water fields 0x17-0x22 (the owner will read their labels and Mon Calamari 02's
-     values in the map editor); live tuning of the enhanced water's constants (clarity, shore fade,
-     foam depth and strength, refraction and reflection distortion, glint) as sliders in the
-     Graphics panel, so the owner can tune them by eye and the chosen values become the defaults;
+     values in the map editor); the enhanced water's slider values (`VisualWaterLook`), for the
+     owner to tune by eye, the chosen values becoming the defaults;
    - the distance fade's defaults (5,000 to 7,000 units, guesses), for the owner to tune with the
      Graphics panel's sliders;
    - heat distortion: shockwave rings as an enhanced option (heat particles and meshes are done);
-   - shields: reading `Shield_Flash_*` from GameConstants;
    - weather: the fog plane, the weather cube's size, fade-out distance, and fade; tiles that
      appear while panning filling from the top; weather kinds in gameplay through
      WeatherModifiers.xml, with the timeline then on the battle's ticks; the placement is an engine

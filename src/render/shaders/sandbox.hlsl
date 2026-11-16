@@ -594,12 +594,10 @@ PixelOutput ps_main(PixelInput input)
 // fades in over the first units of depth at the shore; two normal layers (the map's bump map, the
 // second finer, turned, and drifting another way) bend the light; reflectance follows Schlick's
 // Fresnel toward a sky color; and the key light leaves a sharp glint. All constants are engine
-// choices, tuned by eye.
-static const float WATER_CLARITY = 20.0f;          // path through water (units) that hides 63 % of the bottom
-static const float WATER_SHORE_FADE = 3.0f;        // depth (units) over which the surface fades in
+// choices, tuned by eye; the clarity, shore fade, foam, refraction, reflection distortion, and glint
+// come from the Graphics panel (water_look, water_light).
 static const float WATER_DETAIL_SCALE = 2.7f;      // second normal layer's repeats per first-layer repeat
 static const float WATER_DETAIL_DRIFT = 1.7f;      // its scroll relative to the first layer's
-static const float WATER_GLINT_POWER = 256.0f;
 // The open sea body's share of the key light's direct term (see water_ps): an engine choice,
 // calibrated by eye against the legacy water's deep blue.
 static const float WATER_OCEAN_BODY_KEY = 0.1f;
@@ -616,19 +614,15 @@ static const float WATER_OCEAN_SLOPE_FLOOR = 0.35f;
 static const float WATER_LAYER_WHOLE_PIXELS = 384.0f; // a layer whose repeat spans this many pixels is whole
 static const float WATER_LAYER_GONE_PIXELS = 48.0f;   // and gone at this many
 static const float WATER_LAYER_SLOPE_VARIANCE = 0.003f; // a whole layer's slope variance, given to the glint when faded
-static const float WATER_GLINT_STRENGTH = 1.5f;
 static const float WATER_BASE_REFLECTANCE = 0.02f; // water's reflectance looking straight down
-static const float WATER_REFRACTION = 0.02f;       // screen share the bent normal shifts what lies beneath
 static const float WATER_REFRACTION_DEPTH = 4.0f;  // depth (units) over which refraction grows to full
-// Foam: along the shore within this depth, broken up by the normal layers, stronger where the bottom
+// Foam: along the shore within the foam depth (water_look.z), broken up by the normal layers, stronger where the bottom
 // is steep (breakers) than over flat shallows (the 0 A.D. developers' finding), with lines rolling in
 // toward the shore.
-static const float WATER_FOAM_DEPTH = 6.0f;
 static const float WATER_FOAM_FLAT_SHARE = 0.35f;   // foam over a flat bottom, against a steep one's 1
 static const float WATER_FOAM_LINE_SPACING = 2.5f;  // depth (units) between rolling lines
 static const float WATER_FOAM_LINE_SPEED = 1.2f;    // their travel (units of depth per second)
 static const float3 WATER_FOAM_COLOR = float3(0.9f, 0.92f, 0.95f);
-static const float WATER_REFLECTION_DISTORTION = 0.015f; // screen share the bent normal shifts the reflection
 
 // Whitecaps' breakup: a fine value noise in world space, so the foam's edges never repeat (engine
 // choices, by eye). Where they foam comes from the cascades' persistent foam (ocean.hlsl).
@@ -761,34 +755,34 @@ PixelOutput water_ps(PixelInput input)
     const float faded_variance = ocean_cascades.w != 0.0f ? ocean_faded_variance
                                                           : ((1.0f - first_presence) + (1.0f - second_presence) + (1.0f - broad_presence) * WATER_BROAD_SHARE * WATER_BROAD_SHARE) *
                                                                 WATER_LAYER_SLOPE_VARIANCE;
-    const float glint_power = 2.0f / (2.0f / (WATER_GLINT_POWER + 2.0f) + faded_variance) - 2.0f;
-    const float glint_scale = (glint_power + 8.0f) / (WATER_GLINT_POWER + 8.0f);
-    const float3 glint = key_specular.rgb * material.specular.rgb * pow(saturate(dot(normal, half_vector)), glint_power) * WATER_GLINT_STRENGTH * glint_scale * lit;
+    const float glint_power = 2.0f / (2.0f / (water_light.w + 2.0f) + faded_variance) - 2.0f;
+    const float glint_scale = (glint_power + 8.0f) / (water_light.w + 8.0f);
+    const float3 glint = key_specular.rgb * material.specular.rgb * pow(saturate(dot(normal, half_vector)), glint_power) * water_light.z * glint_scale * lit;
 
     // Foam, from the depth beneath and the bottom's slope (from the beneath position's screen
     // derivatives).
     const float3 bottom_normal = safe_normalize(cross(ddx(beneath), ddy(beneath)), float3(0.0f, 0.0f, 1.0f));
     const float steepness = saturate(1.0f - abs(bottom_normal.z));
-    const float shallow = saturate(1.0f - below / WATER_FOAM_DEPTH);
+    const float shallow = saturate(1.0f - below / water_look.z);
     const float rolling = pow(saturate(sin((below / WATER_FOAM_LINE_SPACING + time * WATER_FOAM_LINE_SPEED / WATER_FOAM_LINE_SPACING) * 6.2831853f) * 0.5f + 0.5f), 4.0f);
     const float breakup = saturate((first.x + second.y) * 1.5f + 0.5f);
     const float shore_foam = bottomless ? 0.0f
-                                        : saturate(shallow * shallow * (WATER_FOAM_FLAT_SHARE + (1.0f - WATER_FOAM_FLAT_SHARE) * steepness) * (0.6f + rolling) * breakup * 1.5f);
+                                        : saturate(shallow * shallow * (WATER_FOAM_FLAT_SHARE + (1.0f - WATER_FOAM_FLAT_SHARE) * steepness) * (0.6f + rolling) * breakup * water_look.w);
     // Whitecaps on open sea: the cascades' persistent foam, broken up (ocean_whitecaps).
     const float foam = max(shore_foam, ocean_whitecaps(input.world_position.xy, ocean_foam, time));
     const float3 foam_lit = legacy_lit_color(WATER_FOAM_COLOR, surface_normal, input.world_position, 0.0f, float3(1.0f, 1.0f, 1.0f), float3(0.0f, 0.0f, 0.0f), float3(0.0f, 0.0f, 0.0f),
                                              float3(1.0f, 1.0f, 1.0f), input.position.xy, true);
 
     PixelOutput output;
-    const float shore = saturate(below / WATER_SHORE_FADE);
-    const float transmittance = exp(-path / WATER_CLARITY);
+    const float shore = saturate(below / water_look.y);
+    const float transmittance = exp(-path / water_look.x);
     if (water_parameters.w != 0u)
     {
         // Refraction: what lies beneath, seen through the bent surface; where the shifted pixel
         // shows something standing above the water, the unshifted one is used instead.
         Texture2D refraction = scene_textures[water_parameters.z];
         const float2 size = float2(width, height);
-        const float2 shifted = input.position.xy + bent.xy * WATER_REFRACTION * size.y * saturate(below / WATER_REFRACTION_DEPTH);
+        const float2 shifted = input.position.xy + bent.xy * water_light.x * size.y * saturate(below / WATER_REFRACTION_DEPTH);
         const int2 shifted_pixel = int2(clamp(shifted, float2(0.0f, 0.0f), size - 1.0f));
         const float shifted_depth = scene_depth.Load(int3(shifted_pixel, 0)).r;
         const float2 shifted_ndc = float2((shifted_pixel.x + 0.5f) / width * 2.0f - 1.0f, 1.0f - (shifted_pixel.y + 0.5f) / height * 2.0f);
@@ -801,7 +795,7 @@ PixelOutput water_ps(PixelInput input)
         float3 reflection = sky;
         if (water_plane.y != 0.0f)
         {
-            const int2 at = int2(clamp(input.position.xy + bent.xy * WATER_REFLECTION_DISTORTION * size.y, float2(0.0f, 0.0f), size - 1.0f));
+            const int2 at = int2(clamp(input.position.xy + bent.xy * water_light.y * size.y, float2(0.0f, 0.0f), size - 1.0f));
             uint source = water_reflections[uint(at.y) * width + uint(at.x)];
             source = source != 0u ? source : water_reflections[uint(min(at.y + 1, int(height) - 1)) * width + uint(at.x)];
             source = source != 0u ? source : water_reflections[uint(max(at.y - 1, 0)) * width + uint(at.x)];

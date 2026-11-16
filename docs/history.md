@@ -905,3 +905,9 @@ rewritten to describe the current state; the source document is noted in bracket
   variants on Tyber and Urai Fen); the owner reports the stealth ability shows it in place of the
   model, so it is now kept out of the model's appearance, bounds, and footprint
   (ModelMesh::stealth). Battle hashes unchanged.
+- The enhanced water's constants became Graphics-panel sliders (VisualWaterLook: clarity, shore
+  fade, foam depth and strength, refraction, reflection distortion, glint strength and sharpness),
+  their defaults the old constants; captures of Kamino and Manaan from the previous commit's build
+  and this one are identical.
+- Reading Shield_Flash_* from GameConstants moved onto the shield abilities: flash_shields is never
+  called before them, so the values would reach nothing.

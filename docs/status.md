@@ -390,7 +390,9 @@ improvements, off or optional unless stated; legacy is the default.
   nothing landed; shore foam within 6 units of depth, 35% over a flat bottom and full where the
   bottom is steep, with lines rolling in every 2.5 units of depth. Refraction and reflections only
   when the scene renders into its own target (bloom or anti-aliasing on). At the tactical camera's
-  pitch reflectance is 2-6%.
+  pitch reflectance is 2-6%. The Graphics panel tunes the clarity, shore fade, foam depth and
+  strength, refraction, reflection distortion, and glint (`VisualWaterLook`; the values above are
+  its defaults, for the owner to retune by eye).
 - **Ocean waves** (enhanced water on ocean maps, off by default since the owner parked it; the Graphics
   panel's Waves setting turns it on; docs/water-research.md, "The ocean plan"): an FFT
   ocean of three cascades (patches of 1000, 263, and 67 world units without a common factor, bands of

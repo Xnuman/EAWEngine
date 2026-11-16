@@ -147,8 +147,8 @@ struct D3d12Renderer::Impl
         std::array<std::uint32_t, 4> heat_slots{};
         // Particles: soft particles on.
         std::array<std::uint32_t, 4> particle_parameters{};
-        // Enhanced water's waves (VisualOceanWaves): x height scale, y length scale, z speed scale, w
-        // steepness; then x calm depth, y full depth, z crest foam start, w 1 on open sea (waves on).
+        // Enhanced water's waves (VisualOceanWaves): x height scale, y the Jacobian below which crests
+        // foam; then x calm depth, y full depth, w 1 on open sea (waves on).
         std::array<float, 4> ocean_shape{};
         std::array<float, 4> ocean_shore{};
         // Distance fade (VisualMaterial::distance_fade): x the start, y one over the fade's length.
@@ -158,6 +158,10 @@ struct D3d12Renderer::Impl
         std::array<float, 4> ocean_cascades{};
         std::array<std::uint32_t, 4> ocean_displacement_slots{};
         std::array<std::uint32_t, 4> ocean_derivative_slots{};
+        // Enhanced water's look (VisualWaterLook): x clarity, y shore fade, z foam depth, w foam
+        // strength; then x refraction, y reflection distortion, z glint strength, w glint sharpness.
+        std::array<float, 4> water_look{};
+        std::array<float, 4> water_light{};
     };
     // Layout of TerrainDecal in terrain.hlsl (64 bytes).
     struct GpuDecal

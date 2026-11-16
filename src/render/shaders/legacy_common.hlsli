@@ -111,6 +111,8 @@ cbuffer FrameConstants : register(b0)
     float4 ocean_cascades; // the FFT ocean's cascades: xyz their patch sizes, w on (1)
     uint4 ocean_displacement_slots; // xyz each cascade's displacement texture (x, y, height)
     uint4 ocean_derivative_slots;   // xyz each cascade's derivatives (slope x, slope y, Jacobian)
+    float4 water_look;  // enhanced water: x clarity, y shore fade, z foam depth, w foam strength
+    float4 water_light; // x refraction, y reflection distortion, z glint strength, w glint sharpness
 };
 
 // Pick ids written to the selection target: 0 is nothing, scene instance index + 1 an object, and

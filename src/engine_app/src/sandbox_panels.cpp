@@ -240,11 +240,25 @@ bool draw_graphics_panel(SandboxPanels& panels, const GraphicsPanelView& view)
         ImGui::SameLine();
         changed |= ImGui::RadioButton("Enhanced##water", &water, static_cast<int>(eaw::VisualWaterMode::enhanced));
         graphics.water = static_cast<eaw::VisualWaterMode>(water);
-        // Enhanced water's ocean waves, tuned by eye (VisualOceanWaves).
+        // Enhanced water's look and ocean waves, tuned by eye (VisualWaterLook, VisualOceanWaves).
         if (graphics.water == eaw::VisualWaterMode::enhanced)
         {
-            auto& ocean = graphics.ocean;
+            auto& look = graphics.water_look;
             ImGui::Indent();
+            changed |= ImGui::SliderFloat("Clarity", &look.clarity, 1.0F, 200.0F, "%.0f", ImGuiSliderFlags_Logarithmic);
+            changed |= ImGui::SliderFloat("Shore fade", &look.shore_fade, 0.1F, 30.0F, "%.1f");
+            changed |= ImGui::SliderFloat("Foam depth", &look.foam_depth, 0.5F, 40.0F, "%.1f");
+            changed |= ImGui::SliderFloat("Foam strength", &look.foam_strength, 0.0F, 4.0F, "%.2f");
+            changed |= ImGui::SliderFloat("Refraction", &look.refraction, 0.0F, 0.1F, "%.3f");
+            changed |= ImGui::SliderFloat("Reflection distortion", &look.reflection_distortion, 0.0F, 0.1F, "%.3f");
+            changed |= ImGui::SliderFloat("Glint strength", &look.glint_strength, 0.0F, 5.0F, "%.2f");
+            changed |= ImGui::SliderFloat("Glint sharpness", &look.glint_sharpness, 8.0F, 2048.0F, "%.0f", ImGuiSliderFlags_Logarithmic);
+            if (ImGui::Button("Defaults##water"))
+            {
+                look = eaw::VisualWaterLook{};
+                changed = true;
+            }
+            auto& ocean = graphics.ocean;
             auto waves = static_cast<int>(ocean.mode);
             ImGui::TextUnformatted("Waves");
             ImGui::SameLine();

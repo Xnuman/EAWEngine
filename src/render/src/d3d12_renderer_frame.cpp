@@ -926,6 +926,9 @@ bool D3d12Renderer::Impl::render()
         constants.ocean_cascades[3] = 1.0F;
     }
     const auto fade_start = std::max(options.graphics.distance_fade_start, 0.0F);
+    const auto& look = options.graphics.water_look;
+    constants.water_look = {std::max(look.clarity, 0.1F), std::max(look.shore_fade, 0.01F), std::max(look.foam_depth, 0.01F), std::max(look.foam_strength, 0.0F)};
+    constants.water_light = {std::max(look.refraction, 0.0F), std::max(look.reflection_distortion, 0.0F), std::max(look.glint_strength, 0.0F), std::max(look.glint_sharpness, 1.0F)};
     constants.distance_fade = {fade_start, 1.0F / std::max(options.graphics.distance_fade_end - fade_start, 1.0F), 0.0F, 0.0F};
     constants.ocean_shore = {std::max(ocean.calm_depth, 0.0F), std::max(ocean.full_depth, ocean.calm_depth + 0.01F), 0.0F, waves ? 1.0F : 0.0F};
     if (options.graphics.sky_visibility && sky_visibility_texture && *sky_visibility_texture < scene_textures.size())

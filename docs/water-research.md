@@ -100,11 +100,13 @@ through search excerpts). The ranking is a judgment on that evidence plus the Fr
 ## Enhanced water (the engine's choices)
 
 Agreed with the owner and implemented as `VisualWaterMode::enhanced` (`--water enhanced`, or the
-Graphics panel); `water_ps` in `sandbox.hlsl`. All constants are engine choices, tuned by eye.
+Graphics panel); `water_ps` in `sandbox.hlsl`. All constants are engine choices, tuned by eye; the
+clarity, shore fade, foam depth and strength, refraction, reflection distortion, and glint strength
+and sharpness are Graphics-panel sliders (`VisualWaterLook`), the values below their defaults.
 
 - Color by depth: the view ray's path through the water, from the opaque depth, hides the bottom by
-  Beer-Lambert absorption (`WATER_CLARITY`: 20 units hide 63%).
-- Shore: the surface fades in over the first 3 units of depth (`WATER_SHORE_FADE`).
+  Beer-Lambert absorption (clarity: 20 units hide 63%).
+- Shore: the surface fades in over the first 3 units of depth (shore fade).
 - Normals: the map's bump map plus a second, finer, turned layer drifting another way
   (`WATER_DETAIL_*`), besides the broad layer both modes share.
 - Refraction from a copy of the opaque scene, shifted by the bent normal (2% of the screen height,
@@ -122,8 +124,7 @@ Graphics panel); `water_ps` in `sandbox.hlsl`. All constants are engine choices,
   (no stock material uses the reflective profiles). General screen-space reflections come with the
   enhanced lighting step, and water then moves onto them.
 
-Open: the water's constants as Graphics-panel sliders (only the waves have them), caustics under
-shallow water, wakes from the trail system.
+Open: caustics under shallow water, wakes from the trail system.
 
 ## Ocean waves
 

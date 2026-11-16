@@ -49,6 +49,20 @@ struct VisualOceanWaves
     VisualOceanWavesMode mode{VisualOceanWavesMode::off};
 };
 
+// Enhanced water's look (sandbox.hlsl, water_ps), as the Graphics panel tunes it. Engine choices, tuned
+// by eye; the owner's tuning becomes the defaults.
+struct VisualWaterLook
+{
+    float clarity{20.0F};                // path through water (units) that hides 63 % of the bottom
+    float shore_fade{3.0F};              // depth (units) over which the surface fades in
+    float foam_depth{6.0F};              // depth (units) within which shore foam shows
+    float foam_strength{1.5F};           // how much of it shows
+    float refraction{0.02F};             // screen share the bent normal shifts what lies beneath
+    float reflection_distortion{0.015F}; // and the reflection
+    float glint_strength{1.5F};          // the key light's glint
+    float glint_sharpness{256.0F};       // its specular power
+};
+
 // The rendering features that may change from frame to frame (D3d12Renderer::set_graphics_settings).
 struct D3d12GraphicsSettings
 {
@@ -71,6 +85,7 @@ struct D3d12GraphicsSettings
     // How the map's water surface is drawn (VisualMaterial::water), and enhanced water's waves.
     VisualWaterMode water{VisualWaterMode::legacy};
     VisualOceanWaves ocean;
+    VisualWaterLook water_look;
     // The environment's cloud shadows on the terrain (VisualLightRig::clouds), as the original.
     bool cloud_shadows{true};
     // Enhanced: the ambient takes the captured sky's light (its color and direction, at the map's own
