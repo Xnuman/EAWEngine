@@ -219,6 +219,26 @@ void test_ocean_spectrum()
     // Wavelength 1000 / n: n = 1 is the patch itself (out of band), n = 20 is 50 (out), n = 5 is 200 (in).
     require(at(0, 0).real == 0.0F && at(1, 0).real == 0.0F && at(20, 0).real == 0.0F && (at(5, 0).real != 0.0F || at(5, 0).imaginary != 0.0F), "a cascade must keep only its band");
     require(at(-5, 0).minus_real == at(5, 0).real && at(-5, 0).minus_imaginary == -at(5, 0).imaginary, "each cell must carry the conjugate of its opposite");
+    // The field's variance, the sum of |h0(k)|^2 + |h0(-k)|^2, matches the spectrum's integral over
+    // the band (random draws: within a third).
+    const eaw::OceanCascadeBand wide{.patch_size = 2000.0F, .min_wavelength = 20.0F, .max_wavelength = 2000.0F};
+    const auto sea = eaw::ocean_initial_spectrum(state, wide, 256U, 3U);
+    double variance = 0.0;
+    for (const auto& cell : sea)
+    {
+        variance += static_cast<double>(cell.real) * cell.real + static_cast<double>(cell.imaginary) * cell.imaginary + static_cast<double>(cell.minus_real) * cell.minus_real +
+                    static_cast<double>(cell.minus_imaginary) * cell.minus_imaginary;
+    }
+    double expected = 0.0;
+    const auto low = std::sqrt(state.gravity * 2.0F * std::numbers::pi_v<float> / wide.max_wavelength);
+    const auto high = std::sqrt(state.gravity * 2.0F * std::numbers::pi_v<float> / wide.min_wavelength);
+    constexpr int steps = 4096;
+    for (int step = 0; step < steps; ++step)
+    {
+        const auto omega = low + (high - low) * (static_cast<float>(step) + 0.5F) / steps;
+        expected += eaw::ocean_frequency_spectrum(omega, state) * (high - low) / steps;
+    }
+    require(variance > expected * 0.67 && variance < expected * 1.5, "a cascade's variance must match its band of the spectrum");
 }
 
 void test_shadow_cascades()

@@ -111,6 +111,9 @@ std::vector<OceanSpectrumCell> ocean_initial_spectrum(const OceanSeaState& state
         const auto density = ocean_frequency_spectrum(omega, state) * ocean_directional_spread(omega, theta, state) * slope / k;
         return std::sqrt(2.0F * density) * step;
     };
+    // E|h0|^2 = S_k dk^2 / 2 with complex unit draws (E|draw|^2 = 2), so the real field's variance,
+    // the sum of |h0(k)|^2 + |h0(-k)|^2 over the patch, is the spectrum's integral.
+    const auto amplitude_scale = 0.5F / std::numbers::sqrt2_v<float>;
     const auto index_of = [&](const int column, const int row)
     {
         return static_cast<std::size_t>(row + half) * size + static_cast<std::size_t>(column + half);
@@ -121,14 +124,14 @@ std::vector<OceanSpectrumCell> ocean_initial_spectrum(const OceanSeaState& state
         {
             auto& cell = cells[index_of(column, row)];
             const auto& draw = draws[index_of(column, row)];
-            const auto here = amplitude(column, row) * std::numbers::sqrt2_v<float> * 0.5F;
+            const auto here = amplitude(column, row) * amplitude_scale;
             cell.real = draw[0] * here;
             cell.imaginary = draw[1] * here;
             // -k wraps on the periodic patch (the most negative wave number is its own opposite).
             const auto mirror_column = column == -half ? -half : -column;
             const auto mirror_row = row == -half ? -half : -row;
             const auto& mirror_draw = draws[index_of(mirror_column, mirror_row)];
-            const auto there = amplitude(mirror_column, mirror_row) * std::numbers::sqrt2_v<float> * 0.5F;
+            const auto there = amplitude(mirror_column, mirror_row) * amplitude_scale;
             cell.minus_real = mirror_draw[0] * there;
             cell.minus_imaginary = -mirror_draw[1] * there;
         }
