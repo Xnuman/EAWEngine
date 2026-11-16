@@ -43,6 +43,23 @@ void present_tick(const BattleRuntime& runtime, BattlePresenters& presenters, co
             }
         }
     }
+    // Turret hardpoints turn their attached models.
+    if (presenters.animator != nullptr)
+    {
+        const auto& entities = world.snapshot().entities;
+        for (const auto& turret : world.snapshot().hardpoint_turrets)
+        {
+            const auto owner = std::ranges::find(entities, turret.entity, &EntitySnapshot::id);
+            if (owner == entities.end())
+            {
+                continue;
+            }
+            if (const auto bones = presenters.presentation.hardpoint_bones(*owner, turret.hardpoint))
+            {
+                presenters.animator->turn_hardpoint(turret.entity, bones->bones.attachment_bone, turret.yaw);
+            }
+        }
+    }
     presenters.effects.play_tick_events(world.snapshot(), &world.ground());
     // Shield hits show the projectile's absorb particle (play_tick_events); the shield mesh flash
     // (flash_shields) belongs to shield abilities, which are not implemented yet (the owner's

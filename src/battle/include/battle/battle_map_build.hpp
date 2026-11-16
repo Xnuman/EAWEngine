@@ -65,7 +65,7 @@ struct SpawnableBuild
     const std::unordered_map<std::string, std::uint32_t>& movement_classes;
     GameModelContext context{};
     bool land{};
-    std::function<const CombatProfile&(const XmlDefinition&, const Model*)> profile_of;
+    std::function<const CombatProfile&(const XmlDefinition&, const Model*, std::span<const ModelAttachment>)> profile_of;
     std::vector<SpawnableType>& spawnable;
     std::vector<BuiltModel>& models;
     std::vector<std::string>& warnings;

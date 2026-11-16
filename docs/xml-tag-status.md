@@ -26,9 +26,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 191 |
+| `done` | 192 |
 | `partial` | 25 |
-| `gap` | 176 |
+| `gap` | 175 |
 | `needs` | 705 |
 | `n/a` | 20 |
 | total | 1117 |
@@ -231,7 +231,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Health, shields, armor, weapons, targeting, turrets, and death
 
-57 done, 2 partial, 41 gap, 35 needs.
+58 done, 2 partial, 40 gap, 35 needs.
 
 ### Health, shields, armor, and energy
 
@@ -300,7 +300,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Fire_Max_Recharge_Seconds` | `done` |  |
 | `Fire_Pulse_Count` | `done` |  |
 | `Fire_Pulse_Delay_Seconds` | `done` |  |
-| `Fire_Bone_A` | `done` |  |
+| `Fire_Bone_A` | `done` | looked up in the attached model when the host lacks it |
 | `Fire_Bone_B` | `done` | alternates with A (inference) |
 | `Fire_Cone_Width` | `done` |  |
 | `Fire_Cone_Height` | `gap` |  |
@@ -349,13 +349,13 @@ Systems that `needs` rows wait for, by tag count:
 
 | Tag | Status | Note |
 | --- | --- | --- |
-| `Turret_Bone_Name` | `done` | unit turrets; hardpoint turrets not yet |
+| `Turret_Bone_Name` | `done` | unit turrets; a turret hardpoint turns its attachment bone instead |
 | `Barrel_Bone_Name` | `done` | barrel pitch; the turret weapon fires from it |
 | `Apply_Y_Turret_Rotate_To_Axis` | `gap` | yaw is about the model up axis instead |
 | `Apply_Z_Turret_Rotate_To_Axis` | `gap` | pitch is about the model horizontal instead |
 | `Turret_Rest_Angle` | `gap` |  |
 | `Turret_Rotation_Offset` | `gap` |  |
-| `Is_Turret` | `gap` |  |
+| `Is_Turret` | `done` | turret hardpoints: turn, cone turned with them; no barrel pitch |
 | `Turret_XY_Only` | `gap` |  |
 | `Turret_Targets_Ground_Vehicles` | `gap` |  |
 | `Turret_Targets_Ground_Infantry` | `gap` |  |

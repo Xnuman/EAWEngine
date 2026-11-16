@@ -257,6 +257,14 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn, const EntityId
         {
             state.hardpoint_health.push_back(hardpoint.health);
         }
+        if (std::ranges::any_of(profile.hardpoints,
+                                [](const HardpointProfile& hardpoint)
+                                {
+                                    return hardpoint.turret.has_value();
+                                }))
+        {
+            state.hardpoint_turret_yaw.resize(profile.hardpoints.size());
+        }
     }
     placement_.radii.push_back(recipe.radius);
     locomotor_.turn_rates.push_back(recipe.turn_rate);
@@ -608,6 +616,10 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
         hasher.add(combat.target_ticks);
         hasher.add(combat.spin_ticks);
         hasher.add(combat.turret_yaw);
+        for (const auto yaw : combat.hardpoint_turret_yaw)
+        {
+            hasher.add(yaw);
+        }
         hasher.add(combat.chase_timer);
         hasher.add(combat.invulnerable);
         hasher.add(combat.cannot_be_killed);
@@ -1289,6 +1301,7 @@ void SimulationWorld::PublishSystem::publish(const View& view)
     snapshot.tick = clock.tick;
     snapshot.entities.clear();
     snapshot.entities.reserve(identity.ids.size());
+    snapshot.hardpoint_turrets.clear();
     for (std::size_t index = 0; index < identity.ids.size(); ++index)
     {
         const auto& state = combat_state(view, index);
@@ -1300,6 +1313,13 @@ void SimulationWorld::PublishSystem::publish(const View& view)
             {
                 ++destroyable;
                 destroyed += state.hardpoint_health[hardpoint] <= 0.0F ? 1U : 0U;
+            }
+        }
+        for (std::size_t hardpoint = 0; hardpoint < state.hardpoint_turret_yaw.size(); ++hardpoint)
+        {
+            if (state.profile->hardpoints[hardpoint].turret)
+            {
+                snapshot.hardpoint_turrets.push_back({identity.ids[index], static_cast<std::uint32_t>(hardpoint), state.hardpoint_turret_yaw[hardpoint]});
             }
         }
         const auto* member = squad_members.find(slot_of(view, index), &SquadMemberColumns::states);

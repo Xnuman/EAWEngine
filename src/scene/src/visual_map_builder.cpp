@@ -456,7 +456,7 @@ Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const s
     SpawnablePackage package;
     package.meshes.name = std::string(type_name);
     std::unordered_map<const XmlDefinition*, CombatProfile> profiles;
-    const auto profile_of = [&](const XmlDefinition& definition, const Model* model) -> const CombatProfile&
+    const auto profile_of = [&](const XmlDefinition& definition, const Model* model, const std::span<const ModelAttachment> attachments) -> const CombatProfile&
     {
         auto found = profiles.find(&definition);
         if (found == profiles.end())
@@ -464,7 +464,7 @@ Result<SpawnablePackage> build_spawnable_package(const AssetReader& vfs, const s
             std::vector<std::string> scale_warnings;
             found = profiles
                         .emplace(&definition, combat_profile(catalog_entry->catalog, definition, *combat_entry, package.meshes.warnings, model != nullptr ? &model->skeleton : nullptr,
-                                                             type_scale_factor(catalog_entry->catalog, definition, scale_warnings), combat_entry->max_health_multiplier.of(land)))
+                                                             type_scale_factor(catalog_entry->catalog, definition, scale_warnings), combat_entry->max_health_multiplier.of(land), attachments))
                         .first;
         }
         return found->second;

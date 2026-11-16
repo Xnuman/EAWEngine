@@ -911,3 +911,9 @@ rewritten to describe the current state; the source document is noted in bracket
   and this one are identical.
 - Reading Shield_Flash_* from GameConstants moved onto the shield abilities: flash_shields is never
   called before them, so the values would reach nothing.
+- Turret hardpoints turn (the 7 stock: the Gargantuan battle platform's turrets, a land unit, and
+  the level-3 Underworld station's main cannon). Their fire bones live in the attached hardpoint
+  model, so before this they fired all around from the attachment bone; now they are looked up
+  there, the turret turns within its extent, the weapon fires once its turned cone holds the victim,
+  and presentation yaws the attachment bone. Battle hashes unchanged (no reference battle has turret
+  hardpoints). The duplicated profile_of lambda went onto the Code health list.

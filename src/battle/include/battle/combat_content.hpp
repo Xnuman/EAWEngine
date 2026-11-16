@@ -7,6 +7,7 @@
 
 #include "vfs/virtual_file_system.hpp"
 #include "assets/game_object_catalog.hpp"
+#include "assets/model_geometry.hpp"
 #include "assets/skeleton.hpp"
 #include "simulation/combat.hpp"
 
@@ -92,8 +93,10 @@ struct CombatContent
 // `model_scale` is the type's Scale_Factor: hardpoint and fire-bone positions come from the model's
 // bones and scale with it. `health_multiplier` scales the object's and its hardpoints' health
 // (CombatContent::max_health_multiplier for the battle's mode).
+// `attachments` are the type's hardpoint models (type_hardpoint_models): a hardpoint's fire bones are
+// looked up in its attached model too, placed through the attachment bone.
 [[nodiscard]] CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefinition& definition, const CombatContent& content, std::vector<std::string>& warnings,
-                                           const Skeleton* skeleton = nullptr, float model_scale = 1.0F, float health_multiplier = 1.0F);
+                                           const Skeleton* skeleton = nullptr, float model_scale = 1.0F, float health_multiplier = 1.0F, std::span<const ModelAttachment> attachments = {});
 
 // TED owner slot that holds the world's props and markers (179k of the stock placements, nearly
 // all of them props, markers, and decorations; see docs/compatibility-research.md).

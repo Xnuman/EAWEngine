@@ -16,7 +16,7 @@ TypeRecipe build_type_recipe(const SpawnableBuild& build, const XmlDefinition& d
     recipe.max_speed = type_max_speed(build.catalog, definition, build.warnings, build.speed_multiplier);
     recipe.follows_ground = build.land && type_follows_ground(build.catalog, definition);
     recipe.passable_types = recipe.follows_ground ? type_passable_types(build.catalog, definition, build.movement_classes) : 0U;
-    recipe.combat = build.profile_of(definition, &host_model);
+    recipe.combat = build.profile_of(definition, &host_model, attachments);
     recipe.hover_offset = type_float_field(build.catalog, definition, "Hover_Offset");
     recipe.layer_z_adjust = type_float_field(build.catalog, definition, "Layer_Z_Adjust");
     recipe.crush = type_crush(build.catalog, definition);

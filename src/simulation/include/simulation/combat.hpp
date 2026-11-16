@@ -25,6 +25,21 @@ struct LocalPoint
     friend bool operator==(const LocalPoint&, const LocalPoint&) = default;
 };
 
+// A turret that carries the entity's own weapon (XML Turret_Bone_Name): it turns toward the
+// entity's target at `rate` radians per second, at most `yaw_limit` either side of the hull's
+// facing; the weapon fires only while it points at its victim (within turret_aim_tolerance). A
+// target outside a limited arc turns the hull toward it when `turns_body` (XML
+// Should_Cause_Limited_Turrets_To_Turn, default yes). Weapons on the turret (WeaponProfile::on_turret)
+// turn about `pivot`, the turret bone's place in the model.
+struct TurretProfile
+{
+    bool operator==(const TurretProfile&) const = default;
+    LocalPoint pivot;
+    float rate{};
+    float yaw_limit{pi};
+    bool turns_body{true};
+};
+
 // A part of an entity that can be targeted and destroyed on its own (ship hardpoints).
 struct HardpointProfile
 {
@@ -42,6 +57,10 @@ struct HardpointProfile
     // Shots may aim at it.
     bool targetable{true};
     LocalPoint offset;
+    // A turret hardpoint (XML Is_Turret): its weapon turns about `pivot` (the attachment bone) at
+    // `rate`, at most `yaw_limit` either side of the fire bone's rest direction; its fire cone turns
+    // with it, and it fires once the turned cone holds its victim. `turns_body` is false.
+    std::optional<TurretProfile> turret;
     // Presentation only (not simulation state): the model bone its XML Damage_Particles names, under
     // which the model's damage-effect proxies hang, or -1.
     std::int32_t damage_bone{-1};
@@ -145,21 +164,6 @@ struct AreaBlast
     // Damage to the shooter's own entities in range, by the same rings (XML Friendly_Damage_Amount:
     // only the remote bomb sets it, which suggests blasts spare friends otherwise).
     float friendly_damage{};
-};
-
-// A turret that carries the entity's own weapon (XML Turret_Bone_Name): it turns toward the
-// entity's target at `rate` radians per second, at most `yaw_limit` either side of the hull's
-// facing; the weapon fires only while it points at its victim (within turret_aim_tolerance). A
-// target outside a limited arc turns the hull toward it when `turns_body` (XML
-// Should_Cause_Limited_Turrets_To_Turn, default yes). Weapons on the turret (WeaponProfile::on_turret)
-// turn about `pivot`, the turret bone's place in the model.
-struct TurretProfile
-{
-    bool operator==(const TurretProfile&) const = default;
-    LocalPoint pivot;
-    float rate{};
-    float yaw_limit{pi};
-    bool turns_body{true};
 };
 
 // One projectile weapon: fires bursts of `pulse_count` shots `pulse_delay_seconds` apart, one

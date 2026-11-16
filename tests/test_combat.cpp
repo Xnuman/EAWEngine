@@ -830,6 +830,37 @@ void test_target_validity()
         const auto [side, turned] = engage({.rate = 1.5707964F, .yaw_limit = 0.17453292F}, {0.0F, 100.0F, 0.0F}, 40);
         const auto [stuck, unturned] = engage({.rate = 1.5707964F, .yaw_limit = 0.17453292F, .turns_body = false}, {0.0F, 100.0F, 0.0F}, 40);
         require(side > 0 && turned > 1.2F && stuck < 0 && unturned == 0.0F, "a limited turret must turn its hull to a target beyond its arc, unless its type says no");
+        // A turret hardpoint (HardpointProfile::turret): a 20-degree cone ahead on a turret of 90
+        // degrees either way at 90 degrees per second. A target to the left waits for the cone to
+        // turn onto it; one behind, beyond turret and cone, is never fired at.
+        {
+            const auto engage_hardpoint = [&](const eaw::Vector3& at)
+            {
+                eaw::SimulationWorld ships(0.1);
+                ships.set_hostility(hostility);
+                eaw::CombatProfile ship;
+                ship.health = 100.0F;
+                ship.hardpoints = {eaw::HardpointProfile{.kind = eaw::HardpointProfile::Kind::weapon, .turret = eaw::TurretProfile{.rate = 1.5707964F, .yaw_limit = 1.5707964F, .turns_body = false}}};
+                ship.weapons = {eaw::WeaponProfile{.range = 200.0F, .recharge_seconds = 10.0F, .damage = 1.0F, .cone_half_angle = 0.17453292F, .hardpoint = 0}};
+                eaw::CombatProfile sturdy;
+                sturdy.health = 1000.0F;
+                (void)test_spawn(ships, {.type_name = "Ship", .owner = 1, .combat = ship});
+                (void)test_spawn(ships, {.type_name = "Target", .owner = 2, .position = at, .combat = sturdy});
+                int first_shot = -1;
+                float yaw = 0.0F;
+                for (int tick = 1; tick <= 40 && first_shot < 0; ++tick)
+                {
+                    ships.step();
+                    first_shot = ships.stats().shots_fired > 0 ? tick : -1;
+                    yaw = ships.snapshot().hardpoint_turrets.empty() ? 0.0F : ships.snapshot().hardpoint_turrets.front().yaw;
+                }
+                return std::pair{first_shot, yaw};
+            };
+            const auto [left, cone_turned] = engage_hardpoint({0.0F, 100.0F, 0.0F});
+            const auto [beyond, rest] = engage_hardpoint({-100.0F, 0.0F, 0.0F});
+            require(left >= 8 && left <= 11 && cone_turned > 1.3F && cone_turned < 1.58F, "a turret hardpoint must turn its cone onto its victim before it fires, and report its direction");
+            require(beyond < 0, "a turret hardpoint must not fire beyond its turret's arc and cone");
+        }
         // A turret weapon fires from its muzzle turned with the turret: 10 ahead of the pivot, the
         // target to the left, the shot leaves 10 to the left.
         {

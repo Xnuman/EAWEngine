@@ -655,7 +655,7 @@ This family covers what makes an object damageable and dangerous: hull health, s
 
 | Tag | Used by | Values | Meaning |
 |---|---|---|---|
-| `Turret_Bone_Name` | units 17, structures 15, HardPoint 7, props 2 (41) | bones (`B_Turret` 13, `Turret_00` 10, `b_turret` 5...) | Bone that yaws toward the target (name, data). Engine: reads it (unit turrets; hardpoint turrets not yet). |
+| `Turret_Bone_Name` | units 17, structures 15, HardPoint 7, props 2 (41) | bones (`B_Turret` 13, `Turret_00` 10, `b_turret` 5...) | Bone that yaws toward the target (name, data). Engine: reads it (unit turrets; a turret hardpoint's bone is in its attached model, and the engine turns the attachment bone). |
 | `Barrel_Bone_Name` | units 14, structures 11, HardPoint 7, prop 1 (33) | bones (`B_Barrel`, `Barrel_00`, `MuzzleA_00`...) | Bone that pitches toward the target (name, data). Engine: reads it (barrel pitch; the turret weapon fires from it). |
 | `Apply_Y_Turret_Rotate_To_Axis` | structures 17, units 14, props 2 (33) | 1 (31), 0 (2) | Which local axis the turret's yaw drives (name, data: an axis index). Not read. |
 | `Apply_Z_Turret_Rotate_To_Axis` | the same 33 | always 2 | Which local axis the barrel's pitch drives (name, data). Not read. |

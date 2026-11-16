@@ -87,6 +87,10 @@ std::size_t UnitAnimator::PoseKeyHash::operator()(const PoseKey& key) const noex
     hash = mix(hash ^ (static_cast<std::uint64_t>(static_cast<std::uint16_t>(key.yaw)) << 16U) ^ static_cast<std::uint16_t>(key.pitch) ^
                (static_cast<std::uint64_t>(static_cast<std::uint32_t>(key.turret)) << 32U));
     hash = mix(hash ^ key.mask ^ (key.overlay ? 0x6f766c79ULL : 0U));
+    for (const auto& [bone, yaw] : key.hardpoint_yaws)
+    {
+        hash = mix(hash ^ (static_cast<std::uint64_t>(static_cast<std::uint32_t>(bone)) << 16U) ^ static_cast<std::uint16_t>(yaw));
+    }
     return static_cast<std::size_t>(hash);
 }
 
@@ -249,8 +253,29 @@ void UnitAnimator::sample(const PoseKey& key, std::vector<Matrix4>& out) const
     {
         turns.push_back({static_cast<std::uint32_t>(key.turret), {0.0F, 0.0F, 1.0F}, static_cast<float>(key.yaw) * turret_yaw_step});
     }
+    for (const auto& [bone, yaw] : key.hardpoint_yaws)
+    {
+        turns.push_back({static_cast<std::uint32_t>(bone), {0.0F, 0.0F, 1.0F}, static_cast<float>(yaw) * turret_yaw_step});
+    }
     const auto mask = key.mask != 0 ? masks_by_hash_.find(key.mask) : masks_by_hash_.end();
     append_rig_local_palette(rig, pose, out, turns, mask != masks_by_hash_.end() ? &mask->second : nullptr);
+}
+
+void UnitAnimator::turn_hardpoint(const EntityId entity, const std::int32_t bone, const float yaw)
+{
+    if (bone < 0)
+    {
+        return;
+    }
+    auto& yaws = states_[entity_key(entity)].hardpoint_yaws;
+    if (const auto found = std::ranges::find(yaws, bone, &std::pair<std::int32_t, float>::first); found != yaws.end())
+    {
+        found->second = yaw;
+    }
+    else
+    {
+        yaws.emplace_back(bone, yaw);
+    }
 }
 
 void UnitAnimator::destroy_hardpoint(const EntityId entity, const std::uint32_t mesh, const HardpointLook& hardpoint)
@@ -618,7 +643,14 @@ void UnitAnimator::animate(const std::span<const EntitySnapshot> snapshot, std::
                                                       return value.clip != no_clip;
                                                   });
         aim_turret(frame, snapshot, pose_key);
-        const bool aimed = pose_key.yaw != 0 || pose_key.pitch != 0;
+        for (const auto& [bone, yaw] : state.hardpoint_yaws)
+        {
+            if (const auto steps = static_cast<std::int16_t>(std::lround(yaw / turret_yaw_step)); steps != 0)
+            {
+                pose_key.hardpoint_yaws.emplace_back(bone, steps);
+            }
+        }
+        const bool aimed = pose_key.yaw != 0 || pose_key.pitch != 0 || !pose_key.hardpoint_yaws.empty();
         if (!aimed)
         {
             // Unturned turrets share the plain poses.

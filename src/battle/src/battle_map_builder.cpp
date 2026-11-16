@@ -260,7 +260,7 @@ void build_battle_map(const ResourceManager resources, const BattleMapSources& s
     const auto speed_multiplier = combat.max_speed_multiplier.of(asset.land);
     // One profile per type, so a type's warnings are reported once however often it is placed.
     std::unordered_map<const XmlDefinition*, CombatProfile> combat_profiles;
-    const auto profile_of = [&](const XmlDefinition& definition, const Model* model) -> const CombatProfile&
+    const auto profile_of = [&](const XmlDefinition& definition, const Model* model, const std::span<const ModelAttachment> attachments) -> const CombatProfile&
     {
         auto found = combat_profiles.find(&definition);
         if (found == combat_profiles.end())
@@ -268,7 +268,7 @@ void build_battle_map(const ResourceManager resources, const BattleMapSources& s
             std::vector<std::string> scale_warnings;
             found = combat_profiles
                         .emplace(&definition, combat_profile(catalog, definition, combat, asset.warnings, model != nullptr ? &model->skeleton : nullptr,
-                                                             type_scale_factor(catalog, definition, scale_warnings), combat.max_health_multiplier.of(asset.land)))
+                                                             type_scale_factor(catalog, definition, scale_warnings), combat.max_health_multiplier.of(asset.land), attachments))
                         .first;
         }
         return found->second;

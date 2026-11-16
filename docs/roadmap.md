@@ -204,8 +204,8 @@ honor are worked through tag by tag from [xml-tag-status.md](xml-tag-status.md) 
 1. Tactical battles. Done: the core, spawning, RTS orders, terrain and passability, pathfinding,
    group movement and formations, squads, space combat with hardpoints, flight, walker locomotion,
    headless battles and replays (status.md). Open:
-   - combat presentation and fidelity: turret rotation of hardpoint turrets (unit turrets are
-     done); terrain surface kinds for SurfaceFX (dirt, grass, snow:
+   - combat presentation and fidelity: the barrel pitch of turret hardpoints (their attached
+     models' bones are not in the ship's rig); terrain surface kinds for SurfaceFX (dirt, grass, snow:
      ground hits and footprints know only liquids and default);
      `Should_Death_Clone_Play_Idle` (no stock effect; for mods whose clone models have an IDLE);
      the gap rows of [xml-tag-status.md](xml-tag-status.md) list the rest;
@@ -346,6 +346,8 @@ owner's periodic whole-project reviews add to this list or turn it into a plan o
   its first frame, the walked bones, the turns), the pose cache is a map of one vector per pose, and
   the job outputs are one vector per pose; one flat pose arena (offsets per key) would remove them
   (probably part of the serial half of `animate` in `EAWBenchmarks poses`; not profiled);
+- the per-type combat profile cache (`profile_of`), written twice: in `build_battle_map` and in the
+  scene's spawnable package (`visual_map_builder.cpp`), one lambda in two places;
 - the tick's speed bookkeeping in `SimulationWorld::step` writes its vector length out by hand (the
   hash depends on its order of operations, so a move onto `eaw_math` must keep it).
 

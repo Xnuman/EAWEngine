@@ -139,6 +139,9 @@ public:
     // `attachment_bone` alone; the scorch and damage bones often hang below it) goes; -1 for none.
     // The entity then draws with a palette of its own, also without clips.
     void destroy_hardpoint(EntityId entity, std::uint32_t mesh, const HardpointLook& bones);
+    // A turret hardpoint's direction this tick (SimSnapshot::hardpoint_turrets): its attachment bone's
+    // subtree, the attached model with it, yaws about the model's up axis by `yaw`.
+    void turn_hardpoint(EntityId entity, std::int32_t bone, float yaw);
     // Keeps a dead entity's instance (ScenePresentation::corpse_instance) as a corpse that plays a
     // DIE clip from `seconds` on; without one, only an instance in a damage state stays (rubble),
     // for the style's persistence or for good. At most 4096 corpses are kept (the oldest go first).
@@ -200,6 +203,8 @@ private:
         std::int32_t barrel{-1};
         std::int16_t yaw{};
         std::int16_t pitch{};
+        // Turret hardpoints' attachment bones and their yaws, in steps (turret_yaw_step).
+        std::vector<std::pair<std::int32_t, std::int16_t>> hardpoint_yaws;
         // The entity's bone mask (destroyed hardpoints) by its content hash, 0 for the rig's own.
         std::uint64_t mask{};
         // Layers 2 and 3 (aim and attack) are overlays (AnimationProfile::attack_overlay).
@@ -247,6 +252,8 @@ private:
         // A turret's current aim relative to the unit's facing (radians).
         float turret_yaw{};
         float barrel_pitch{};
+        // Turret hardpoints' attachment bones and directions (turn_hardpoint).
+        std::vector<std::pair<std::int32_t, float>> hardpoint_yaws;
         // Turns of units whose turns are not planned: the heading seen last frame, the turn in place
         // under way (-1 right, 1 left, 0 none), and where its loop is (seconds of the clip).
         float last_heading{};

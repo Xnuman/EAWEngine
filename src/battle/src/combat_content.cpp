@@ -423,6 +423,18 @@ std::vector<BonePlacement> muzzle_bones(const Skeleton* skeleton, const std::vec
     return muzzles;
 }
 
+// A turret's rate (XML Turret_Rotate_Speed per frame, default_turret_rotate_speed without it) and
+// limit (half of Turret_Rotate_Extent_Degrees either way, a guess; all around from 360).
+void read_turret_motion(const TypeFields& fields, TurretProfile& turret)
+{
+    const auto speed = fields.amount("Turret_Rotate_Speed");
+    turret.rate = legacy_units::degrees_per_frame(speed > 0.0F ? speed : default_turret_rotate_speed);
+    if (const auto arc = fields.amount("Turret_Rotate_Extent_Degrees"); arc > 0.0F && arc < 360.0F)
+    {
+        turret.yaw_limit = arc * 0.5F * pi / 180.0F;
+    }
+}
+
 HardpointProfile::Kind hardpoint_kind(const std::string_view type)
 {
     const auto folded = ascii_lower(ascii_trim(type));
@@ -444,7 +456,7 @@ HardpointProfile::Kind hardpoint_kind(const std::string_view type)
 } // namespace
 
 CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefinition& definition, const CombatContent& content, std::vector<std::string>& warnings, const Skeleton* skeleton,
-                             const float model_scale, const float health_multiplier)
+                             const float model_scale, const float health_multiplier, const std::span<const ModelAttachment> attachments)
 {
     const auto pose = skeleton != nullptr ? skeleton_bind_pose(*skeleton) : std::vector<Matrix4>{};
     const TypeFields type(catalog, definition, &warnings);
@@ -478,12 +490,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
                 barrel = find_bone(skeleton, pose, barrel_name->text, model_scale);
             }
         }
-        const auto speed = type.amount("Turret_Rotate_Speed");
-        turret.rate = legacy_units::degrees_per_frame(speed > 0.0F ? speed : default_turret_rotate_speed);
-        if (const auto arc = type.amount("Turret_Rotate_Extent_Degrees"); arc > 0.0F && arc < 360.0F)
-        {
-            turret.yaw_limit = arc * 0.5F * pi / 180.0F;
-        }
+        read_turret_motion(type, turret);
         turret.turns_body = type.flag("Should_Cause_Limited_Turrets_To_Turn", true);
         profile.turret = turret;
     }
@@ -671,14 +678,44 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
             return node != nullptr ? std::string(ascii_trim(node->text)) : std::string{};
         };
         const auto attachment = find_bone(skeleton, pose, bone_name("Attachment_Bone"), model_scale);
-        const auto fire_bone = find_bone(skeleton, pose, bone_name("Fire_Bone_A"), model_scale);
-        const auto second_bone = fire_bone ? find_bone(skeleton, pose, bone_name("Fire_Bone_B"), model_scale) : std::nullopt;
+        // The hardpoint's attached model, its bones placed through the attachment bone: fire bones
+        // missing from the host may be its (the Gargantuan's and the Underworld station's turrets).
+        const auto attached = attachment ? std::ranges::find(attachments, attachment->index, &ModelAttachment::bone) : attachments.end();
+        std::vector<Matrix4> attached_pose;
+        if (attached != attachments.end() && attached->model)
+        {
+            attached_pose = skeleton_bind_pose(attached->model->skeleton);
+            for (auto& bone : attached_pose)
+            {
+                bone = bone * pose[attachment->index];
+            }
+        }
+        const auto hardpoint_bone = [&](const std::string_view field)
+        {
+            auto found = find_bone(skeleton, pose, bone_name(field), model_scale);
+            if (!found && !attached_pose.empty())
+            {
+                found = find_bone(&attached->model->skeleton, attached_pose, bone_name(field), model_scale);
+            }
+            return found;
+        };
+        const auto host_fire_bone = find_bone(skeleton, pose, bone_name("Fire_Bone_A"), model_scale);
+        const auto fire_bone = hardpoint_bone("Fire_Bone_A");
+        const auto second_bone = fire_bone ? hardpoint_bone("Fire_Bone_B") : std::nullopt;
         HardpointProfile part;
         part.kind = kind;
         part.type_key = kind_node != nullptr ? game_object_name_crc(ascii_trim(kind_node->text)) : 0U;
         part.health = point.flag("Is_Destroyable", true) ? point.amount("Health") * health_multiplier : 0.0F;
         part.targetable = point.flag("Is_Targetable", true);
         part.offset = attachment ? attachment->point : fire_bone ? fire_bone->point : LocalPoint{};
+        if (point.flag("Is_Turret", false) && attachment)
+        {
+            TurretProfile turret;
+            turret.pivot = attachment->point;
+            read_turret_motion(point, turret);
+            turret.turns_body = false;
+            part.turret = turret;
+        }
         if (const auto damage = find_bone(skeleton, pose, bone_name("Damage_Particles"), model_scale))
         {
             part.damage_bone = static_cast<std::int32_t>(damage->index);
@@ -741,7 +778,7 @@ CombatProfile combat_profile(const GameObjectCatalog& catalog, const XmlDefiniti
         }
         weapon.fire_sound = sound_of(point, "Fire_SFXEvent", type_fire_sound);
         weapon.mount = fire_bone ? fire_bone->point : part.offset;
-        weapon.on_turret = profile.turret && fire_bone && fire_bone->index < on_turret.size() && on_turret[fire_bone->index];
+        weapon.on_turret = profile.turret && host_fire_bone && host_fire_bone->index < on_turret.size() && on_turret[host_fire_bone->index];
         if (second_bone)
         {
             weapon.extra_mounts.push_back(second_bone->point);

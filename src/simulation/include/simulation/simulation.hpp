@@ -580,6 +580,16 @@ struct HardpointDeathSnapshot
     std::uint32_t type_key{};
 };
 
+// A turret hardpoint's direction (HardpointProfile::turret): radians from its rest direction,
+// counter-clockwise.
+struct HardpointTurretSnapshot
+{
+    bool operator==(const HardpointTurretSnapshot&) const = default;
+    EntityId entity;
+    std::uint32_t hardpoint{};
+    float yaw{};
+};
+
 struct SimSnapshot
 {
     bool operator==(const SimSnapshot&) const = default;
@@ -596,6 +606,8 @@ struct SimSnapshot
     // Hardpoints destroyed in this tick, in the order they fell.
     std::vector<HardpointDeathSnapshot> hardpoint_deaths;
     std::vector<SpinSnapshot> spins;
+    // Every live entity's turret hardpoints, in dense order.
+    std::vector<HardpointTurretSnapshot> hardpoint_turrets;
 };
 
 // Simulation ticks per second of real time: 60 (the owner, 2026-11-15: never below 60 frames per
@@ -763,6 +775,9 @@ private:
         bool crushed{};
         // The turret's direction relative to the hull's facing (radians, counter-clockwise).
         float turret_yaw{};
+        // Per hardpoint (CombatProfile::hardpoints), a turret hardpoint's direction relative to its
+        // fire bone's rest direction (radians, counter-clockwise); empty without turret hardpoints.
+        std::vector<float> hardpoint_turret_yaw;
         // Scripted conditions: no damage at all, and health that damage cannot take below the floor.
         bool invulnerable{};
         bool cannot_be_killed{};
@@ -2229,6 +2244,16 @@ private:
         // Turns `index`'s turret toward turret_victim (CombatProfile::turret); `query` is the caller's
         // scratch (one per chunk of entities aimed at once).
         void aim_turret(const View& view, std::size_t index, float dt, std::vector<std::uint32_t>& query);
+        // Turns `index`'s turret hardpoints toward their weapons' victims (HardpointProfile::turret):
+        // a burst's victim, else the entity's target within the turret's arc, else on the retarget
+        // beat the nearest hostile within it; back to rest without one.
+        void aim_hardpoint_turrets(const View& view, std::size_t index, float dt, std::vector<std::uint32_t>& query);
+        // Whether `victim` is within the arc `weapon`'s turret hardpoint can bring its cone to bear on
+        // (the cone widened by the turret's limit, about the rest direction, from the pivot).
+        [[nodiscard]] bool turret_arc_covers(const View& view, std::size_t index, const WeaponProfile& weapon, const TurretProfile& turret, std::size_t victim) const noexcept;
+        // Whether `weapon`'s turret hardpoint holds `victim` in its turned cone (within
+        // turret_aim_tolerance of its direction for a weapon without a cone); true without one.
+        [[nodiscard]] bool hardpoint_turret_aimed(const View& view, std::size_t index, const WeaponProfile& weapon, std::size_t victim) const noexcept;
         // Whether `victim` is within `weapon`'s range, beyond its minimum, and of a category it fires at.
         [[nodiscard]] bool in_reach(const View& view, std::size_t index, const WeaponProfile& weapon, std::size_t victim) const noexcept;
         void launch(const View& view, std::size_t shooter, std::size_t victim, const WeaponProfile& weapon, const LocalPoint& mount);

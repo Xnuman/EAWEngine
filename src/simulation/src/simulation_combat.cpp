@@ -91,6 +91,7 @@ void SimulationWorld::CombatSystem::run(const View& view, const float dt)
     {
         update_target(view, index, query);
         aim_turret(view, index, dt, query);
+        aim_hardpoint_turrets(view, index, dt, query);
     };
     if (jobs_ == nullptr)
     {
@@ -136,6 +137,97 @@ void SimulationWorld::CombatSystem::aim_turret(const View& view, const std::size
     }
     const auto step = turret.rate > 0.0F ? turret.rate * dt : pi;
     state.turret_yaw = wrap_angle(state.turret_yaw + std::clamp(wrap_angle(wanted - state.turret_yaw), -step, step));
+}
+
+void SimulationWorld::CombatSystem::aim_hardpoint_turrets(const View& view, const std::size_t index, const float dt, std::vector<std::uint32_t>& query)
+{
+    auto& placement = view.get<PlacementColumns>();
+    // Armed: it has combat (run).
+    auto& state = *combat_of(view, index);
+    if (state.hardpoint_turret_yaw.empty())
+    {
+        return;
+    }
+    const auto target = attack_victim(view, index);
+    for (std::size_t slot = 0; slot < state.profile->weapons.size(); ++slot)
+    {
+        const auto& weapon = state.profile->weapons[slot];
+        if (weapon.hardpoint < 0 || !hardpoint_alive(view, index, static_cast<std::size_t>(weapon.hardpoint)))
+        {
+            continue;
+        }
+        const auto& turret = state.profile->hardpoints[static_cast<std::size_t>(weapon.hardpoint)].turret;
+        if (!turret)
+        {
+            continue;
+        }
+        const auto covers = [&](const std::size_t candidate)
+        {
+            return in_reach(view, index, weapon, candidate) && turret_arc_covers(view, index, weapon, *turret, candidate);
+        };
+        std::optional<std::size_t> victim;
+        if (const auto& weapon_state = state.weapons[slot]; weapon_state.pulses_left > 0)
+        {
+            victim = dense_index(view, weapon_state.target);
+        }
+        if (!victim && target && covers(*target))
+        {
+            victim = target;
+        }
+        if (!victim && (!state.ordered || !target) && state.stance != Stance::hold_fire)
+        {
+            // As run_weapon looks for a weapon's own victim: on the retarget beat only; between beats
+            // the turret holds its direction.
+            if (!retarget_due(view, index))
+            {
+                continue;
+            }
+            victim = choose_target(view, grid_, query, index, placement.positions[index], weapon.range, covers);
+        }
+        auto& yaw = state.hardpoint_turret_yaw[static_cast<std::size_t>(weapon.hardpoint)];
+        float wanted = 0.0F;
+        if (victim)
+        {
+            const auto pivot = world_point(view, index, turret->pivot);
+            const auto& to = placement.positions[*victim];
+            wanted = std::clamp(wrap_angle(std::atan2(to.y - pivot.y, to.x - pivot.x) - placement.headings[index] - weapon.cone_direction), -turret->yaw_limit, turret->yaw_limit);
+        }
+        const auto step = turret->rate > 0.0F ? turret->rate * dt : pi;
+        yaw = wrap_angle(yaw + std::clamp(wrap_angle(wanted - yaw), -step, step));
+    }
+}
+
+bool SimulationWorld::CombatSystem::turret_arc_covers(const View& view, const std::size_t index, const WeaponProfile& weapon, const TurretProfile& turret, const std::size_t victim) const noexcept
+{
+    const auto half = weapon.cone_half_angle + turret.yaw_limit;
+    if (half >= pi)
+    {
+        return true;
+    }
+    auto& placement = view.get<PlacementColumns>();
+    const auto pivot = world_point(view, index, turret.pivot);
+    const auto& to = placement.positions[victim];
+    return std::fabs(wrap_angle(std::atan2(to.y - pivot.y, to.x - pivot.x) - (placement.headings[index] + weapon.cone_direction))) <= half;
+}
+
+bool SimulationWorld::CombatSystem::hardpoint_turret_aimed(const View& view, const std::size_t index, const WeaponProfile& weapon, const std::size_t victim) const noexcept
+{
+    const auto& state = combat_state(view, index);
+    if (weapon.hardpoint < 0 || state.hardpoint_turret_yaw.empty())
+    {
+        return true;
+    }
+    const auto& turret = state.profile->hardpoints[static_cast<std::size_t>(weapon.hardpoint)].turret;
+    if (!turret)
+    {
+        return true;
+    }
+    auto& placement = view.get<PlacementColumns>();
+    const auto pivot = world_point(view, index, turret->pivot);
+    const auto& to = placement.positions[victim];
+    const auto direction = placement.headings[index] + weapon.cone_direction + state.hardpoint_turret_yaw[static_cast<std::size_t>(weapon.hardpoint)];
+    const auto tolerance = weapon.cone_half_angle < pi ? weapon.cone_half_angle : turret_aim_tolerance;
+    return std::fabs(wrap_angle(std::atan2(to.y - pivot.y, to.x - pivot.x) - direction)) <= tolerance;
 }
 
 std::optional<std::size_t> SimulationWorld::CombatSystem::turret_victim(const View& view, const std::size_t index, std::vector<std::uint32_t>& query)
@@ -189,12 +281,23 @@ bool SimulationWorld::CombatSystem::in_reach(const View& view, const std::size_t
 
 LocalPoint SimulationWorld::CombatSystem::weapon_mount(const View& view, const std::size_t index, const WeaponProfile& weapon, const LocalPoint& mount) const noexcept
 {
-    const auto& turret = combat_state(view, index).profile->turret;
-    if (!weapon.on_turret || !turret)
+    const auto& state = combat_state(view, index);
+    const TurretProfile* turret = nullptr;
+    float yaw = 0.0F;
+    if (weapon.on_turret && state.profile->turret)
+    {
+        turret = &*state.profile->turret;
+        yaw = state.turret_yaw;
+    }
+    else if (weapon.hardpoint >= 0 && !state.hardpoint_turret_yaw.empty() && state.profile->hardpoints[static_cast<std::size_t>(weapon.hardpoint)].turret)
+    {
+        turret = &*state.profile->hardpoints[static_cast<std::size_t>(weapon.hardpoint)].turret;
+        yaw = state.hardpoint_turret_yaw[static_cast<std::size_t>(weapon.hardpoint)];
+    }
+    if (turret == nullptr)
     {
         return mount;
     }
-    const auto yaw = combat_state(view, index).turret_yaw;
     const auto c = std::cos(yaw);
     const auto s = std::sin(yaw);
     const auto forward = mount.forward - turret->pivot.forward;
@@ -367,6 +470,11 @@ void SimulationWorld::CombatSystem::run_weapon(const View& view, const std::size
                         return false;
                     }
                 }
+                // A turret hardpoint covers what it can turn its cone to.
+                if (const auto* turret = weapon.hardpoint >= 0 ? &fighter.profile->hardpoints[static_cast<std::size_t>(weapon.hardpoint)].turret : nullptr; turret != nullptr && *turret)
+                {
+                    return turret_arc_covers(view, index, weapon, **turret, victim);
+                }
                 if (weapon.cone_half_angle >= pi)
                 {
                     return true;
@@ -390,8 +498,9 @@ void SimulationWorld::CombatSystem::run_weapon(const View& view, const std::size
             {
                 continue;
             }
-            // A turret's own weapon waits until the turret points at its victim.
-            if (weapon.hardpoint < 0 && !turret_aimed(view, index, *victim))
+            // A turret's own weapon waits until the turret points at its victim, a turret hardpoint's
+            // until its cone holds it.
+            if ((weapon.hardpoint < 0 && !turret_aimed(view, index, *victim)) || !hardpoint_turret_aimed(view, index, weapon, *victim))
             {
                 continue;
             }
@@ -417,7 +526,7 @@ void SimulationWorld::CombatSystem::run_weapon(const View& view, const std::size
                 continue;
             }
         }
-        if (weapon.hardpoint < 0 && !turret_aimed(view, index, *victim))
+        if ((weapon.hardpoint < 0 && !turret_aimed(view, index, *victim)) || !hardpoint_turret_aimed(view, index, weapon, *victim))
         {
             // Turned away mid-burst: the rest waits until the turret is back on the victim.
             continue;
