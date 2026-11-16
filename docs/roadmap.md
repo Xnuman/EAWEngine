@@ -386,7 +386,12 @@ Compatibility with the original's multiplayer protocol is an open question, not 
    (`platform/input_bindings.hpp`), the sandbox's actions (`engine_app/sandbox_actions.hpp`), and a
    Controls panel; the defaults become the original's hotkeys once the owner's screenshots of its
    controls menu are transcribed. Controllers (GameInput, a new dependency) wait for the player
-   layer (the owner, 2026-11-16).
+   layer (the owner, 2026-11-16). High polling rate mice: raw input is read in bulk
+   (`GetRawInputBuffer`) since stage 1; since 2026-11-16 the sandbox measures it (records and read
+   time a frame, in the Statistics panel and at exit) and `scripts/check-input-load.ps1` floods it
+   with a synthetic 8 kHz mouse; the run waits for the owner (it needs the focus). Input
+   timestamps are left out until something consumes them (orders take effect on the next tick;
+   nothing yet orders events within a frame).
 
 ### Code health (ongoing)
 

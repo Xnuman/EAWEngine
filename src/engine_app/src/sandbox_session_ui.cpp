@@ -128,6 +128,9 @@ void SandboxSession::update_overlay(const std::chrono::steady_clock::time_point 
     view.dropped_particles = particle_stats.dropped_particles;
     view.skipped_emitters = particle_stats.skipped_emitters;
     view.frames = overlay_frames;
+    view.input = statistics_input;
+    view.raw_input = window.input().raw_input;
+    statistics_input = {};
     view.seconds = std::chrono::duration<double>(now - overlay_refreshed).count();
     statistics_lines = sandbox_overlay_lines(view);
     overlay_frames = 0;

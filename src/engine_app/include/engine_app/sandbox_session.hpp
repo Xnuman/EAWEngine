@@ -235,6 +235,9 @@ struct SandboxSession
     std::uint32_t spawn_count = 1;
     SpawnPanelActions panel_actions;
     std::uint64_t overlay_frames = 0;
+    // Input read per frame: since the statistics' last refresh, and over the whole run (printed at exit).
+    InputLoad statistics_input;
+    InputLoad run_input;
     std::chrono::steady_clock::time_point overlay_refreshed = std::chrono::steady_clock::now();
     bool automated_pick_sent = false;
     bool automated_move_sent = false;

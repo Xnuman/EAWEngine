@@ -185,7 +185,11 @@ void SandboxSession::write_finished_capture()
 
 bool SandboxSession::frame()
 {
+    const auto poll_start = std::chrono::steady_clock::now();
     window.poll_events();
+    const auto poll_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - poll_start).count();
+    statistics_input.add(window.input().raw_events, poll_seconds);
+    run_input.add(window.input().raw_events, poll_seconds);
     advance_presentation_clock();
     // A key the Controls panel waits for goes to it, not to the scene (nor does Escape quit then).
     const bool rebound = capture_rebinding(window.input());
@@ -286,6 +290,7 @@ int SandboxSession::finish()
 {
     renderer.wait_idle();
     write_finished_capture();
+    std::cout << input_load_line(run_input, window.input().raw_input) << '\n';
     if (options.capture && !capture_written)
     {
         eaw::log_warning("capture", eaw::Error{"the window closed before the capture was taken: " + options.capture->string()});

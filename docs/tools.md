@@ -308,7 +308,19 @@ repository from their own location and use the built executables):
 
 # Battle frames against the 60 FPS budget under constant new orders, at 10, 50, 100, and 500 units
 .\scripts\benchmark-battle.ps1                    # -Counts 100,500, -Seconds 20, -Map <path>, -GameRoot <path>
+
+# The sandbox under a synthetic 8 kHz mouse: reading input must stay cheap (hands off the computer while it runs)
+.\scripts\check-input-load.ps1                    # -Rate 4000, -Seconds 10, -MaxReadMilliseconds 2, -Map <path>, -GameRoot <path>
 ```
+
+`check-input-load.ps1` stands in for a high polling rate mouse: it starts the sandbox, waits until
+its window has the focus (Windows gives it the focus only when nothing else holds it, so start the
+script and leave the computer alone), and sends relative mouse moves through `SendInput`, one pixel
+right and one left alternately so the cursor stays put. The sandbox prints its input load at exit
+(`Input raw | 12.0 records a frame (max 40) | read 0.020 ms (max 0.100)`: raw input records and
+the time `poll_events` took, average and worst frame; the Statistics panel shows the same line);
+the script fails when no records arrived or the worst frame's read exceeds the limit (2 ms; the
+window's startup frames take up to about 0.8 ms without any input).
 
 `benchmark-battle.ps1` is not for every change: run it when a change risks route planning or
 simulation performance (pathfinding, movement, group cohesion, targeting). Per unit count it builds
