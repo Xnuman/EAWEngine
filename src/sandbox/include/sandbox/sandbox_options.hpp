@@ -160,6 +160,9 @@ struct SandboxOptions
     // tick.
     std::optional<std::uint64_t> ticks;
     std::optional<float> tick_rate;
+    // Battles: worker threads of the job system the simulation's parallel systems run on (default
+    // the hardware threads less one; 0 runs their jobs on the battle's own thread).
+    std::optional<std::uint32_t> workers;
     // Path audit: start and goal pairs per map and movement class (default 100), and the chunk layout
     // searches use (--layout none, chunks, or chunks2: one or two levels).
     std::optional<std::uint32_t> pairs;

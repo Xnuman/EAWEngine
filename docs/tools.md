@@ -181,8 +181,13 @@ EAWEngine.exe battle --game foc --map DATA/ART/MAPS/RM01_SPACE_PLANET_KUAT.TED `
 # Replay a log (from battle or from the sandbox's --record) and check its state hash
 EAWEngine.exe battle --game foc --replay kuat.log
 
-# Every mobile unit of a land map ordered to the center, run twice and compared
+# Every mobile unit of a land map ordered to the center, run twice and compared (the first run on
+# the job system, the second serially: the parallel systems must not change the result)
 EAWEngine.exe battle --game foc --map DATA/ART/MAPS/_LAND_PLANET_UTAPAU_01.TED --auto-move --ticks 3000 --check-determinism
+
+# The same with a given number of job system workers (default the hardware threads less one; 0 runs
+# the jobs on the battle's own thread)
+EAWEngine.exe battle --game foc --map DATA/ART/MAPS/_LAND_PLANET_UTAPAU_01.TED --auto-move --ticks 3000 --workers 2
 
 # The same battle's 50 seconds at 30 Hz: whether a result depends on the tick rate
 EAWEngine.exe battle --game foc --map DATA/ART/MAPS/_LAND_PLANET_UTAPAU_01.TED --auto-move --tick-rate 30 --ticks 1500
@@ -310,9 +315,9 @@ Utapau, spawns half the units a side (each side half single vehicles, half infan
 counts as one unit), and runs 10 seconds of `EAWEngine battle --stress-orders` in Release; it
 prints the frames over budget, the average, 99th percentile, and worst frame, the entities, and the
 route searches, and fails when any frame went over 16.7 ms. On the development machine
-(2026-11-16): 100 units average 1.4 ms (worst 7.2 ms); 500 units (5,000 entities) average 7.5 ms
-with no frame over (worst 15.2 ms), navigation (2.8 ms a tick: ORCA, then giving way) and movement
-(1.6 ms) the largest parts. Timings vary by about 1 ms between runs on that machine.
+(2026-11-16, 8 hardware threads): 100 units average 1.3 ms (worst 7.3 ms); 500 units (5,000
+entities) average 6.0 ms with no frame over (worst 13.9 ms), with ground avoidance's ORCA on the
+job system (7.5 ms serially). Timings vary by about 1 ms between runs on that machine.
 
 `check-battle.ps1` holds the expected hash as its default; a change that alters the simulation on
 purpose updates it and says why. `check-captures.ps1` renders a Kuat fighter battle (frames 90 and

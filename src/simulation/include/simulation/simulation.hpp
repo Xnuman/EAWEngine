@@ -36,6 +36,8 @@
 
 namespace eaw {
 
+class JobSystem;
+
 // The ground an immobile obstacle occupies: a rectangle (half extents along and across its heading)
 // whose cells take `passability` while the entity exists (a wall's own type, so classes allowed on
 // that type still cross it, or Obstacle).
@@ -686,6 +688,10 @@ public:
     // also stops before a cell its class may not enter; one standing on such a cell may leave it.
     void set_ground(GroundMap ground);
     [[nodiscard]] const GroundMap& ground() const noexcept;
+    // The job system the systems that run in parallel use (docs/ecs-design.md, 7.5), not owned; null
+    // (the default) runs them serially. Results are the same either way. Not state: not hashed, and
+    // the caller keeps it alive while the world steps.
+    void set_job_system(JobSystem* jobs) noexcept;
     // Damage multipliers by damage and armor type, and which owners fight each other. Armed
     // entities target the nearest damageable hostile within range on their own (unless their stance
     // is hold_fire); an attack command names the target instead.
@@ -1956,6 +1962,10 @@ private:
         void run(const View& view);
         // The ground changed (set, or a footprint stamped or lifted): the pathfinders' cached regions
         // are stale.
+        void set_jobs(JobSystem* jobs) noexcept
+        {
+            jobs_ = jobs;
+        }
         void ground_changed() noexcept
         {
             pathfinder_.reset();
@@ -2054,10 +2064,19 @@ private:
         std::vector<std::uint8_t> obstacle_cells_;
         std::vector<std::uint32_t> marked_cells_;
         std::vector<std::uint32_t> query_;
-        // Ground avoidance's scratch: a unit's nearest neighbours (squared distance, dense index) and
-        // their ORCA lines.
-        std::vector<std::pair<float, std::uint32_t>> nearest_;
-        std::vector<OrcaLine> lines_;
+        // Ground avoidance's scratch, one per chunk of units planned at once: the agents near a unit,
+        // its nearest neighbours (squared distance, dense index), and their ORCA lines.
+        struct AvoidanceScratch
+        {
+            std::vector<std::uint32_t> query;
+            std::vector<std::pair<float, std::uint32_t>> nearest;
+            std::vector<OrcaLine> lines;
+        };
+        std::vector<AvoidanceScratch> avoidance_scratch_;
+        // The ground units that steer this tick (dense indices, in order).
+        std::vector<std::uint32_t> steering_;
+        // Where parallel parts run (not owned; none runs them serially, with the same results).
+        JobSystem* jobs_{};
         // Giving way's scratch: the requests of a tick (who steps aside, for whom, to where).
         struct GiveWayRequest
         {

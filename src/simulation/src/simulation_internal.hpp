@@ -87,6 +87,9 @@ inline constexpr std::uint32_t give_way_directions = 16;
 inline constexpr float give_way_least_lateral = 0.2F;
 inline constexpr float give_way_max_shift = 3.0F;
 inline constexpr std::uint32_t give_way_chain = 3;
+// Ground avoidance plans this many steering units to a job. Engine choice, from the 500-unit
+// benchmark.
+inline constexpr std::size_t avoidance_grain = 4;
 // A unit whose ask found no place asks again after this long (asking every tick cost 2.5 ms a tick
 // in the 500-unit benchmark, nearly every ask failing in its crowds). Engine choice.
 inline constexpr float give_way_retry_seconds = 0.25F;

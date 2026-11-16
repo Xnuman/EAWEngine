@@ -6,7 +6,9 @@
 .DESCRIPTION
     The battle every simulation change is checked against (AGENTS.md, "Build and validation"):
     Utapau, two opposing groups ordered to the center, 3000 ticks (50 seconds at 60 Hz), run twice with
-    --check-determinism. Fails when the runs differ or the hash is not -Expected. A change that
+    --check-determinism (the first run on the job system, the second serially, so the parallel
+    systems are checked against a serial run). Fails when the runs differ or the hash is not
+    -Expected. A change that
     alters the hash on purpose says so and why, and updates the expected hashes here.
 
     -Extended adds, each run twice as well: a large Utapau battle (3,300 entities: squads, tanks,
@@ -77,7 +79,7 @@ foreach ($battle in $battles) {
         $failed += 1
         continue
     }
-    Write-Host "$($battle.Name): state hash $hash as expected; both runs agree." -ForegroundColor Green
+    Write-Host "$($battle.Name): state hash $hash as expected; the parallel and serial runs agree." -ForegroundColor Green
 }
 if ($failed -gt 0) {
     Write-Host "$failed of $($battles.Count) battles failed." -ForegroundColor Red

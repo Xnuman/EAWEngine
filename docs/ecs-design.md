@@ -614,7 +614,14 @@ captures, except step 7, which changes the hash's layout once, on purpose.
    but the core's (identity, placement, motion, locomotor, ground mover, route, orders, steering)
    is now a pool.
 8. **Parallel systems.** Route searches, then contact and targeting, each verified with 1 and N
-   threads giving the same hash, and measured.
+   threads giving the same hash, and measured. Measured first (2026-11-16, the 500-unit
+   benchmark): route searches 0.16 ms a tick, budget-limited, against ground avoidance's 4.3 ms
+   (2.5 of it giving way, made cheaper serially first). So by 7.5's rule (by measured need) ground
+   avoidance's ORCA went first: per steering unit, chunks of 4, scratch per chunk, 1.48 to 0.43 ms
+   on 7 workers. The simulation takes the job system through `SimulationWorld::set_job_system`
+   (null: serial); `--check-determinism` compares a run on it with a serial one. Next by
+   measurement: movement (1.6 ms), combat (1.1 ms), contact (0.6 ms); route searches where the
+   opening tick's spikes need them.
 9. **Refactoring.** A review of what the migration left, its scope and plan to be agreed with the
    owner first (the owner, 2026-11-15).
 

@@ -57,4 +57,4 @@ target_sources(eaw_simulation
 )
 
 # eaw_core only for Status/Result and fatal errors; the simulation reads no files.
-target_link_libraries(eaw_simulation PUBLIC eaw_core eaw_math)
+target_link_libraries(eaw_simulation PUBLIC eaw_core eaw_jobs eaw_math)

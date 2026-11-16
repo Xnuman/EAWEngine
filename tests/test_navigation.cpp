@@ -1,6 +1,7 @@
 // Ground movement and navigation: terrain following, paths, separation, formations, groups, footprints, budgets.
 #include "test_support.hpp"
 
+#include "jobs/job_system.hpp"
 #include "simulation/formation.hpp"
 #include "simulation/orca.hpp"
 
@@ -902,6 +903,50 @@ void test_orca()
     require(eaw::is_finite(squeezed) && eaw::length(squeezed) <= 3.0F + 1.0e-4F, "a hemmed-in unit must still get a velocity within its top speed");
 }
 
+void test_parallel_avoidance()
+{
+    // Two groups of 48 crossing each other head-on, a crowd for ground avoidance, run serially and on
+    // a job system (docs/ecs-design.md, 7.4): the state hashes match tick for tick.
+    eaw::GroundMap ground;
+    ground.width = 60;
+    ground.height = 60;
+    ground.spacing = 10.0F;
+    ground.heights.assign(3600, 0.0F);
+    ground.passability.assign(3600, eaw::passability::clear);
+    auto jobs = expect_ok(eaw::JobSystem::create({.workers = 3}), "creating a job system");
+    const auto run = [&](eaw::JobSystem* system)
+    {
+        eaw::SimulationWorld world(1.0 / 30.0);
+        world.set_ground(ground);
+        world.set_job_system(system);
+        std::array<std::vector<eaw::EntityId>, 2> sides;
+        for (std::size_t side = 0; side < 2; ++side)
+        {
+            for (int index = 0; index < 48; ++index)
+            {
+                const auto x = side == 0 ? 100.0F + static_cast<float>(index % 6) * 14.0F : 400.0F + static_cast<float>(index % 6) * 14.0F;
+                const auto y = 200.0F + static_cast<float>(index / 6) * 14.0F;
+                sides[side].push_back(expect_ok(
+                    test_spawn(world, {.type_name = "Trooper", .position = {x, y, 0.0F}, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 5.0F}),
+                    "test spawn"));
+            }
+        }
+        world.submit({.kind = eaw::SimCommandKind::group_move, .entities = sides[0], .target = {450.0F, 250.0F, 0.0F}});
+        world.submit({.kind = eaw::SimCommandKind::group_move, .entities = sides[1], .target = {150.0F, 250.0F, 0.0F}});
+        std::vector<std::uint64_t> hashes;
+        for (int tick = 0; tick < 600; ++tick)
+        {
+            world.step();
+            hashes.push_back(world.state_hash());
+        }
+        return hashes;
+    };
+    const auto serial = run(nullptr);
+    const auto parallel = run(jobs.get());
+    const auto first = std::ranges::mismatch(serial, parallel).in1;
+    require(first == serial.end(), "a battle on the job system must hash as the serial one tick for tick (first difference at tick " + std::to_string(first - serial.begin() + 1) + ")");
+}
+
 void test_narrow_passage()
 {
     // A wall at column 15 with a gap of three cells at rows 13 to 15, room for one tank-sized unit at
@@ -1785,6 +1830,7 @@ const ModuleRegistrar registrar("navigation", {
                                                   {"test_chunks", &test_chunks},
                                                   {"test_orca", &test_orca},
                                                   {"test_narrow_passage", &test_narrow_passage},
+                                                  {"test_parallel_avoidance", &test_parallel_avoidance},
                                                   {"test_group_cohesion", &test_group_cohesion},
                                                   {"test_ground_footprints", &test_ground_footprints},
                                                   {"test_path_budget_and_shared_routes", &test_path_budget_and_shared_routes},

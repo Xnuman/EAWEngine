@@ -21,6 +21,7 @@ void SandboxSession::start_simulation(const eaw::VisualScene& scene, const eaw::
 {
     runtime.emplace(map, std::move(name), options.scripts ? &vfs : nullptr);
     world = &runtime->battle().world();
+    world->set_job_system(&jobs);
     presentation.emplace(scene, map.entities, looks, runtime->battle().map_entity_ids(), spawnable_looks, decorations);
     previous_snapshot = world->snapshot();
     selection.clear();

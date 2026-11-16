@@ -9,6 +9,7 @@
 #include "simulation_internal.hpp"
 
 #include "math/scalar.hpp"
+#include "jobs/parallel.hpp"
 #include "simulation/orca.hpp"
 
 #include <algorithm>
@@ -123,17 +124,20 @@ void SimulationWorld::NavigationSystem::plan_ground_avoidance(const View& view)
     plan_giving_way(view);
     plan_detours(view);
     const auto step = static_cast<float>(view.get<Clock>().tick_seconds);
-    for (std::size_t index = 0; index < identity.ids.size(); ++index)
+    // Each unit's velocity from the state at the start of the tick into its own entry: units are
+    // planned in chunks on the job system, each chunk with its own scratch, and the result does not
+    // depend on how they are split (docs/ecs-design.md, 7.5; check-battle compares a serial run).
+    const auto plan = [&](const std::size_t index, AvoidanceScratch& scratch)
     {
         if (!steers(index))
         {
-            continue;
+            return;
         }
         const Vector2 here{placement.positions[index].x, placement.positions[index].y};
         const auto heading = heading_toward_waypoint(view, index);
         if (heading == Vector2{})
         {
-            continue;
+            return;
         }
         const auto radius = radii[index];
         const auto speed = travel_speed(view, index);
@@ -148,22 +152,25 @@ void SimulationWorld::NavigationSystem::plan_ground_avoidance(const View& view)
         }
         const auto preferred = heading * wanted;
         // Its nearest ground units, nearest first (ties by dense index); not what it crushes.
-        query_.clear();
-        avoidance.grid.query_overlapping(placement.positions[index], radius + std::min(speed * avoidance_horizon_seconds, radius * avoidance_reach_radii), query_);
-        nearest_.clear();
-        for (const auto other : query_)
+        auto& query = scratch.query;
+        auto& nearest = scratch.nearest;
+        auto& lines = scratch.lines;
+        query.clear();
+        avoidance.grid.query_overlapping(placement.positions[index], radius + std::min(speed * avoidance_horizon_seconds, radius * avoidance_reach_radii), query);
+        nearest.clear();
+        for (const auto other : query)
         {
             if (other == index || radii[other] <= 0.0F || can_crush(view, index, avoidance.crush_proxies[other]))
             {
                 continue;
             }
             const auto offset = Vector2{placement.positions[other].x, placement.positions[other].y} - here;
-            nearest_.emplace_back(dot(offset, offset), other);
+            nearest.emplace_back(dot(offset, offset), other);
         }
-        std::ranges::sort(nearest_);
-        nearest_.resize(std::min(nearest_.size(), avoidance_neighbours));
-        lines_.clear();
-        for (const auto& [distance_squared, other] : nearest_)
+        std::ranges::sort(nearest);
+        nearest.resize(std::min(nearest.size(), avoidance_neighbours));
+        lines.clear();
+        for (const auto& [distance_squared, other] : nearest)
         {
             const auto offset = Vector2{placement.positions[other].x, placement.positions[other].y} - here;
             // Two moving allies share the avoidance, each from its current velocity (ORCA's rule, so
@@ -181,27 +188,55 @@ void SimulationWorld::NavigationSystem::plan_ground_avoidance(const View& view)
                 share = theirs / (mine + theirs);
                 own = motion.velocities[index];
             }
-            lines_.push_back(orca_line(offset, own - motion.velocities[other], radius + radii[other] - contact_tolerance, avoidance_horizon_seconds, step, share, own));
+            lines.push_back(orca_line(offset, own - motion.velocities[other], radius + radii[other] - contact_tolerance, avoidance_horizon_seconds, step, share, own));
         }
-        if (lines_.empty())
+        if (lines.empty())
         {
-            continue;
+            return;
         }
         // A unit that cannot go its way prefers to turn a little to its right, so two meeting head-on
         // pass each other (as space ships keep right) instead of stopping nose to nose, where the
         // allowed velocity nearest straight ahead is standing still.
-        auto chosen = orca_velocity(lines_, speed, preferred);
+        auto chosen = orca_velocity(lines, speed, preferred);
         if (chosen != preferred)
         {
             const auto turn_cos = std::cos(avoidance_keep_right);
             const auto turn_sin = std::sin(avoidance_keep_right);
-            chosen = orca_velocity(lines_, speed, {preferred.x * turn_cos + preferred.y * turn_sin, preferred.y * turn_cos - preferred.x * turn_sin});
+            chosen = orca_velocity(lines, speed, {preferred.x * turn_cos + preferred.y * turn_sin, preferred.y * turn_cos - preferred.x * turn_sin});
         }
         if (length(chosen - preferred) > avoidance_tolerance * speed)
         {
             route.avoid_velocities[index] = chosen;
         }
+    };
+    // The units that steer, in dense order, split into chunks: spawned units of one type are
+    // neighbours in that order, so chunks of the whole table left nearly all the work to one.
+    steering_.clear();
+    for (std::size_t index = 0; index < identity.ids.size(); ++index)
+    {
+        if (steers(index))
+        {
+            steering_.push_back(static_cast<std::uint32_t>(index));
+        }
     }
+    if (jobs_ == nullptr)
+    {
+        avoidance_scratch_.resize(std::max<std::size_t>(avoidance_scratch_.size(), 1));
+        for (const auto index : steering_)
+        {
+            plan(index, avoidance_scratch_.front());
+        }
+        return;
+    }
+    avoidance_scratch_.resize(std::max(avoidance_scratch_.size(), chunk_count(steering_.size(), avoidance_grain)));
+    parallel_for(*jobs_, steering_.size(), avoidance_grain,
+                 [&](const std::size_t begin, const std::size_t end, const std::size_t chunk)
+                 {
+                     for (std::size_t unit = begin; unit < end; ++unit)
+                     {
+                         plan(steering_[unit], avoidance_scratch_[chunk]);
+                     }
+                 });
 }
 
 void SimulationWorld::NavigationSystem::plan_giving_way(const View& view)

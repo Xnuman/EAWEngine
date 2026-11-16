@@ -183,7 +183,8 @@ rendering rows join item 2).
       recipes (one construction path, and the simulation's recipes with shared profiles,
       2026-11-15); the damage queue, compacting removal, and per-component hashing, the one
       declared hash change (2026-11-15); pools for flight, formation, group, and combat (2026-11-15); parallel
-      systems (route searches first), after work order g (the owner, 2026-11-15); a refactoring step last, its scope to be agreed with the
+      systems (route searches first), after work order g (the owner, 2026-11-15; begun 2026-11-16 with
+      ground avoidance, which measurement put first); a refactoring step last, its scope to be agreed with the
       owner,
       each step with an unchanged battle hash except the declared one, folding in the deferred
       determinism work (stable-id order, keyed random draws, a full-state hash).

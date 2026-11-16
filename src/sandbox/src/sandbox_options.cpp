@@ -13,6 +13,9 @@
 namespace eaw {
 namespace {
 
+// The most job system workers a battle takes (an engine choice: more is a typing error).
+constexpr std::uint32_t max_battle_workers = 256;
+
 // A whole decimal number (digits only).
 Result<std::uint64_t> parse_unsigned_64(const std::string_view value, const std::string_view option)
 {
@@ -132,7 +135,8 @@ void print_sandbox_usage()
               << "  --tick-rate <hz>   Battle: simulation ticks per second (default 60; replay a log at its recording's rate)\n"
               << "  --record <file>    Write the battle's order log when it ends (battle and sandbox)\n"
               << "  --replay <file>    Battle: replay a recorded order log (its map unless --map is given) and check its state hash\n"
-              << "  --check-determinism  Battle: run twice and require identical state hashes\n"
+              << "  --workers <count>  Battle: job system worker threads (default the hardware threads less one)\n"
+              << "  --check-determinism  Battle: run again without the job system and require identical state hashes\n"
               << "  --hash-trace       Battle, with --check-determinism: hash each subject of the state every tick and name\n"
               << "                     the first tick and subjects where the runs differ\n"
               << "  --warp             Use the Windows software D3D12 adapter\n"
@@ -207,6 +211,15 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
             if (*options.ticks == 0 || *options.ticks > 100'000'000ULL)
             {
                 return make_error("--ticks must be from 1 to 100000000");
+            }
+        }
+        else if (argument == "--workers")
+        {
+            EAW_TRY_ASSIGN(const auto text, require_value(argc, argv, index, argument));
+            EAW_TRY_ASSIGN(options.workers, parse_unsigned(text, argument));
+            if (*options.workers > max_battle_workers)
+            {
+                return make_error("--workers must be from 0 to " + std::to_string(max_battle_workers));
             }
         }
         else if (argument == "--tick-rate")

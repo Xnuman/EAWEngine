@@ -3,6 +3,7 @@
 #include "battle_stress.hpp"
 
 #include "core/log.hpp"
+#include "jobs/job_system.hpp"
 #include "battle/battle.hpp"
 #include "battle/battle_log.hpp"
 #include "battle/battle_runtime.hpp"
@@ -78,12 +79,14 @@ Vector3 battle_center(const BattleMapAsset& asset)
 }
 
 // `scripts_reader` resolves game-object scripts; null runs none (--no-scripts).
-BattleRun run_once(const BattleMapAsset& asset, const std::string& map_name, const SandboxOptions& options, const BattleLog* replay, const std::uint64_t ticks, const AssetReader* scripts_reader)
+BattleRun run_once(const BattleMapAsset& asset, const std::string& map_name, const SandboxOptions& options, const BattleLog* replay, const std::uint64_t ticks, const AssetReader* scripts_reader,
+                   JobSystem* jobs)
 {
     BattleRun run;
     BattleRuntime runtime(battle_map(asset), map_name, scripts_reader, options.tick_rate ? static_cast<double>(*options.tick_rate) : default_ticks_per_second);
     auto& battle = runtime.battle();
     auto& world = battle.world();
+    world.set_job_system(jobs);
     run.starting_entities = world.stats().entities;
     const auto center = battle_center(asset);
     std::size_t next_entry = 0;
@@ -323,7 +326,15 @@ int run_battle(const SandboxOptions& options, const VirtualFileSystem& vfs)
     }
     const auto ticks = options.ticks ? *options.ticks : replay && replay->end_tick ? *replay->end_tick : default_ticks;
     const AssetReader* scripts_reader = options.scripts ? &vfs : nullptr;
-    const auto first = run_once(asset, map_name, options, replay ? &*replay : nullptr, ticks, scripts_reader);
+    auto created_jobs = JobSystem::create({.workers = options.workers.value_or(default_job_workers())});
+    if (!created_jobs)
+    {
+        std::cerr << "error: " << created_jobs.error().message << '\n';
+        return 1;
+    }
+    const auto jobs = std::move(*created_jobs);
+    std::cout << "Jobs: " << jobs->worker_count() << " workers\n";
+    const auto first = run_once(asset, map_name, options, replay ? &*replay : nullptr, ticks, scripts_reader, jobs.get());
     if (first.failed)
     {
         return 4;
@@ -342,9 +353,11 @@ int run_battle(const SandboxOptions& options, const VirtualFileSystem& vfs)
     }
     if (options.check_determinism)
     {
-        const auto second = run_once(asset, map_name, options, replay ? &*replay : nullptr, ticks, scripts_reader);
+        // The second run without the job system: the same hash shows the parallel systems do not
+        // depend on how their work was split or scheduled (docs/ecs-design.md, 7.4).
+        const auto second = run_once(asset, map_name, options, replay ? &*replay : nullptr, ticks, scripts_reader, nullptr);
         const bool same = !second.failed && second.hash == first.hash;
-        std::cout << "Determinism: second run " << (same ? "matches" : "differs (" + hex(second.hash) + ")") << '\n';
+        std::cout << "Determinism: second run, serial, " << (same ? "matches" : "differs (" + hex(second.hash) + ")") << '\n';
         exit_code = same ? exit_code : 4;
         if (!same && options.hash_trace)
         {
