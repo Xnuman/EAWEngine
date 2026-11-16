@@ -173,8 +173,6 @@ honor are worked through tag by tag from [xml-tag-status.md](xml-tag-status.md) 
    - heat distortion: shockwave rings as an enhanced option (heat particles and meshes are done);
    - shields: the FoC stealth meshes' visibility (when the original shows them), and reading
      `Shield_Flash_*` from GameConstants;
-   - reflections: `MeshAdditiveReflection` (3 stock uses; no stock material uses the reflective
-     profiles);
    - weather: the fog plane, the weather cube's size, fade-out distance, and fade; tiles that
      appear while panning filling from the top; weather kinds in gameplay through
      WeatherModifiers.xml, with the timeline then on the battle's ticks; the placement is an engine

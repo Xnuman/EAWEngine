@@ -895,3 +895,6 @@ rewritten to describe the current state; the source document is noted in bracket
   pass, now started by heat meshes alone, crashed on a frame without particles (a null particle
   buffer) until it skipped the particles there. The only MeshAdditiveReflection user found is
   W_BESPIN_REFINERY.ALO.
+- MeshAdditiveReflection closed as inferred: its 3 uses are the Bespin refinery's lens panes, with
+  only a Color and no texture, and the shader has no source; they already draw additive with that
+  color, and a reflection would rest on the shader's name alone.

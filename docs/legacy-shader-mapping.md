@@ -42,7 +42,7 @@ outside the corpus and keep the heuristic fallback, reported as `name-heuristic`
 | --- | ---: | --- |
 | `alDefault.fx` | 1,461 | No source; treated as `default-surface`, opaque. |
 | `Default.fx` | 21 | No source; treated as `default-surface`, opaque. |
-| `MeshAdditiveReflection.fx` | 3 | No source; name implies additive. |
+| `MeshAdditiveReflection.fx` | 3 | No source (compiled only); name implies additive. The 3 uses are the Bespin refinery's lens panes (`W_BESPIN_REFINERY.ALO`), with only a `Color` (0.91 grey) and no texture; drawn additive with that color, an inference left at that (a reflection would rest on the name alone). |
 | `FissureMeshGloss.fx` | 1 | No source; name implies vertex-lit gloss. |
 
 Run `EAWAssetInspector texture-audit Data/Art/Models --game foc` to reproduce the source, phase,
