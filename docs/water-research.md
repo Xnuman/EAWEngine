@@ -87,7 +87,10 @@ opaque scene, scene copy, water, then the transparent passes (as Crest does).
 - FFT (Tessendorf) ocean spectra: made for open ocean seen up close; at RTS distance a few normal
   layers look the same, without compute passes and extra TAA care.
 - Gerstner displacement and tessellation: invisible from above, and they break the flat plane that
-  depth, foam, shore precomputation, and gameplay heights rely on.
+  depth, foam, shore precomputation, and gameplay heights rely on. (The owner chose ocean waves for
+  maps such as Kamino afterwards, 2026-11-13, the roadmap's item h; built 2026-11-16 so the flat
+  plane survives: the simulation keeps the map's level, and the waves fade out toward the shore over
+  the depth stored in the water grid, so shore, foam, and units in the shallows see the plane.)
 - Planar reflection by rendering the scene again: 0 A.D. measured water at about 7 ms at maximum zoom,
   about 5 ms of it reflection and refraction; poor value at 2 % Fresnel. If anything, reflect units
   only, as Supreme Commander does.

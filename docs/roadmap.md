@@ -210,7 +210,9 @@ rendering rows join item 2).
       unit, 63 candidates a query against 8 with infantry only; about 13 overlaps a unit; the
       opening tick's 5,062 target searches, 38-47 ms with 3,300 entities) are in its section 1.
    h. Enhanced water as an ocean on maps such as Kamino: waves (a tessellated surface displaced by
-      wave functions), foam on crests.
+      wave functions), foam on crests. First slice done 2026-11-16 (a water grid of about 12-unit
+      cells, four Gerstner waves fading in with depth, crest foam; the owner judges the look); next:
+      the waves' constants as sliders for tuning, wave motion in the motion vectors if TAA ghosts.
    This closes M2.
 3. Input bindings (Platform and input stage 2).
 4. Simulation stage 1's remainder: combat presentation and fidelity (closes M3 with M2).

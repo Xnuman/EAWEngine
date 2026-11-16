@@ -37,6 +37,15 @@ float terrain_surface_height(const TedMapData& map, const float world_x, const f
     return fx >= fy ? h00 + fx * (h10 - h00) + fy * (h11 - h10) : h00 + fx * (h11 - h01) + fy * (h01 - h00);
 }
 
+// Water is a grid (enhanced water's waves displace its vertices; docs/water-research.md, the ocean
+// of the roadmap's item h): cells of about this size, at most this many per side. Engine choices: a
+// wave's crest spans a few cells at the shortest wavelengths the shader uses.
+constexpr float water_cell_size = 12.0F;
+constexpr std::uint32_t water_max_cells = 512;
+// How far waves may lift or lower the surface (sandbox.hlsl, the sum of OCEAN_WAVES' amplitudes,
+// rounded up): the mesh's bounds, so culling never drops a raised crest.
+constexpr float water_wave_reach = 12.0F;
+
 } // namespace
 
 // Builds the land heightfield as independent triangles whose vertices carry the triangle's corner
@@ -265,24 +274,45 @@ std::optional<std::uint32_t> append_water(SceneBuilder& builder, const TedMapDat
     mesh.name = material.name;
     mesh.first_draw = static_cast<std::uint32_t>(scene.draws.size());
     mesh.draw_count = 1;
-    mesh.bounds_minimum = {minimum_x, minimum_y, level};
-    mesh.bounds_maximum = {maximum_x, maximum_y, level};
+    const bool waves = type == TedWaterType::water;
+    mesh.bounds_minimum = {minimum_x, minimum_y, level - (waves ? water_wave_reach : 0.0F)};
+    mesh.bounds_maximum = {maximum_x, maximum_y, level + (waves ? water_wave_reach : 0.0F)};
     const auto base_vertex = static_cast<std::int32_t>(scene.vertices.size());
-    for (const auto& [x, y] : std::array<Vector2, 4>{{{minimum_x, minimum_y}, {maximum_x, minimum_y}, {maximum_x, maximum_y}, {minimum_x, maximum_y}}})
-    {
-        VisualVertex vertex;
-        vertex.position = {x, y, level};
-        vertex.normal = {0.0F, 0.0F, 1.0F};
-        vertex.texture_coordinates = {x / tile, y / tile};
-        vertex.tangent = {1.0F, 0.0F, 0.0F};
-        vertex.binormal = {0.0F, 1.0F, 0.0F};
-        scene.vertices.push_back(vertex);
-    }
     const auto first_index = static_cast<std::uint32_t>(scene.indices.size());
-    scene.indices.insert(scene.indices.end(), {0U, 1U, 2U, 0U, 2U, 3U});
+    // Water as a grid whose vertices know the depth beneath them (the second texture coordinates'
+    // x: the surface's level less the ground's height, negative over land) for the waves to fade
+    // toward the shore; lava and ice stay one flat quad.
+    const auto cells_x = waves ? std::clamp(static_cast<std::uint32_t>(std::ceil((maximum_x - minimum_x) / water_cell_size)), 1U, water_max_cells) : 1U;
+    const auto cells_y = waves ? std::clamp(static_cast<std::uint32_t>(std::ceil((maximum_y - minimum_y) / water_cell_size)), 1U, water_max_cells) : 1U;
+    for (std::uint32_t row = 0; row <= cells_y; ++row)
+    {
+        for (std::uint32_t column = 0; column <= cells_x; ++column)
+        {
+            const auto x = minimum_x + (maximum_x - minimum_x) * static_cast<float>(column) / static_cast<float>(cells_x);
+            const auto y = minimum_y + (maximum_y - minimum_y) * static_cast<float>(row) / static_cast<float>(cells_y);
+            VisualVertex vertex;
+            vertex.position = {x, y, level};
+            vertex.normal = {0.0F, 0.0F, 1.0F};
+            vertex.texture_coordinates = {x / tile, y / tile};
+            vertex.tangent = {1.0F, 0.0F, 0.0F};
+            vertex.binormal = {0.0F, 1.0F, 0.0F};
+            vertex.texture_coordinates_1 = {waves ? level - terrain_surface_height(map, x, y) : 0.0F, 0.0F};
+            scene.vertices.push_back(vertex);
+        }
+    }
+    for (std::uint32_t row = 0; row < cells_y; ++row)
+    {
+        for (std::uint32_t column = 0; column < cells_x; ++column)
+        {
+            const auto corner = row * (cells_x + 1U) + column;
+            const auto above = corner + cells_x + 1U;
+            scene.indices.insert(scene.indices.end(), {corner, corner + 1U, above + 1U, corner, above + 1U, above});
+        }
+    }
+    const auto index_count = static_cast<std::uint32_t>(scene.indices.size()) - first_index;
     const auto material_index = static_cast<std::uint32_t>(scene.materials.size());
     scene.materials.push_back(std::move(material));
-    scene.draws.push_back({first_index, 6U, base_vertex, material_index});
+    scene.draws.push_back({first_index, index_count, base_vertex, material_index});
     const auto mesh_index = static_cast<std::uint32_t>(scene.meshes.size());
     scene.meshes.push_back(std::move(mesh));
     scene.instances.push_back({mesh_index});

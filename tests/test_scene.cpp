@@ -246,20 +246,24 @@ void test_visual_terrain()
     require(terrain.bounds_minimum[2] == -0.5F && terrain.bounds_maximum[0] == 40.0F && terrain.bounds_maximum[2] == 2.0F && asset.scene.bounds_maximum[1] == 20.0F,
             "terrain bounds were not applied to the scene");
     require(!asset.lighting, "an environment without lighting fields produced a light rig");
-    // Water at level 1.5 crosses the terrain (-0.5..2.0) and becomes a blended quad instance.
+    // Water at level 1.5 crosses the terrain (-0.5..2.0) and becomes a blended grid instance: 40 x 20
+    // units in cells of about 12 (4 x 2 cells, 5 x 3 vertices), each vertex keeping the depth beneath
+    // it (the level less the ground's height: 2.0 at the corner where the ground is -0.5).
     const auto& water_material = asset.scene.materials[asset.scene.draws[asset.scene.meshes[0].first_draw].material];
-    require(asset.water == eaw::TedWaterType::water && asset.scene.meshes.size() == 2 && asset.scene.instances.size() == 2 && asset.scene.vertices.size() == 10 &&
-                asset.scene.vertices[2].position == eaw::Vector3{40.0F, 20.0F, 1.5F} && water_material.blend == eaw::VisualBlendMode::alpha_blend &&
-                water_material.diffuse == eaw::Color{0.4F, 0.6F, 0.8F, 0.75F},
+    constexpr std::size_t water_vertices = 15;
+    constexpr std::size_t water_indices = 4 * 2 * 6;
+    require(asset.water == eaw::TedWaterType::water && asset.scene.meshes.size() == 2 && asset.scene.instances.size() == 2 && asset.scene.vertices.size() == water_vertices + 6 &&
+                asset.scene.vertices[water_vertices - 1].position == eaw::Vector3{40.0F, 20.0F, 1.5F} && asset.scene.vertices[0].texture_coordinates_1[0] == 2.0F &&
+                water_material.blend == eaw::VisualBlendMode::alpha_blend && water_material.diffuse == eaw::Color{0.4F, 0.6F, 0.8F, 0.75F},
             "water surface was not built over the terrain");
     // The track (5,5)->(35,15), widths 10->6, opacity 0/1/0 becomes a 3-sample draped ribbon.
-    const auto& ribbon = asset.scene.vertices;
-    require(asset.tracks == 1 && asset.scene.indices.size() == 6 + 12 && ribbon[4].color[3] == 0.0F && ribbon[6].color[3] == 1.0F && ribbon[9].color[3] == 0.0F &&
-                ribbon[4].texture_coordinates[0] == 0.0F && ribbon[5].texture_coordinates[0] == 1.0F,
+    const auto* ribbon = asset.scene.vertices.data() + water_vertices;
+    require(asset.tracks == 1 && asset.scene.indices.size() == water_indices + 12 && ribbon[0].color[3] == 0.0F && ribbon[2].color[3] == 1.0F && ribbon[5].color[3] == 0.0F &&
+                ribbon[0].texture_coordinates[0] == 0.0F && ribbon[1].texture_coordinates[0] == 1.0F,
             "track ribbon structure or opacity fade is wrong");
     // First left edge vertex lies at (6.581, 0.257): the lower-right triangle of cell (0,0) gives
     // height -0.3163, plus the 0.6 lift.
-    require(std::fabs(ribbon[4].position[0] - 6.5811F) < 1.0e-3F && std::fabs(ribbon[4].position[2] - 0.2837F) < 2.0e-3F, "track ribbon does not follow the terrain surface");
+    require(std::fabs(ribbon[0].position[0] - 6.5811F) < 1.0e-3F && std::fabs(ribbon[0].position[2] - 0.2837F) < 2.0e-3F, "track ribbon does not follow the terrain surface");
     std::filesystem::remove_all(root, ignored);
 }
 

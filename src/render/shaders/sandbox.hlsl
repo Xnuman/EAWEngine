@@ -77,6 +77,64 @@ float3 grass_position(const float3 position, const float2 clump_center, const fl
     return world;
 }
 
+// Ocean waves (the roadmap's item h, enhanced water only; docs/water-research.md): the water grid's
+// vertices move by a sum of Gerstner waves around the map's wind, the shortest spanning a few grid
+// cells. Their height fades from none at OCEAN_SHORE_DEPTH of water to full at OCEAN_FULL_DEPTH, so
+// shores, foam, and units in the shallows see the flat plane the simulation keeps. Speeds follow
+// deep water's dispersion (the speed of a wave grows with the root of its length) under
+// OCEAN_GRAVITY in world units. The steepness bounds the crests' sharpness below folding (each wave's
+// share, Q = OCEAN_STEEPNESS / (k A count), keeps their sum under 1). All values are engine choices,
+// tuned by eye; the amplitudes' sum stays under scene_terrain.cpp's water_wave_reach (the mesh's
+// bounds).
+static const uint OCEAN_WAVE_COUNT = 4u;
+static const float OCEAN_WAVELENGTHS[4] = {170.0f, 97.0f, 61.0f, 37.0f};
+static const float OCEAN_AMPLITUDES[4] = {4.5f, 2.6f, 1.6f, 0.9f};
+static const float OCEAN_ANGLES[4] = {0.0f, 0.45f, -0.6f, 1.1f}; // each wave's direction off the wind (radians)
+static const float OCEAN_STEEPNESS = 0.6f;
+static const float OCEAN_GRAVITY = 30.0f;
+static const float OCEAN_SHORE_DEPTH = 6.0f;
+static const float OCEAN_FULL_DEPTH = 40.0f;
+static const float2 OCEAN_CALM_WIND = float2(0.8f, 0.6f); // the waves' heading on maps without wind
+// Crest foam: where the waves' compression of the surface passes this share of its bound.
+static const float OCEAN_CREST_FOAM_START = 0.45f;
+
+struct OceanSurface
+{
+    float3 offset;
+    float3 normal;
+    // How sharply the surface is pinched into a crest here (0 flat, 1 at the steepness bound).
+    float crest;
+};
+
+OceanSurface ocean_waves(const float2 position, const float depth, const float time)
+{
+    const float2 wind = dot(grass_wind.xy, grass_wind.xy) > 1.0e-6f ? normalize(grass_wind.xy) : OCEAN_CALM_WIND;
+    const float scale = smoothstep(OCEAN_SHORE_DEPTH, OCEAN_FULL_DEPTH, depth);
+    OceanSurface surface;
+    surface.offset = float3(0.0f, 0.0f, 0.0f);
+    float3 slope = float3(0.0f, 0.0f, 0.0f);
+    float pinch = 0.0f;
+    [unroll]
+    for (uint wave = 0u; wave < OCEAN_WAVE_COUNT; ++wave)
+    {
+        const float angle = OCEAN_ANGLES[wave];
+        const float2 direction = float2(wind.x * cos(angle) - wind.y * sin(angle), wind.x * sin(angle) + wind.y * cos(angle));
+        const float k = 6.2831853f / OCEAN_WAVELENGTHS[wave];
+        const float omega = sqrt(OCEAN_GRAVITY * k);
+        const float amplitude = OCEAN_AMPLITUDES[wave] * scale;
+        const float steepness = OCEAN_STEEPNESS / (k * OCEAN_AMPLITUDES[wave] * OCEAN_WAVE_COUNT);
+        const float phase = k * dot(direction, position) - omega * time + 1.7f * wave;
+        const float c = cos(phase);
+        const float s = sin(phase);
+        surface.offset += float3(steepness * amplitude * direction * c, amplitude * s);
+        slope += float3(direction * k * amplitude * c, steepness * k * amplitude * s);
+        pinch += steepness * k * amplitude * s;
+    }
+    surface.normal = safe_normalize(float3(-slope.x, -slope.y, 1.0f - slope.z), float3(0.0f, 0.0f, 1.0f));
+    surface.crest = saturate((pinch / OCEAN_STEEPNESS - OCEAN_CREST_FOAM_START) / (1.0f - OCEAN_CREST_FOAM_START));
+    return surface;
+}
+
 struct PixelInput
 {
     float4 position : SV_POSITION;
@@ -232,6 +290,9 @@ PixelInput vs_main(VertexInput input)
     // Last frame's skinned position, from last frame's palette.
     const float4 previous = skinned_position(input, instance.previous_bone_offset);
     float3 grass_tint = float3(1.0f, 1.0f, 1.0f);
+    // Enhanced water's crest pinch (ocean_waves), passed to water_ps in the vertex color's alpha,
+    // which water does not otherwise use.
+    float ocean_crest = 0.0f;
 
     PixelInput output;
     if ((instance.flags & INSTANCE_BACKGROUND) != 0u)
@@ -275,6 +336,18 @@ PixelInput vs_main(VertexInput input)
             // Grass is lit as if facing straight up from its model.
             normal = float3(0.0f, 0.0f, 1.0f);
         }
+        if ((material.flags & MATERIAL_WATER) != 0u && water_parameters.x != 0u)
+        {
+            // Enhanced water's waves (the water grid keeps the depth beneath it in uv1.x). Its motion
+            // vectors are left to the depth reprojection (water is blended).
+            const OceanSurface ocean = ocean_waves(world.xy, input.uv1.x, camera_position_time.w);
+            world.xyz += ocean.offset;
+            previous_world = world;
+            normal = ocean.normal;
+            tangent = safe_normalize(float3(1.0f, 0.0f, 0.0f) - normal * normal.x, float3(1.0f, 0.0f, 0.0f));
+            binormal = cross(normal, tangent);
+            ocean_crest = ocean.crest;
+        }
         output.position = mul(world, view_projection);
         output.world_position = world.xyz;
         output.current_clip = mul(world, unjittered_view_projection);
@@ -299,7 +372,7 @@ PixelInput vs_main(VertexInput input)
         const float facing = dot(safe_normalize(output.normal, float3(0.0f, 0.0f, 1.0f)), camera_forward.xyz);
         vertex_scale = pow(facing, 8.0f) * 2.0f + 0.1f;
     }
-    output.vertex_color = float4(input.color.rgb * grass_tint * vertex_scale, input.color.a);
+    output.vertex_color = float4(input.color.rgb * grass_tint * vertex_scale, (vertex_material.flags & MATERIAL_WATER) != 0u && water_parameters.x != 0u ? ocean_crest : input.color.a);
     output.pick_id = instance.pick_id;
     output.instance_flags = instance.flags;
     output.fade = instance.fade;
@@ -605,8 +678,10 @@ PixelOutput water_ps(PixelInput input)
     const float shallow = saturate(1.0f - below / WATER_FOAM_DEPTH);
     const float rolling = pow(saturate(sin((below / WATER_FOAM_LINE_SPACING + time * WATER_FOAM_LINE_SPEED / WATER_FOAM_LINE_SPACING) * 6.2831853f) * 0.5f + 0.5f), 4.0f);
     const float breakup = saturate((first.x + second.y) * 1.5f + 0.5f);
-    const float foam = bottomless ? 0.0f
-                                  : saturate(shallow * shallow * (WATER_FOAM_FLAT_SHARE + (1.0f - WATER_FOAM_FLAT_SHARE) * steepness) * (0.6f + rolling) * breakup * 1.5f);
+    const float shore_foam = bottomless ? 0.0f
+                                        : saturate(shallow * shallow * (WATER_FOAM_FLAT_SHARE + (1.0f - WATER_FOAM_FLAT_SHARE) * steepness) * (0.6f + rolling) * breakup * 1.5f);
+    // Foam on the waves' crests (ocean_waves' pinch, in the vertex color's alpha), broken up alike.
+    const float foam = max(shore_foam, saturate(input.vertex_color.a * breakup * 1.5f));
     const float3 foam_lit = legacy_lit_color(WATER_FOAM_COLOR, surface_normal, input.world_position, 0.0f, float3(1.0f, 1.0f, 1.0f), float3(0.0f, 0.0f, 0.0f), float3(0.0f, 0.0f, 0.0f),
                                              float3(1.0f, 1.0f, 1.0f), input.position.xy, true);
 
