@@ -213,7 +213,9 @@ rendering rows join item 2).
       wave functions), foam on crests. First slice done 2026-11-16 (a water grid of about 12-unit
       cells, four Gerstner waves fading in with depth, crest foam; the owner judges the look), with
       sliders for tuning in the Graphics panel (2026-11-16; the owner's chosen values become the
-      defaults); next, if TAA ghosts: wave motion in the motion vectors.
+      defaults). Waves run only on ocean maps (2026-11-16, the owner: not on lakes, ponds, and
+      rivers): Kamino and Manaan by name, with an ocean-maps/on/off setting. The owner judges the
+      ocean far from done; the rest waits for Rendering stage 5.
    This closes M2.
 3. Input bindings (Platform and input stage 2).
 4. Simulation stage 1's remainder: combat presentation and fidelity (closes M3 with M2).
@@ -265,7 +267,10 @@ rendering rows join item 2).
    a stale-index bug needs them), and transient targets with memory aliasing once shadows or HDR
    add passes.
 5. The physically based material path, with a documented conversion from the legacy profiles, once
-   legacy mode is stable (also an engine extension for new content).
+   legacy mode is stable (also an engine extension for new content). With it, the ocean's remaining
+   work (the owner, 2026-11-16: "needs a lot of work"): less visible tiling of the water's normal
+   maps (fading their detail with distance), a richer wave spectrum than four Gerstner waves, wave
+   motion in the motion vectors if TAA ghosts, and ocean maps declared in metadata for new content.
 
 ### Simulation
 

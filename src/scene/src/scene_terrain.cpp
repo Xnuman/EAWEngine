@@ -1,4 +1,5 @@
 #include "core/checksum.hpp"
+#include "core/string_utils.hpp"
 #include "formats/dds_texture.hpp"
 #include "render/sky_visibility.hpp"
 #include "scene/scene_builder_internal.hpp"
@@ -205,6 +206,17 @@ void append_terrain(SceneBuilder& builder, const TedMapData& map)
 // a plain color fallback; lava and ice store their color texture first. Tiling (one repeat per
 // 200 world units) and scroll speeds are engine choices; the related TED fields are preserved but
 // not interpreted yet.
+bool ocean_map(const std::string_view map_path)
+{
+    static constexpr std::array<std::string_view, 2> ocean_planets{"KAMINO", "MANAAN"};
+    const auto file_name = map_path.substr(map_path.find_last_of("/\\") + 1);
+    return std::ranges::any_of(ocean_planets,
+                               [&](const std::string_view planet)
+                               {
+                                   return ascii_find_ignoring_case(file_name, planet) != std::string_view::npos;
+                               });
+}
+
 std::optional<std::uint32_t> append_water(SceneBuilder& builder, const TedMapData& map)
 {
     auto& scene = builder.scene;

@@ -272,6 +272,10 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             const auto angle = environment.wind_direction * std::numbers::pi_v<float> / 180.0F;
             asset.lighting->wind = {{std::cos(angle), std::sin(angle), 0.0F}, std::max(environment.wind_speed, 0.0F)};
         }
+        if (asset.lighting)
+        {
+            asset.lighting->ocean = ocean_map(map_path);
+        }
         if (asset.lighting && environment.has_cloud_layer && std::isfinite(environment.cloud_scale) && environment.cloud_scale > 0.0F && std::isfinite(environment.cloud_speed))
         {
             // The clouds drift along the wind's direction (the terrain chunk's 0x10 velocity agrees).

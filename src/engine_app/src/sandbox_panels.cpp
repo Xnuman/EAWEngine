@@ -245,6 +245,15 @@ bool draw_graphics_panel(SandboxPanels& panels, const GraphicsPanelView& view)
         {
             auto& ocean = graphics.ocean;
             ImGui::Indent();
+            auto waves = static_cast<int>(ocean.mode);
+            ImGui::TextUnformatted("Waves");
+            ImGui::SameLine();
+            changed |= ImGui::RadioButton("Ocean maps##waves", &waves, static_cast<int>(eaw::VisualOceanWavesMode::automatic));
+            ImGui::SameLine();
+            changed |= ImGui::RadioButton("On##waves", &waves, static_cast<int>(eaw::VisualOceanWavesMode::on));
+            ImGui::SameLine();
+            changed |= ImGui::RadioButton("Off##waves", &waves, static_cast<int>(eaw::VisualOceanWavesMode::off));
+            ocean.mode = static_cast<eaw::VisualOceanWavesMode>(waves);
             changed |= ImGui::SliderFloat("Wave height", &ocean.height_scale, 0.0F, eaw::VisualOceanWaves::max_height_scale, "%.2f");
             changed |= ImGui::SliderFloat("Wave length", &ocean.length_scale, 0.25F, 3.0F, "%.2f");
             changed |= ImGui::SliderFloat("Wave speed", &ocean.speed_scale, 0.0F, 3.0F, "%.2f");

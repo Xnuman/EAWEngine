@@ -898,8 +898,10 @@ bool D3d12Renderer::Impl::render()
     }
     constants.particle_parameters = {options.graphics.soft_particles ? 1U : 0U, 0U, 0U, 0U};
     const auto& ocean = options.graphics.ocean;
-    constants.ocean_shape = {std::clamp(ocean.height_scale, 0.0F, VisualOceanWaves::max_height_scale), std::max(ocean.length_scale, 0.1F), std::max(ocean.speed_scale, 0.0F),
-                             std::clamp(ocean.steepness, 0.0F, 0.95F)};
+    // No height and no steepness: flat water without crest foam.
+    const bool waves = ocean.mode == VisualOceanWavesMode::on || (ocean.mode == VisualOceanWavesMode::automatic && lighting.ocean);
+    constants.ocean_shape = {waves ? std::clamp(ocean.height_scale, 0.0F, VisualOceanWaves::max_height_scale) : 0.0F, std::max(ocean.length_scale, 0.1F), std::max(ocean.speed_scale, 0.0F),
+                             waves ? std::clamp(ocean.steepness, 0.0F, 0.95F) : 0.0F};
     constants.ocean_shore = {std::max(ocean.calm_depth, 0.0F), std::max(ocean.full_depth, ocean.calm_depth + 0.01F), std::clamp(ocean.crest_foam_start, 0.0F, 0.99F), 0.0F};
     if (options.graphics.sky_visibility && sky_visibility_texture && *sky_visibility_texture < scene_textures.size())
     {

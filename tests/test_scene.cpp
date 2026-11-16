@@ -153,6 +153,14 @@ void test_visual_material_translation()
     std::filesystem::remove_all(root, ignored);
 }
 
+void test_ocean_maps()
+{
+    using eaw::scene_build::ocean_map;
+    require(ocean_map("DATA/ART/MAPS/_LAND_PLANET_KAMINO_01.TED") && ocean_map("Data\\Art\\Maps\\_mp_land_kamino.ted") && ocean_map("_LAND_PLANET_MANAAN_02.TED"),
+            "Kamino and Manaan maps must be oceans");
+    require(!ocean_map("DATA/ART/MAPS/_MP_LAND_DAGOBAH.TED") && !ocean_map("KAMINO/_LAND_PLANET_NABOO_02.TED"), "other maps, whatever their folder, must not");
+}
+
 void test_visual_terrain()
 {
     // The synthetic land TED has a 3x2 grid, two layers, and per-vertex layers {0,0,1,1,0,1}.
@@ -502,6 +510,7 @@ const ModuleRegistrar registrar("scene", {
                                              {"test_visual_material_translation", &test_visual_material_translation},
                                              {"test_visual_material_uv_scroll", &test_visual_material_uv_scroll},
                                              {"test_drawn_model_bounds", &test_drawn_model_bounds},
+                                             {"test_ocean_maps", &test_ocean_maps},
                                              {"test_visual_terrain", &test_visual_terrain},
                                              {"test_intact_hidden_bones", &test_intact_hidden_bones},
                                          });

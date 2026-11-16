@@ -276,6 +276,12 @@ void append_terrain(SceneBuilder& builder, const TedMapData& map);
 // not interpreted yet.
 std::optional<std::uint32_t> append_water(SceneBuilder& builder, const TedMapData& map);
 
+// Whether the map's water is open sea, where enhanced water's waves run (VisualLightRig::ocean): a
+// list of ocean planets matched in the map's file name (Kamino, Manaan; the owner's choice,
+// 2026-11-16: the share of the map under water cannot tell a sea from a swamp or a lake). The
+// Graphics panel's waves setting overrides it; content made for this engine will say so in metadata.
+[[nodiscard]] bool ocean_map(std::string_view map_path);
+
 // Tracks become unlit, alpha-blended ribbons draped over the terrain: the centerline is the
 // control-point polyline (sampled at least every terrain cell), each point's width spans the
 // ribbon, and opacity follows the start/middle/end keys. Texture V repeats once per average

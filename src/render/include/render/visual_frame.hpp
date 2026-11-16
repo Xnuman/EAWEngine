@@ -190,6 +190,8 @@ struct VisualLightRig
     VisualFog fog;
     VisualWind wind;
     VisualCloudShadow clouds;
+    // The map's water is open sea: enhanced water's waves run on it (VisualOceanWaves::mode).
+    bool ocean{};
 };
 
 enum class VisualParticleShape : std::uint8_t

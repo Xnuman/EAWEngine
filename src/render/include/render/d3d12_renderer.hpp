@@ -24,6 +24,14 @@ namespace eaw {
 // where on a crest foam starts (share of the sharpest pinch). Engine choices; the defaults are the
 // owner's, tuned by eye on Kamino (2026-11-16). A full depth at or below the calm depth makes the waves
 // start at full height just past it (the frame constants move it there).
+enum class VisualOceanWavesMode : std::uint8_t
+{
+    // Waves on maps whose water is open sea (VisualLightRig::ocean), calm water elsewhere.
+    automatic,
+    on,
+    off,
+};
+
 struct VisualOceanWaves
 {
     // At most this many times the built-in heights: scene_terrain.cpp's water_wave_reach bounds the
@@ -36,6 +44,7 @@ struct VisualOceanWaves
     float calm_depth{4.0F};
     float full_depth{3.0F};
     float crest_foam_start{0.3F};
+    VisualOceanWavesMode mode{VisualOceanWavesMode::automatic};
 };
 
 // The rendering features that may change from frame to frame (D3d12Renderer::set_graphics_settings).
