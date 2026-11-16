@@ -254,13 +254,16 @@ bool draw_graphics_panel(SandboxPanels& panels, const GraphicsPanelView& view)
             ImGui::SameLine();
             changed |= ImGui::RadioButton("Off##waves", &waves, static_cast<int>(eaw::VisualOceanWavesMode::off));
             ocean.mode = static_cast<eaw::VisualOceanWavesMode>(waves);
+            // The sea state (wind speed and fetch set the waves' length and height; swell gathers the
+            // long ones into parallel trains), then how they are shown.
+            changed |= ImGui::SliderFloat("Wind speed", &ocean.wind_speed, 5.0F, 80.0F, "%.0f");
+            changed |= ImGui::SliderFloat("Fetch", &ocean.fetch, 20000.0F, 4000000.0F, "%.0f", ImGuiSliderFlags_Logarithmic);
+            changed |= ImGui::SliderFloat("Swell", &ocean.swell, 0.0F, 1.0F, "%.2f");
+            changed |= ImGui::SliderFloat("Choppiness", &ocean.choppiness, 0.0F, 2.0F, "%.2f");
             changed |= ImGui::SliderFloat("Wave height", &ocean.height_scale, 0.0F, eaw::VisualOceanWaves::max_height_scale, "%.2f");
-            changed |= ImGui::SliderFloat("Wave length", &ocean.length_scale, 0.25F, 3.0F, "%.2f");
-            changed |= ImGui::SliderFloat("Wave speed", &ocean.speed_scale, 0.0F, 3.0F, "%.2f");
-            changed |= ImGui::SliderFloat("Crest sharpness", &ocean.steepness, 0.0F, 0.95F, "%.2f");
             changed |= ImGui::SliderFloat("Calm below depth", &ocean.calm_depth, 0.0F, 60.0F, "%.0f");
             changed |= ImGui::SliderFloat("Full waves from depth", &ocean.full_depth, 1.0F, 200.0F, "%.0f");
-            changed |= ImGui::SliderFloat("Crest foam from", &ocean.crest_foam_start, 0.0F, 0.99F, "%.2f");
+            changed |= ImGui::SliderFloat("Foam below Jacobian", &ocean.foam_jacobian, -0.5F, 1.0F, "%.2f");
             if (ImGui::Button("Defaults##ocean"))
             {
                 ocean = eaw::VisualOceanWaves{};

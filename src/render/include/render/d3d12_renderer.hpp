@@ -26,24 +26,24 @@ enum class VisualOceanWavesMode : std::uint8_t
     off,
 };
 
-// Enhanced water's ocean waves (sandbox.hlsl, ocean_waves), as the Graphics panel tunes them: scales of
-// the waves' heights, lengths, and speeds against their built-in sets, how sharp their crests are
-// (0 round, toward 1 pinched; below folding), the depths over which they fade in from the shore, and
-// where on a crest foam starts (share of the sharpest pinch). Engine choices; the defaults are the
-// owner's, tuned by eye for ocean maps. A full depth at or below the calm depth makes the waves
-// start at full height just past it (the frame constants move it there).
+// Enhanced water's ocean (the FFT ocean: ocean.hlsl, render/ocean_spectrum.hpp), as the Graphics panel
+// tunes it: the sea state (wind speed, fetch, swell), how far the waves' horizontal motion follows
+// their slopes (choppiness), a scale of their height, the depths over which they fade in from the
+// shore, and the Jacobian below which folding crests foam. Engine choices; the defaults put the peak
+// wavelength near 300 units and the significant height near 7.
 struct VisualOceanWaves
 {
-    // At most this many times the built-in heights: scene_terrain.cpp's water_wave_reach bounds the
-    // mesh for the built-in heights' sum (9.6) times this.
-    static constexpr float max_height_scale = 1.25F;
-    float height_scale{1.25F};
-    float length_scale{2.5F};
-    float speed_scale{2.7F};
-    float steepness{0.7F};
+    // At most this many times the spectrum's heights: scene_terrain.cpp's water_wave_reach bounds the
+    // mesh for them.
+    static constexpr float max_height_scale = 2.0F;
+    float height_scale{1.0F};
+    float wind_speed{32.0F};
+    float fetch{600000.0F};
+    float swell{0.0F};
+    float choppiness{0.8F};
     float calm_depth{0.0F};
     float full_depth{10.0F};
-    float crest_foam_start{0.54F};
+    float foam_jacobian{0.6F};
     VisualOceanWavesMode mode{VisualOceanWavesMode::automatic};
 };
 

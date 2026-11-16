@@ -865,3 +865,8 @@ rewritten to describe the current state; the source document is noted in bracket
   Utapau. On Kamino the lattice is gone; the default sea reads calm from above. The Gerstner sliders
   (length, speed, crest sharpness, crest foam) no longer act until the sea-state setting replaces
   them.
+- The ocean's sea-state setting replaces the Gerstner sliders (step D): wind speed, fetch, swell,
+  choppiness, height scale (now up to 2), calm and full depths, and the foam Jacobian threshold; the
+  Gerstner waves and their constants are gone. The owner's tuned Gerstner values (length 2.5, speed
+  2.7, crest sharpness 0.7, crest foam from 0.54) no longer apply; the calm and full depths (0, 10)
+  carry over. water_wave_reach grew from 12 to 40 units for the FFT's heights.

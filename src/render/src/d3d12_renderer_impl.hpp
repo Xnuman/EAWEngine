@@ -733,7 +733,7 @@ struct D3d12Renderer::Impl
     // uploads the cascades' starting spectra when the sea state changed; records its compute passes at
     // `seconds` of scene time; copies the packed results into the cascades' textures.
     void prepare_ocean(const OceanSeaState& state);
-    void record_ocean(float seconds, float gravity);
+    void record_ocean(float seconds, float gravity, float choppiness);
     void copy_ocean();
 
     ComPtr<ID3D12Resource> upload_buffer(UploadBatch& upload, const std::span<const std::byte> bytes, const D3D12_RESOURCE_STATES final_state, const std::wstring_view name);

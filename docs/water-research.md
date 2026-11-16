@@ -133,27 +133,24 @@ choices.
 - The water grid. Water is drawn as a grid of cells of about 12 units, at most 512 a side
   (`water_cell_size`, `water_max_cells` in `scene_terrain.cpp`), whose vertices keep the depth
   beneath them (level less ground height, in the second texture coordinates' x). Lava and ice stay
-  one quad. The mesh's bounds grow by `water_wave_reach` (12 units: the waves' summed amplitudes,
-  9.6, at the largest height scale, 1.25).
-- Gerstner waves. The vertex shader moves the grid by four Gerstner waves around the map's wind
-  (`ocean_waves` in `sandbox.hlsl`): wavelengths 170, 97, 61, and 37 units, amplitudes 4.5, 2.6,
-  1.6, and 0.9, deep-water speeds (growing with the root of the wavelength) under a gravity of 30
-  units per second squared; the crests' sharpness is bounded below folding for every slider
-  setting. The surface normal follows the waves.
+  one quad. The mesh's bounds grow by `water_wave_reach` (40 units: the default sea's significant
+  height near 7, twice that at the largest height scale, with room for higher crests).
+- The waves are the FFT ocean's ("The ocean plan" below): its two long cascades move the grid and
+  bend its normal (`ocean_fft` in `sandbox.hlsl`).
 - The flat plane survives. The waves fade in from none at the calm depth to full at the full depth,
   so shores, shore foam, and units in the shallows see the flat plane, which the simulation keeps
   too. A shelf in the sea floor can show as a sharp line between calm water and waves.
-- Crest foam. Where a crest pinches the surface past a share of the sharpest pinch, foam shows. It
-  gathers in procedural patches drifting with the wind (`ocean_crest_foam`): a broad value noise of
+- Crest foam. Where the long cascades' Jacobian falls below a threshold (a folding crest), foam
+  shows. It gathers in procedural patches drifting with the wind (`ocean_crest_foam`): a broad value noise of
   about 420-unit cells (drifting 6 units per second) decides where crests may foam, and a fine one
   of about 7-unit cells breaks the foam up, both in world space, so no lattice repeats (foam
   breakup sampled from the tiling normal map showed one).
-- Sliders. With enhanced water the Graphics panel tunes the waves (`VisualOceanWaves` in
-  `d3d12_renderer.hpp`): height scale (at most 1.25), length and speed scales, crest sharpness, the
-  calm and full depths, where crest foam starts, and Defaults. The defaults are the owner's, tuned
-  by eye for ocean maps: height 1.25 (the most the mesh bounds allow), length 2.5, speed 2.7, crest
-  sharpness 0.7, calm below 0, full from 10, crest foam from 0.54. A full depth at or below the calm depth makes the waves start at
-  full height just past the calm depth.
+- Sliders. With enhanced water the Graphics panel tunes the ocean (`VisualOceanWaves` in
+  `d3d12_renderer.hpp`): the sea state (wind speed 32 units a second, fetch 600,000 units, swell 0),
+  choppiness (0.8), a height scale (1, at most 2), the calm and full depths (0 and 10, the owner's
+  earlier tuning), the Jacobian below which crests foam (0.6), and Defaults; a new sea state uploads
+  new starting spectra. A full depth at or below the calm depth makes the waves start at full height
+  just past the calm depth.
 - Only on ocean maps. Waves run only where the water is open sea, not on lakes, ponds, and rivers
   (the owner's decision). `ocean_map` (`scene_terrain.cpp`, the one place) names the ocean planets
   matched in the map's file name, Kamino and Manaan as the owner chose, and sets
@@ -217,7 +214,7 @@ engine's would mark water kinds by brush.
    stage 2; alone it left the normal maps' broad layer's own pattern showing, so on open sea the
    cascades now make the normal instead of the normal maps.
 2. Three FFT cascades replace the four Gerstner waves on ocean maps (status.md, "Ocean waves"):
-   done, but for the sea-state setting that replaces the wave sliders (step D). First result on
+   done, with the sea-state setting in the Graphics panel. First result on
    Kamino: no repeat or lattice anywhere, soft irregular swells, faint foam where crests fold; at the
    default sea state (peak wavelength about 300, significant height about 7) the slopes are gentle
    and the surface reads calm from above.

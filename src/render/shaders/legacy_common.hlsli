@@ -105,8 +105,8 @@ cbuffer FrameConstants : register(b0)
     float4 heat_parameters; // x the projection's vertical scale, y width over height, z the height in pixels
     uint4 heat_slots;       // x the signed heat buffer's slot, y TAA weighs heat (1)
     uint4 particle_parameters; // x soft particles on
-    float4 ocean_shape; // enhanced water's waves: x height scale, y length scale, z speed scale, w steepness
-    float4 ocean_shore; // x depth below which they are calm, y depth from which they are full, z crest foam start, w open sea (1)
+    float4 ocean_shape; // enhanced water's waves: x height scale, y the Jacobian below which crests foam
+    float4 ocean_shore; // x depth below which they are calm, y depth from which they are full, w open sea (1)
     float4 distance_fade; // x the distance it starts at, y one over its length
     float4 ocean_cascades; // the FFT ocean's cascades: xyz their patch sizes, w on (1)
     uint4 ocean_displacement_slots; // xyz each cascade's displacement texture (x, y, height)

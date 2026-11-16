@@ -90,7 +90,7 @@ void D3d12Renderer::Impl::prepare_ocean(const OceanSeaState& state)
     ocean_sea_state = state;
 }
 
-void D3d12Renderer::Impl::record_ocean(const float seconds, const float gravity)
+void D3d12Renderer::Impl::record_ocean(const float seconds, const float gravity, const float choppiness)
 {
     struct OceanConstants
     {
@@ -100,7 +100,7 @@ void D3d12Renderer::Impl::record_ocean(const float seconds, const float gravity)
         std::uint32_t cascade_count{};
         std::array<float, 4> patch_sizes{};
     };
-    OceanConstants constants{seconds, gravity, ocean_choppiness, static_cast<std::uint32_t>(ocean_cascades.size()), {}};
+    OceanConstants constants{seconds, gravity, choppiness, static_cast<std::uint32_t>(ocean_cascades.size()), {}};
     for (std::size_t cascade = 0; cascade < ocean_cascades.size(); ++cascade)
     {
         constants.patch_sizes[cascade] = ocean_cascades[cascade].patch_size;

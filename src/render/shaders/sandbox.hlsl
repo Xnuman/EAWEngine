@@ -77,38 +77,24 @@ float3 grass_position(const float3 position, const float2 clump_center, const fl
     return world;
 }
 
-// Ocean waves (the roadmap's item h, enhanced water only; docs/water-research.md): the water grid's
-// vertices move by a sum of Gerstner waves around the map's wind, the shortest spanning a few grid
-// cells. Their height fades from none at the calm depth of water to full at the full depth
-// (ocean_shore), so shores, foam, and units in the shallows see the flat plane the simulation keeps.
-// Speeds follow deep water's dispersion (the speed of a wave grows with the root of its length) under
-// OCEAN_GRAVITY in world units. The steepness bounds the crests' sharpness below folding (each wave's
-// share, Q = steepness / (k A count), keeps their sum under 1). The built-in sets below are scaled by
-// the Graphics panel's sliders (ocean_shape; VisualOceanWaves); all values are engine choices, tuned
-// by eye; the amplitudes' sum at the largest height scale stays within scene_terrain.cpp's
-// water_wave_reach (the mesh's bounds).
-static const uint OCEAN_WAVE_COUNT = 4u;
-static const float OCEAN_WAVELENGTHS[4] = {170.0f, 97.0f, 61.0f, 37.0f};
-static const float OCEAN_AMPLITUDES[4] = {4.5f, 2.6f, 1.6f, 0.9f};
-static const float OCEAN_ANGLES[4] = {0.0f, 0.45f, -0.6f, 1.1f}; // each wave's direction off the wind (radians)
-static const float OCEAN_GRAVITY = 30.0f;
-static const float2 OCEAN_CALM_WIND = float2(0.8f, 0.6f); // the waves' heading on maps without wind
-
+// Ocean waves (enhanced water on open sea; docs/water-research.md, "The ocean plan"): the water grid's
+// vertices keep the depth beneath them; the waves fade from none at the calm depth to full at the full
+// depth (ocean_shore), so shores, foam, and units in the shallows see the flat plane the simulation
+// keeps.
 struct OceanSurface
 {
     float3 offset;
     float3 normal;
-    // How sharply the surface is pinched into a crest here (0 flat, 1 at the steepness bound).
+    // How much a folding crest foams here (0 none, 1 fully; from the cascades' Jacobian).
     float crest;
 };
 
 // The FFT ocean (ocean.hlsl, ocean_cascades.w on): the long cascades (OCEAN_DISPLACED_CASCADES, the
 // ones whose waves the 12-unit grid can carry) move the vertex and bend its normal; their Jacobian
-// below OCEAN_FOAM_JACOBIAN marks folding crests for foam. Faded in by depth and scaled by the height
-// slider like the Gerstner waves (ocean_shore, ocean_shape.x). Engine choices.
+// below the settings' threshold (ocean_shape.y) marks folding crests for foam. Faded in by depth and scaled by the height
+// slider (ocean_shore, ocean_shape.x). Engine choices.
 static const uint OCEAN_DISPLACED_CASCADES = 2u;
-static const float OCEAN_FOAM_JACOBIAN = 0.6f;       // folding starts below this
-static const float OCEAN_FOAM_JACOBIAN_RANGE = 0.5f; // and foams fully this far below it
+static const float OCEAN_FOAM_JACOBIAN_RANGE = 0.5f; // foams fully this far below the threshold (ocean_shape.y)
 
 OceanSurface ocean_fft(const float2 position, const float depth)
 {
@@ -127,38 +113,7 @@ OceanSurface ocean_fft(const float2 position, const float depth)
     OceanSurface surface;
     surface.offset = offset * scale;
     surface.normal = normalize(float3(-slope * scale, 1.0f));
-    surface.crest = saturate((OCEAN_FOAM_JACOBIAN - jacobian) / OCEAN_FOAM_JACOBIAN_RANGE) * saturate(scale);
-    return surface;
-}
-
-OceanSurface ocean_waves(const float2 position, const float depth, const float time)
-{
-    const float2 wind = dot(grass_wind.xy, grass_wind.xy) > 1.0e-6f ? normalize(grass_wind.xy) : OCEAN_CALM_WIND;
-    const float scale = smoothstep(ocean_shore.x, ocean_shore.y, depth) * ocean_shape.x;
-    const float steepness_bound = ocean_shape.w;
-    OceanSurface surface;
-    surface.offset = float3(0.0f, 0.0f, 0.0f);
-    float3 slope = float3(0.0f, 0.0f, 0.0f);
-    float pinch = 0.0f;
-    [unroll]
-    for (uint wave = 0u; wave < OCEAN_WAVE_COUNT; ++wave)
-    {
-        const float angle = OCEAN_ANGLES[wave];
-        const float2 direction = float2(wind.x * cos(angle) - wind.y * sin(angle), wind.x * sin(angle) + wind.y * cos(angle));
-        const float k = 6.2831853f / (OCEAN_WAVELENGTHS[wave] * ocean_shape.y);
-        const float omega = sqrt(OCEAN_GRAVITY * k) * ocean_shape.z;
-        const float amplitude = OCEAN_AMPLITUDES[wave] * scale;
-        // Bounded for the largest height the sliders allow, so no setting folds a crest.
-        const float steepness = steepness_bound / (k * OCEAN_AMPLITUDES[wave] * max(ocean_shape.x, 1.0e-3f) * OCEAN_WAVE_COUNT);
-        const float phase = k * dot(direction, position) - omega * time + 1.7f * wave;
-        const float c = cos(phase);
-        const float s = sin(phase);
-        surface.offset += float3(steepness * amplitude * direction * c, amplitude * s);
-        slope += float3(direction * k * amplitude * c, steepness * k * amplitude * s);
-        pinch += steepness * k * amplitude * s;
-    }
-    surface.normal = safe_normalize(float3(-slope.x, -slope.y, 1.0f - slope.z), float3(0.0f, 0.0f, 1.0f));
-    surface.crest = steepness_bound > 0.0f ? saturate((pinch / steepness_bound - ocean_shore.z) / (1.0f - ocean_shore.z)) : 0.0f;
+    surface.crest = saturate((ocean_shape.y - jacobian) / OCEAN_FOAM_JACOBIAN_RANGE) * saturate(scale);
     return surface;
 }
 
@@ -317,7 +272,7 @@ PixelInput vs_main(VertexInput input)
     // Last frame's skinned position, from last frame's palette.
     const float4 previous = skinned_position(input, instance.previous_bone_offset);
     float3 grass_tint = float3(1.0f, 1.0f, 1.0f);
-    // Enhanced water's crest pinch (ocean_waves), passed to water_ps in the vertex color's alpha,
+    // Enhanced water's crest foam (ocean_fft), passed to water_ps in the vertex color's alpha,
     // which water does not otherwise use.
     float ocean_crest = 0.0f;
 
@@ -367,15 +322,7 @@ PixelInput vs_main(VertexInput input)
         {
             // Enhanced water's waves (the water grid keeps the depth beneath it in uv1.x). Its motion
             // vectors are left to the depth reprojection (water is blended).
-            OceanSurface ocean;
-            if (ocean_cascades.w != 0.0f)
-            {
-                ocean = ocean_fft(world.xy, input.uv1.x);
-            }
-            else
-            {
-                ocean = ocean_waves(world.xy, input.uv1.x, camera_position_time.w);
-            }
+            const OceanSurface ocean = ocean_fft(world.xy, input.uv1.x);
             world.xyz += ocean.offset;
             previous_world = world;
             normal = ocean.normal;
@@ -824,7 +771,7 @@ PixelOutput water_ps(PixelInput input)
     const float breakup = saturate((first.x + second.y) * 1.5f + 0.5f);
     const float shore_foam = bottomless ? 0.0f
                                         : saturate(shallow * shallow * (WATER_FOAM_FLAT_SHARE + (1.0f - WATER_FOAM_FLAT_SHARE) * steepness) * (0.6f + rolling) * breakup * 1.5f);
-    // Foam on the waves' crests (ocean_waves' pinch, in the vertex color's alpha), in drifting
+    // Foam on the waves' folding crests (ocean_fft, in the vertex color's alpha), in drifting
     // patches and broken up by procedural noise (ocean_crest_foam).
     const float foam = max(shore_foam, ocean_crest_foam(input.world_position.xy, input.vertex_color.a, time));
     const float3 foam_lit = legacy_lit_color(WATER_FOAM_COLOR, surface_normal, input.world_position, 0.0f, float3(1.0f, 1.0f, 1.0f), float3(0.0f, 0.0f, 0.0f), float3(0.0f, 0.0f, 0.0f),

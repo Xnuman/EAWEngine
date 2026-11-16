@@ -127,8 +127,8 @@ honor are worked through tag by tag from [xml-tag-status.md](xml-tag-status.md) 
       behind it (separation's broad phase sized by the largest unit, 63 candidates a query against
       8 with infantry only; about 13 overlaps a unit; the opening tick's 5,062 target searches,
       38-47 ms with 3,300 entities) are in its section 1.
-   h. Enhanced water as an ocean on ocean maps (Kamino, Manaan): the first slice is done (Gerstner
-      waves, crest foam, tuning sliders, an ocean-maps/on/off setting; status.md). The owner judges
+   h. Enhanced water as an ocean on ocean maps (Kamino, Manaan): an FFT ocean with sea-state
+      sliders and an ocean-maps/on/off setting (status.md). The owner judges
       the ocean far from done; in progress: the five stages of water-research.md, "The ocean plan"
       (fading normal detail, FFT cascades, persistent foam, baked depth, the rest), on ocean maps
       only (the owner).

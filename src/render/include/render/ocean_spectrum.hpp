@@ -51,9 +51,6 @@ struct OceanCascadeBand
 // cells: wavelengths of four cells or more); the rest bend only the normals. Engine choices.
 inline constexpr std::array<OceanCascadeBand, 3> ocean_cascades{{{1000.0F, 200.0F, 1000.0F}, {263.0F, 50.0F, 200.0F}, {67.0F, 4.0F, 50.0F}}};
 inline constexpr std::size_t ocean_displaced_cascades = 2;
-// How far the waves' horizontal motion follows their slopes (Tessendorf's choppiness); an engine
-// choice.
-inline constexpr float ocean_choppiness = 0.8F;
 
 // One cell of a cascade's starting spectrum: the complex amplitude h0(k) and the conjugate of
 // h0(-k), so the GPU's time evolution h0(k) e^(i w t) + conj(h0(-k)) e^(-i w t) gives a real height.

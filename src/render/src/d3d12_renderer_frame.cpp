@@ -900,15 +900,17 @@ bool D3d12Renderer::Impl::render()
     }
     constants.particle_parameters = {options.graphics.soft_particles ? 1U : 0U, 0U, 0U, 0U};
     const auto& ocean = options.graphics.ocean;
-    // No height and no steepness: flat water without crest foam.
+    // No height: flat water without crest foam.
     const bool waves = ocean.mode == VisualOceanWavesMode::on || (ocean.mode == VisualOceanWavesMode::automatic && lighting.ocean);
-    constants.ocean_shape = {waves ? std::clamp(ocean.height_scale, 0.0F, VisualOceanWaves::max_height_scale) : 0.0F, std::max(ocean.length_scale, 0.1F), std::max(ocean.speed_scale, 0.0F),
-                             waves ? std::clamp(ocean.steepness, 0.0F, 0.95F) : 0.0F};
+    constants.ocean_shape = {waves ? std::clamp(ocean.height_scale, 0.0F, VisualOceanWaves::max_height_scale) : 0.0F, std::clamp(ocean.foam_jacobian, -1.0F, 1.0F), 0.0F, 0.0F};
     // The FFT ocean runs where the waves do, with enhanced water; the wind sets its sea's direction.
     ocean_this_frame = waves && scene_loaded && options.graphics.water == VisualWaterMode::enhanced;
     if (ocean_this_frame)
     {
         OceanSeaState sea;
+        sea.wind_speed = std::clamp(ocean.wind_speed, 1.0F, 200.0F);
+        sea.fetch = std::clamp(ocean.fetch, 1000.0F, 10000000.0F);
+        sea.swell = std::clamp(ocean.swell, 0.0F, 1.0F);
         sea.wind_angle = std::atan2(lighting.wind.direction.y, lighting.wind.direction.x);
         if (!std::isfinite(sea.wind_angle))
         {
@@ -925,7 +927,7 @@ bool D3d12Renderer::Impl::render()
     }
     const auto fade_start = std::max(options.graphics.distance_fade_start, 0.0F);
     constants.distance_fade = {fade_start, 1.0F / std::max(options.graphics.distance_fade_end - fade_start, 1.0F), 0.0F, 0.0F};
-    constants.ocean_shore = {std::max(ocean.calm_depth, 0.0F), std::max(ocean.full_depth, ocean.calm_depth + 0.01F), std::clamp(ocean.crest_foam_start, 0.0F, 0.99F), waves ? 1.0F : 0.0F};
+    constants.ocean_shore = {std::max(ocean.calm_depth, 0.0F), std::max(ocean.full_depth, ocean.calm_depth + 0.01F), 0.0F, waves ? 1.0F : 0.0F};
     if (options.graphics.sky_visibility && sky_visibility_texture && *sky_visibility_texture < scene_textures.size())
     {
         constants.sky_visibility_map = sky_visibility_map;
@@ -1220,7 +1222,7 @@ bool D3d12Renderer::Impl::render()
         frame_graph.add_pass("ocean waves", {{spectrum, GraphAccess::compute_read}, {fields, GraphAccess::unordered_access}, {packed, GraphAccess::unordered_access}},
                              [&]
                              {
-                                 record_ocean(scene_time, OceanSeaState{}.gravity);
+                                 record_ocean(scene_time, OceanSeaState{}.gravity, std::clamp(options.graphics.ocean.choppiness, 0.0F, 2.0F));
                              });
         std::vector<FrameGraph::Use> copy_uses{{packed, GraphAccess::copy_source}};
         std::vector<std::uint32_t> ocean_graph_textures;

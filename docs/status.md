@@ -397,12 +397,12 @@ improvements, off or optional unless stated; legacy is the default.
   scene texture table and the anisotropic sampler are visible to vertex shaders for it, and the frame
   graph has an `all_shader_read` access. Faded in from the calm depth to
   the full depth so shores and units in the shallows keep the flat plane, which the simulation keeps
-  too; the normal follows the waves, and pinched crests foam in patches (a broad two-octave value
-  noise of about 420-unit cells drifting with the wind decides where, a fine one of about 7-unit
-  cells breaks it up, procedural in world space, so nothing repeats). The Graphics panel tunes the
-  waves (`VisualOceanWaves`: height at most 1.25 times, length, speed, crest sharpness, calm and full
-  depths, crest-foam start, Defaults); the defaults are the owner's tuning for ocean maps (height 1.25, the
-  most, length 2.5, speed 2.7, crest sharpness 0.7, calm below 0, full from 10, crest foam from 0.54).
+  too; folding crests foam in patches (a broad two-octave value noise of about 420-unit cells
+  drifting with the wind decides where, a fine one of about 7-unit cells breaks it up, procedural in
+  world space). The Graphics panel tunes the ocean (`VisualOceanWaves`): the sea state (wind speed,
+  fetch, swell; a change uploads new spectra), choppiness, a height scale (at most 2), the calm and
+  full depths (0 and 10 by default, the owner's tuning), the Jacobian below which crests foam, and
+  Defaults. The mesh's bounds allow 40 units of wave height (`water_wave_reach`).
   Waves run only on open sea (the owner's choice): `ocean_map` names the ocean planets by the map's
   file name, Kamino and Manaan, and sets `VisualLightRig::ocean`; the panel's setting is ocean maps
   (default), on, or off. A corpus survey showed why a measure cannot decide it: the share under water
