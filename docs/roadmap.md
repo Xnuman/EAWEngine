@@ -162,7 +162,8 @@ honor are worked through tag by tag from [xml-tag-status.md](xml-tag-status.md) 
    backdrops, markers, blended parts, and particles do not cast. Open:
    - shadows: per-cascade culling, cached distant cascades, blob shadows at low detail, PCSS as an
      enhanced option;
-   - decals: the one stock map with placed decals (no texture link established yet); screen-space
+   - decals: the placed decals of `UM11_RAIDERS_OF_THE_LOST_HOLOCRON.TED` (a type index, no texture;
+     needs a screenshot of the original); screen-space
      decals if the renderer becomes deferred;
    - water: the TED water fields 0x17-0x22 (the owner will read their labels and Mon Calamari 02's
      values in the map editor); live tuning of the enhanced water's constants (clarity, shore fade,

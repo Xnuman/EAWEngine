@@ -898,3 +898,6 @@ rewritten to describe the current state; the source document is noted in bracket
 - MeshAdditiveReflection closed as inferred: its 3 uses are the Bespin refinery's lens panes, with
   only a Color and no texture, and the shader has no source; they already draw additive with that
   color, and a reflection would rest on the shader's name alone.
+- Placed map decals surveyed: the one stock map is UM11_RAIDERS_OF_THE_LOST_HOLOCRON.TED; its 65
+  decals carry a position, a size, and a small type index (3 on 64, 6 on one) but no texture, so
+  they stay undrawn until a screenshot of the original shows what they are.

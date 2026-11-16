@@ -363,8 +363,13 @@ stock track has one width per point), and 0x103 the texture. Chunk 0x105 holds t
 0x04 and 0x05 are small values on wave tracks, read as texture scroll per second. The rest (0x00 is
 10 on every track, 0x0d ranges 0-181, two flags) is preserved raw.
 
-Map-placed decals (terrain child 6) occur in one stock map: 65 entries with a position, a 15x15
-size, and small integers, but no texture name, so they are not drawn. Decals made by units and
+Map-placed decals (terrain child 6) occur in one stock map, `UM11_RAIDERS_OF_THE_LOST_HOLOCRON.TED`:
+65 chunks 0x10 of mini-chunks with no texture name, so they are not drawn. Mini 0x03 is the position
+(world X, Y, Z = 0) and 0x05 the size (15 x 15 on 64, 19 x 19 on one). Mini 0x02 is 3 on 64 and 6 on
+the larger one: read as an index into a decal-type table the data does not carry, which links it
+to no texture. The rest is constant on all 65 (0x00 = 0, 0x01 = 1, 0x04 = 0, 0x06 = 1.0, 0x07 = 0,
+0x08 = 1, 0x0a = 0, 0x0b = 1). A screenshot of the mission in the original would show what they
+are. Decals made by units and
 explosions are in [Terrain decals and dynamic tracks](#terrain-decals-and-dynamic-tracks).
 
 ### Passability
