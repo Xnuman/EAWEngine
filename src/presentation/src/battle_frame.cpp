@@ -17,6 +17,7 @@ void present_tick(const BattleRuntime& runtime, BattlePresenters& presenters, co
             (void)presenters.audio->play_event(request.event, request.position);
         }
     }
+    presenters.presentation.start_spins(world.snapshot().spins, world_seconds);
     for (const auto& death : world.snapshot().deaths)
     {
         if (const auto corpse = presenters.presentation.corpse_instance(death); corpse && presenters.animator != nullptr)

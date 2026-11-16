@@ -51,6 +51,9 @@ inline constexpr double shield_flash_step = 0.1;
 // Below this share of its health a type with Damaged_Smoke_Asset_Name trails its smoke (an engine
 // choice: the tag says only "when damaged").
 inline constexpr float damaged_smoke_fraction = 0.5F;
+// How fast a craft spinning away rolls (radians a second: one and a half turns), the direction by
+// its entity id (an engine choice: the tag gives only the chance and the time).
+inline constexpr float spin_roll_rate = 9.42477796F;
 
 class ScenePresentation final
 {
@@ -78,6 +81,8 @@ public:
     // Not called for ordinary hits (they show the projectile's Projectile_Absorbed_By_Shields_Particle):
     // kept for the shield abilities (SHIELD_FLARE, MISSILE_SHIELD, DEFEND), not implemented yet.
     void flash_shields(std::span<const ImpactSnapshot> impacts, double seconds);
+    // Crafts spinning away (SimSnapshot::spins) roll from `seconds` on (spin_roll_rate) until they die.
+    void start_spins(std::span<const SpinSnapshot> spins, double seconds);
 
     // Meshes added to the renderer's mesh library at runtime (D3d12Renderer::add_meshes), in order,
     // and spawnable types added to the battle (Battle::add_spawnable), in the same order as there.
@@ -131,6 +136,8 @@ private:
         std::shared_ptr<const ParticleEffect> damaged_smoke;
     };
     std::vector<VisualInstance> backgrounds_;
+    // Entity key -> presentation time its spin began (start_spins).
+    std::unordered_map<std::uint64_t, double> spins_;
     // Entity key -> presentation time of its last shield hit (flash_shields).
     std::unordered_map<std::uint64_t, double> shield_hits_;
     // The map's own surfaces that no entity or decoration draws (the water plane, terrain tracks),

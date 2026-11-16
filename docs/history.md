@@ -836,3 +836,5 @@ rewritten to describe the current state; the source document is noted in bracket
   Damage_Crush (both done), the stock death-clone damage kinds come from abilities: Damage_Infection
   from IG-88's infection ability (Infection_Projectile), Damage_Remote_Bomb from no weapon (the
   remote bomb deals Damage_Bomb), Force lightning and telekinesis, and Veers' deployed state.
+- Spinning away is drawn: a craft that spins away rolls at one and a half turns a second (an engine
+  choice) until it dies; before, it flew on unrolled. Presentation only.

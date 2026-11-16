@@ -26,8 +26,8 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 190 |
-| `partial` | 26 |
+| `done` | 191 |
+| `partial` | 25 |
 | `gap` | 176 |
 | `needs` | 705 |
 | `n/a` | 20 |
@@ -231,7 +231,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Health, shields, armor, weapons, targeting, turrets, and death
 
-56 done, 3 partial, 41 gap, 35 needs.
+57 done, 2 partial, 41 gap, 35 needs.
 
 ### Health, shields, armor, and energy
 
@@ -393,7 +393,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Death_Leave_Hulk_Behind` | `gap` |  |
 | `Death_Projectiles` | `done` | the projectile's blast where it dies, with its detonation particle and sound |
 | `Retreat_Self_Destruct_Explosion` | `needs retreat` |  |
-| `Spin_Away_On_Death` | `partial` | delayed death out of control; the spin is not drawn |
+| `Spin_Away_On_Death` | `done` | delayed death out of control, drawn rolling (rate an engine choice) |
 | `Spin_Away_On_Death_Chance` | `done` |  |
 | `Spin_Away_On_Death_Time` | `done` |  |
 | `Spin_Away_On_Death_Explosion` | `done` |  |

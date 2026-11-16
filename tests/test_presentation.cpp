@@ -189,6 +189,16 @@ void test_scene_presentation()
         shown[0].health = 40.0F;
         smoky.build(shown, {}, instances, ids, nullptr, 0.0, &smoke);
         require(smoke.size() == 1 && smoke[0].key == instances.back().key && smoke[0].effect == smoky_look.damaged_smoke, "a badly damaged unit must trail its smoke");
+        // Spinning away: the craft rolls from its spin's start, faster with time, until it dies.
+        smoky.build(shown, {}, instances, ids, nullptr, 1.0);
+        const auto still = instances.back().transform;
+        smoky.start_spins(std::array<eaw::SpinSnapshot, 1>{{{shown[0].id, {}}}}, 1.0);
+        smoky.build(shown, {}, instances, ids, nullptr, 1.0);
+        const auto started = instances.back().transform;
+        smoky.build(shown, {}, instances, ids, nullptr, 1.1);
+        const auto rolled = instances.back().transform;
+        require(started == still && !(rolled == still), "a spin must roll the craft from its start on");
+        (void)smoky.corpse_instance(death);
     }
 }
 

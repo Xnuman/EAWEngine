@@ -161,7 +161,13 @@ void ScenePresentation::build(const std::span<const EntitySnapshot> snapshot, co
             continue;
         }
         auto instance = found->instance;
-        instance.transform = pose_transform(instance.transform, found->base_heading, entity.position, entity.heading, entity.pitch, flight_bank(entity.yaw_rate, found->bank_limit) + entity.roll);
+        auto roll = flight_bank(entity.yaw_rate, found->bank_limit) + entity.roll;
+        if (const auto spin = spins_.find(entity_key(entity.id)); spin != spins_.end())
+        {
+            const auto direction = (entity.id.index & 1U) != 0U ? -1.0F : 1.0F;
+            roll += direction * spin_roll_rate * static_cast<float>(std::max(0.0, seconds - spin->second));
+        }
+        instance.transform = pose_transform(instance.transform, found->base_heading, entity.position, entity.heading, entity.pitch, roll);
         // A squad member shows its team's selection (the team has no model of its own).
         instance.highlighted = selected.contains(entity_key(entity.id)) || (entity.squad.valid() && selected.contains(entity_key(entity.squad)));
         instance.key = entity_key(entity.id);
@@ -212,6 +218,14 @@ void ScenePresentation::build(const std::span<const EntitySnapshot> snapshot, co
         {
             animations_out->emplace_back();
         }
+    }
+}
+
+void ScenePresentation::start_spins(const std::span<const SpinSnapshot> spins, const double seconds)
+{
+    for (const auto& spin : spins)
+    {
+        spins_.try_emplace(entity_key(spin.id), seconds);
     }
 }
 
@@ -293,6 +307,7 @@ std::optional<ScenePresentation::HardpointBones> ScenePresentation::hardpoint_bo
 
 std::optional<ScenePresentation::Corpse> ScenePresentation::corpse_instance(const DeathSnapshot& death)
 {
+    spins_.erase(entity_key(death.id));
     const auto* found = template_of(death.id, death.visual);
     const auto placed = templates_.find(entity_key(death.id));
     if (found == nullptr)

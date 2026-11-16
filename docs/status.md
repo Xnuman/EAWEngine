@@ -1101,8 +1101,9 @@ cohesion stall (to be reworked with group movement).
 - **Spinning away**: a type with `Spin_Away_On_Death` (22: fighters, corvettes) spins away with its
   `_Chance` (0.2 or 0.4, on the combat stream) instead of dying: it loses its orders and target, stops
   firing, takes no further damage, and dies after `_Time` (1 or 2 s), playing
-  `Spin_Away_On_Death_Explosion` instead of its death effect. Not yet: the spin itself (the craft flies
-  on, unrolled).
+  `Spin_Away_On_Death_Explosion` instead of its death effect. Presentation rolls it from the spin's
+  start (`ScenePresentation::start_spins`) at one and a half turns a second, the direction by its
+  entity id (`spin_roll_rate`, an engine choice), while it flies on out of control.
 - **Survivors**: an object with `Destruction_Survivors` ("type, weight" lines: prisons, barracks,
   skiffs) leaves those units where it died, owned as it was: `Battle::step` orders the spawn for the
   next tick as a script order (replays reproduce it unrecorded). Every stock weight is 1.0, so each
