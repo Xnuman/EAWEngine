@@ -72,6 +72,7 @@ Every library and executable has its own directory and `CMakeLists.txt`.
 | `src/benchmarks` | `EAWBenchmarks` | Workloads timed serially and on the job system, with outputs checked against the serial run ([docs/tools.md](docs/tools.md#benchmarks)). |
 | `tests` | `EAWEngineTests` | Decoder, VFS, compatibility, and runtime-contract tests, one module per `test_<module>.cpp` (listed in `EAW_TEST_MODULES`, one ctest entry each); `EAWEngineTests <module or test>...` runs a subset. |
 | `third_party/imgui` | `eaw_imgui` | Pinned Dear ImGui. |
+| `third_party/tracy` | `eaw_tracy` | Tracy 0.14.1 (BSD-3-Clause), pinned by archive hash, the profiler's client: fetched and built only with `EAW_PROFILE` (`build.ps1 -Profile`), used only through `core/profile.hpp`. |
 | `third_party/lua` | `eaw_lua` | Lua 5.0.3 (MIT), pinned by archive hash, built as C with only base, string, table, and math, and with the sandbox's memory cap and pattern-matching step limit (`eaw_lua_config.h`, a checked configure-time copy of `lstrlib.c`). |
 | `docs` | | Architecture, status, roadmap, evidence, tools. |
 | `scripts` | | PowerShell scripts for repeated checks (`check-battle.ps1`, `check-captures.ps1`, `benchmark.ps1`, `benchmark-battle.ps1`, `compare-path-audit.ps1`); `build.ps1` stays at the root. |
@@ -175,7 +176,7 @@ These are correctness rules, not optional optimizations.
 - Follow neighboring files: descriptive names, small cohesive types, early validation, explicit ownership, comments that explain invariants or evidence rather than restating code.
 - One subject per file. When a file grows past one responsibility, split it along the system boundaries it serves, not by line count.
 - Prefer standard-library and Win32/D3D12 primitives already in use. Add a dependency only when it removes substantial risk or work, and pin it.
-- No singletons or global mutable state, no renderer access from core decoders, no format parsing in presentation code. The exceptions are process-wide services, each set up once and named here: the log and its sinks (`core/log`), the fatal-error lock (`core/fatal_error`), the crash handlers' settings (`platform/crash_handler`), and the texture identity counter that keeps decoded textures distinct across scene builds (`scene_materials`). A new one is added to this list, never introduced silently.
+- No singletons or global mutable state, no renderer access from core decoders, no format parsing in presentation code. The exceptions are process-wide services, each set up once and named here: the log and its sinks (`core/log`), the fatal-error lock (`core/fatal_error`), the crash handlers' settings (`platform/crash_handler`), the Tracy profiler client in profiling builds (`core/profile.hpp`), and the texture identity counter that keeps decoded textures distinct across scene builds (`scene_materials`). A new one is added to this list, never introduced silently.
 - Strong enums and types where confusion is plausible; checked conversions at binary-format and API boundaries.
 - Keep public interfaces narrow and const-correct; prefer immutable decoded assets and explicit builders or translators for runtime data. Unknown optional data survives or is ignored with a diagnostic; it never becomes an assertion.
 

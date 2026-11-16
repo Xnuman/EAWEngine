@@ -1,6 +1,7 @@
 #include "engine_app/sandbox_app.hpp"
 
 #include "core/file_io.hpp"
+#include "core/profile.hpp"
 #include "formats/png_image.hpp"
 #include "audio/audio_devices.hpp"
 #include "audio/null_audio_device.hpp"
@@ -246,15 +247,25 @@ bool SandboxSession::frame()
     const auto now = presentation_now();
     advance_animation(now);
     watchdog.enter("simulation and presentation", tick);
-    step_simulation(now);
+    {
+        EAW_PROFILE_ZONE("simulation and presentation");
+        step_simulation(now);
+    }
     watchdog.enter("particles", tick);
-    step_particles(now);
+    {
+        EAW_PROFILE_ZONE("particles");
+        step_particles(now);
+    }
     watchdog.enter("automation and panel", tick);
     run_automation();
     // The statistics panel measures real frame rates, so it keeps the wall clock.
     update_panel(input, std::chrono::steady_clock::now());
     watchdog.enter("render", tick);
-    present();
+    {
+        EAW_PROFILE_ZONE("render");
+        present();
+    }
+    EAW_PROFILE_FRAME("frame");
     watchdog.enter("events", tick);
     return true;
 }

@@ -3,6 +3,7 @@
 #include "mpmc_queue.hpp"
 
 #include "core/fatal_error.hpp"
+#include "core/profile.hpp"
 
 #include <windows.h>
 #include <immintrin.h>
@@ -78,6 +79,11 @@ struct JobSystem::State
     std::uint32_t pool_size{};
     // Fiber handles by id: the pool first (ids 0..pool_size-1), then each thread's home fiber.
     std::vector<void*> fibers;
+#if defined(EAW_PROFILE)
+    // The pool fibers' and worker threads' names in the profiler (lasting_name).
+    std::vector<const char*> fiber_names;
+    std::vector<const char*> thread_names;
+#endif
     MpmcQueue<std::uint32_t> free_fibers;
     // Parked fibers whose counter reached zero: pool fibers (any thread) and home fibers (their
     // own thread only).
@@ -130,6 +136,18 @@ struct JobSystem::State
     void after_switch() noexcept
     {
         auto& worker = current_worker();
+        // The profiler follows zones by fiber: a pool fiber by its name, a thread's home fiber as
+        // the thread itself.
+#if defined(EAW_PROFILE)
+        if (worker.current < pool_size)
+        {
+            EAW_PROFILE_FIBER_ENTER(fiber_names[worker.current]);
+        }
+        else
+        {
+            EAW_PROFILE_FIBER_LEAVE();
+        }
+#endif
         const auto handoff = worker.handoff;
         worker.handoff = Handoff::none;
         if (handoff == Handoff::release)
@@ -204,7 +222,10 @@ struct JobSystem::State
 
     void execute(const QueuedJob& queued) noexcept
     {
-        queued.job.function(queued.job.argument, queued.job.index);
+        {
+            EAW_PROFILE_ZONE("job");
+            queued.job.function(queued.job.argument, queued.job.index);
+        }
         finish(*queued.counter);
     }
 
@@ -303,6 +324,16 @@ struct JobSystem::State
 
 namespace {
 
+#if defined(EAW_PROFILE)
+// The profiler reads a fiber's or thread's name through its pointer whenever its viewer asks, which
+// may be after the job system is gone: in profiling builds the names last for the rest of the
+// process (a few bytes per fiber of every job system created).
+const char* lasting_name(std::string name)
+{
+    return (new std::string(std::move(name)))->c_str();
+}
+#endif
+
 void WINAPI fiber_main(void* parameter)
 {
     auto& state = *static_cast<JobSystem::State*>(parameter);
@@ -326,6 +357,16 @@ Result<std::unique_ptr<JobSystem>> JobSystem::create(const JobSystemOptions& opt
     }
     const auto threads = options.workers + 1;
     state->fibers.assign(static_cast<std::size_t>(state->pool_size) + threads, nullptr);
+#if defined(EAW_PROFILE)
+    for (std::uint32_t fiber = 0; fiber < state->pool_size; ++fiber)
+    {
+        state->fiber_names.push_back(lasting_name("job fiber " + std::to_string(fiber)));
+    }
+    for (std::uint32_t thread = 1; thread < threads; ++thread)
+    {
+        state->thread_names.push_back(lasting_name("job worker " + std::to_string(thread)));
+    }
+#endif
     for (std::uint32_t thread = 0; thread < threads; ++thread)
     {
         auto worker = std::make_unique<State::Worker>();
@@ -382,6 +423,9 @@ Result<std::unique_ptr<JobSystem>> JobSystem::create(const JobSystemOptions& opt
             {
                 const auto name = L"EAW job worker " + std::to_wstring(thread);
                 SetThreadDescription(GetCurrentThread(), name.c_str());
+#if defined(EAW_PROFILE)
+                EAW_PROFILE_THREAD_NAME(raw->thread_names[thread - 1]);
+#endif
                 raw->run_worker(thread);
             });
     }

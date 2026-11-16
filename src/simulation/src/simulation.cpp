@@ -2,6 +2,8 @@
 
 #include "simulation_internal.hpp"
 
+#include "core/profile.hpp"
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -320,9 +322,13 @@ void SimulationWorld::step()
     };
     for (const auto& system : schedule_)
     {
-        (this->*system.run)();
+        {
+            EAW_PROFILE_ZONE_TEXT(system.name.data(), system.name.size());
+            (this->*system.run)();
+        }
         timed(system.phase);
     }
+    EAW_PROFILE_FRAME("simulation tick");
 }
 
 void SimulationWorld::run_commands()

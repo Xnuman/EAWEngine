@@ -4,6 +4,7 @@
 #include "simulation_internal.hpp"
 
 #include "math/scalar.hpp"
+#include "core/profile.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -19,7 +20,10 @@ void SimulationWorld::NavigationSystem::run(const View& view)
     auto& locomotor = view.get<LocomotorColumns>();
     auto& route = view.get<RouteColumns>();
     std::ranges::fill(locomotor.arriving, std::uint8_t{0});
-    process_path_queue(view);
+    {
+        EAW_PROFILE_ZONE("route searches");
+        process_path_queue(view);
+    }
     measure_remaining_routes(route, placement);
     measure_arrival_progress(view);
     update_group_cohesion(view);

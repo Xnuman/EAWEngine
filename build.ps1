@@ -14,6 +14,7 @@
     .\build.ps1 -Configuration All -Tests    # Debug and Release, with EAWEngineTests
     .\build.ps1 -Configuration DebugValidation -Tests  # Debug with the expensive checks (_dv files)
     .\build.ps1 -Configuration Release -Clean
+    .\build.ps1 -Configuration Release -Profile   # with the Tracy profiler client (docs/tools.md)
 
     From cmd or Explorer: powershell -ExecutionPolicy Bypass -File build.ps1 -Configuration Release
 #>
@@ -24,6 +25,9 @@ param(
     [switch] $Tests,
     # Remove the build tree (except fetched third-party sources) and the built executables first.
     [switch] $Clean,
+    # Build with the Tracy profiler client (EAW_PROFILE; fetches Tracy). Without it the option is
+    # turned off again, so a build directory profiles only while asked to.
+    [switch] $Profile,
     [string] $BuildDirectory = 'build'
 )
 
@@ -51,9 +55,10 @@ if ($Clean) {
 }
 
 $testsOption = if ($Tests) { 'ON' } else { 'OFF' }
+$profileOption = if ($Profile) { 'ON' } else { 'OFF' }
 Invoke-Step 'Configure' {
     cmake -S . -B $BuildDirectory -G 'Visual Studio 17 2022' -A x64 `
-        -DCMAKE_CXX_STANDARD=20 -DCMAKE_CXX_STANDARD_REQUIRED=ON "-DEAW_BUILD_TESTS=$testsOption"
+        -DCMAKE_CXX_STANDARD=20 -DCMAKE_CXX_STANDARD_REQUIRED=ON "-DEAW_BUILD_TESTS=$testsOption" "-DEAW_PROFILE=$profileOption"
 }
 
 $configurations = if ($Configuration -eq 'All') { @('Debug', 'Release') } else { @($Configuration) }

@@ -353,6 +353,29 @@ with 256 new 40-bone poses and an empty pose cache: presentation's pose sampling
 times; a job costs about 43 ns on one thread and 90-110 ns with workers sharing one queue, so a job
 should carry several microseconds of work.
 
+## Profiling
+
+Tracy (BSD-3-Clause, 0.14.1, `third_party/tracy`) is the engine's profiler. A profiling build
+fetches and compiles its client; the default build has neither, and every mark compiles to nothing:
+
+```powershell
+.\build.ps1 -Configuration Release -Profile      # EAW_PROFILE=ON; a later build without -Profile turns it off
+.\executables\Release\EAWEngine.exe battle --game foc --map DATA/ART/MAPS/_LAND_PLANET_UTAPAU_01.TED --spawn T2B_Tank:125@1 --spawn AT_ST_Walker:125@2 --stress-orders --ticks 6000
+```
+
+Then connect the Tracy viewer of the same release (0.14.1, from the project's GitHub releases, not
+built here) to `localhost`. The client collects only while a viewer is connected (on demand) and
+listens on this machine only (port 8086). Without a viewer a profiling build runs as fast as the
+default one (the 500-unit benchmark: 5.9 ms a tick against 6.0).
+
+What is marked (`core/profile.hpp`, the only place that names Tracy): each simulation layer as a
+zone named like the battle's layer report, the tick as the frame set "simulation tick"; inside
+navigation the route searches, giving way, detours, and ground avoidance; every job, with the job
+system's fibers named ("job fiber N") so zones follow a job that waits and resumes on another
+thread; the worker threads ("job worker N"); and in the sandbox the simulation, particles, and
+render parts of a frame and the frame set "frame". Add marks with `EAW_PROFILE_ZONE("name")` (a
+string literal) or `EAW_PROFILE_ZONE_TEXT(text, size)` for a name from a table.
+
 ## Captures and image regression
 
 The sandbox can render a scene reproducibly and save it as PNG, and `EAWEngine

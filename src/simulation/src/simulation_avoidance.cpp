@@ -9,6 +9,7 @@
 #include "simulation_internal.hpp"
 
 #include "math/scalar.hpp"
+#include "core/profile.hpp"
 #include "jobs/parallel.hpp"
 #include "simulation/orca.hpp"
 
@@ -121,8 +122,15 @@ void SimulationWorld::NavigationSystem::plan_ground_avoidance(const View& view)
     // By avoidance radius, so a query reaches only as far as the asking agent's own reach, however
     // large other agents are (as contact's grid).
     avoidance.grid.build(placement.positions, radii, avoidance_cell_size);
-    plan_giving_way(view);
-    plan_detours(view);
+    {
+        EAW_PROFILE_ZONE("giving way");
+        plan_giving_way(view);
+    }
+    {
+        EAW_PROFILE_ZONE("detours");
+        plan_detours(view);
+    }
+    EAW_PROFILE_ZONE("ground avoidance");
     const auto step = static_cast<float>(view.get<Clock>().tick_seconds);
     // Each unit's velocity from the state at the start of the tick into its own entry: units are
     // planned in chunks on the job system, each chunk with its own scratch, and the result does not

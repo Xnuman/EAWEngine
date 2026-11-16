@@ -22,6 +22,7 @@ option(EAW_BUILD_TESTS "Build EAWEngine tests" OFF)
 option(EAW_BUILD_GUI "Build the Dear ImGui tool workbench" ON)
 # The optional FMOD audio backend, built against a local FMOD SDK (never committed or fetched).
 option(EAW_AUDIO_FMOD "Build the FMOD audio backend (needs FMOD_ROOT)" OFF)
+option(EAW_PROFILE "Build with the Tracy profiler client (fetches Tracy; see docs/tools.md)" OFF)
 set(FMOD_ROOT "" CACHE PATH "Local FMOD Engine SDK (the folder holding api/core)")
 
 set(EAW_ENGINE_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -124,6 +125,9 @@ if(WIN32)
     add_subdirectory(third_party/imgui)
 endif()
 add_subdirectory(third_party/lua)
+if(EAW_PROFILE)
+    add_subdirectory(third_party/tracy)
+endif()
 
 # Libraries, innermost first.
 add_subdirectory(src/math)
