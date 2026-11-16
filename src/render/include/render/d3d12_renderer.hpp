@@ -29,11 +29,11 @@ struct VisualOceanWaves
     static constexpr float max_height_scale = 1.25F;
     float height_scale{1.0F};
     float length_scale{1.0F};
-    float speed_scale{1.0F};
-    float steepness{0.6F};
-    float calm_depth{6.0F};
-    float full_depth{40.0F};
-    float crest_foam_start{0.45F};
+    float speed_scale{1.4F};
+    float steepness{0.2F};
+    float calm_depth{4.0F};
+    float full_depth{10.0F};
+    float crest_foam_start{0.12F};
 };
 
 // The rendering features that may change from frame to frame (D3d12Renderer::set_graphics_settings).

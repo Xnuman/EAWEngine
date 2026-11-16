@@ -622,6 +622,52 @@ static const float WATER_FOAM_LINE_SPEED = 1.2f;    // their travel (units of de
 static const float3 WATER_FOAM_COLOR = float3(0.9f, 0.92f, 0.95f);
 static const float WATER_REFLECTION_DISTORTION = 0.015f; // screen share the bent normal shifts the reflection
 
+// Crest foam's structure (the owner's report, 2026-11-16: with foam on most crests the ocean showed a
+// regular lattice: the four waves' crests repeat, and the foam's breakup sampled the tiling normal
+// map). Whitecaps gather in patches: a broad value noise, drifting with the wind, decides where crests
+// may foam (where it passes OCEAN_FOAM_PATCH_START), and a fine one breaks the foam up; both are
+// procedural in world space, so nothing repeats. Engine choices, tuned by eye.
+static const float OCEAN_FOAM_PATCH_SIZE = 420.0f;  // world units a patch noise cell spans
+static const float OCEAN_FOAM_PATCH_START = 0.45f;  // patch noise below this keeps crests clear
+static const float OCEAN_FOAM_PATCH_DRIFT = 6.0f;   // the patches' drift (world units per second)
+static const float OCEAN_FOAM_GRAIN_SIZE = 7.0f;    // world units a breakup noise cell spans
+static const float OCEAN_FOAM_STRENGTH = 1.8f;
+
+// A hash of a cell to [0, 1) (integer mixing: stable for any world coordinate).
+float ocean_cell_hash(const int2 cell)
+{
+    uint n = uint(cell.x) * 1597334677u ^ uint(cell.y) * 3812015801u;
+    n = (n ^ (n >> 16)) * 2246822519u;
+    n ^= n >> 13;
+    return float(n & 0x00FFFFFFu) / 16777216.0f;
+}
+
+// Smooth value noise in [0, 1] over cells of one unit.
+float ocean_value_noise(const float2 position)
+{
+    const float2 cell = floor(position);
+    const float2 within = position - cell;
+    const float2 blend = within * within * (3.0f - 2.0f * within);
+    const int2 corner = int2(cell);
+    const float a = ocean_cell_hash(corner);
+    const float b = ocean_cell_hash(corner + int2(1, 0));
+    const float c = ocean_cell_hash(corner + int2(0, 1));
+    const float d = ocean_cell_hash(corner + int2(1, 1));
+    return lerp(lerp(a, b, blend.x), lerp(c, d, blend.x), blend.y);
+}
+
+// How much of a crest's pinch shows as foam at `position`.
+float ocean_crest_foam(const float2 position, const float pinch, const float time)
+{
+    const float2 wind = dot(grass_wind.xy, grass_wind.xy) > 1.0e-6f ? normalize(grass_wind.xy) : float2(0.8f, 0.6f);
+    const float2 drifted = position - wind * OCEAN_FOAM_PATCH_DRIFT * time;
+    // Two octaves, so patches are not one cell's square.
+    const float patches = ocean_value_noise(drifted / OCEAN_FOAM_PATCH_SIZE) * 0.65f + ocean_value_noise(drifted / (OCEAN_FOAM_PATCH_SIZE * 0.37f) + 17.3f) * 0.35f;
+    const float patch = smoothstep(OCEAN_FOAM_PATCH_START, 1.0f, patches);
+    const float grain = ocean_value_noise(position / OCEAN_FOAM_GRAIN_SIZE + time * 0.3f) * 0.6f + ocean_value_noise(position / (OCEAN_FOAM_GRAIN_SIZE * 0.43f) - time * 0.2f) * 0.4f;
+    return saturate(pinch * patch * smoothstep(0.35f, 0.75f, grain) * OCEAN_FOAM_STRENGTH);
+}
+
 // Planar reflections (water_reflections.hlsl): per screen pixel 0, or the source pixel the
 // mirrored scene shows there as ((row + 1) << 16) | column.
 StructuredBuffer<uint> water_reflections : register(t7);
@@ -678,8 +724,9 @@ PixelOutput water_ps(PixelInput input)
     const float breakup = saturate((first.x + second.y) * 1.5f + 0.5f);
     const float shore_foam = bottomless ? 0.0f
                                         : saturate(shallow * shallow * (WATER_FOAM_FLAT_SHARE + (1.0f - WATER_FOAM_FLAT_SHARE) * steepness) * (0.6f + rolling) * breakup * 1.5f);
-    // Foam on the waves' crests (ocean_waves' pinch, in the vertex color's alpha), broken up alike.
-    const float foam = max(shore_foam, saturate(input.vertex_color.a * breakup * 1.5f));
+    // Foam on the waves' crests (ocean_waves' pinch, in the vertex color's alpha), in drifting
+    // patches and broken up by procedural noise (ocean_crest_foam).
+    const float foam = max(shore_foam, ocean_crest_foam(input.world_position.xy, input.vertex_color.a, time));
     const float3 foam_lit = legacy_lit_color(WATER_FOAM_COLOR, surface_normal, input.world_position, 0.0f, float3(1.0f, 1.0f, 1.0f), float3(0.0f, 0.0f, 0.0f), float3(0.0f, 0.0f, 0.0f),
                                              float3(1.0f, 1.0f, 1.0f), input.position.xy, true);
 
