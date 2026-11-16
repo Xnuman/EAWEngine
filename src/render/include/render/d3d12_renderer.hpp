@@ -18,6 +18,24 @@
 
 namespace eaw {
 
+// Enhanced water's ocean waves (sandbox.hlsl, ocean_waves), as the Graphics panel tunes them: scales of
+// the waves' heights, lengths, and speeds against their built-in sets, how sharp their crests are
+// (0 round, toward 1 pinched; below folding), the depths over which they fade in from the shore, and
+// where on a crest foam starts (share of the sharpest pinch). Engine choices, tuned by eye.
+struct VisualOceanWaves
+{
+    // At most this many times the built-in heights: scene_terrain.cpp's water_wave_reach bounds the
+    // mesh for the built-in heights' sum (9.6) times this.
+    static constexpr float max_height_scale = 1.25F;
+    float height_scale{1.0F};
+    float length_scale{1.0F};
+    float speed_scale{1.0F};
+    float steepness{0.6F};
+    float calm_depth{6.0F};
+    float full_depth{40.0F};
+    float crest_foam_start{0.45F};
+};
+
 // The rendering features that may change from frame to frame (D3d12Renderer::set_graphics_settings).
 struct D3d12GraphicsSettings
 {
@@ -37,8 +55,9 @@ struct D3d12GraphicsSettings
     std::uint32_t shadow_cascades{3};
     // How the map environment's fog is drawn (VisualLightRig::fog), when it has one.
     VisualFogMode fog{VisualFogMode::legacy};
-    // How the map's water surface is drawn (VisualMaterial::water).
+    // How the map's water surface is drawn (VisualMaterial::water), and enhanced water's waves.
     VisualWaterMode water{VisualWaterMode::legacy};
+    VisualOceanWaves ocean;
     // The environment's cloud shadows on the terrain (VisualLightRig::clouds), as the original.
     bool cloud_shadows{true};
     // Enhanced: the ambient takes the captured sky's light (its color and direction, at the map's own

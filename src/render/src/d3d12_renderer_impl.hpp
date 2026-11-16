@@ -146,6 +146,10 @@ struct D3d12Renderer::Impl
         std::array<std::uint32_t, 4> heat_slots{};
         // Particles: soft particles on.
         std::array<std::uint32_t, 4> particle_parameters{};
+        // Enhanced water's waves (VisualOceanWaves): x height scale, y length scale, z speed scale, w
+        // steepness; then x calm depth, y full depth, z crest foam start.
+        std::array<float, 4> ocean_shape{};
+        std::array<float, 4> ocean_shore{};
     };
     // Layout of TerrainDecal in terrain.hlsl (64 bytes).
     struct GpuDecal

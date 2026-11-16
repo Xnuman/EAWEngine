@@ -237,6 +237,25 @@ bool draw_graphics_panel(SandboxPanels& panels, const GraphicsPanelView& view)
         ImGui::SameLine();
         changed |= ImGui::RadioButton("Enhanced##water", &water, static_cast<int>(eaw::VisualWaterMode::enhanced));
         graphics.water = static_cast<eaw::VisualWaterMode>(water);
+        // Enhanced water's ocean waves, tuned by eye (VisualOceanWaves).
+        if (graphics.water == eaw::VisualWaterMode::enhanced)
+        {
+            auto& ocean = graphics.ocean;
+            ImGui::Indent();
+            changed |= ImGui::SliderFloat("Wave height", &ocean.height_scale, 0.0F, eaw::VisualOceanWaves::max_height_scale, "%.2f");
+            changed |= ImGui::SliderFloat("Wave length", &ocean.length_scale, 0.25F, 3.0F, "%.2f");
+            changed |= ImGui::SliderFloat("Wave speed", &ocean.speed_scale, 0.0F, 3.0F, "%.2f");
+            changed |= ImGui::SliderFloat("Crest sharpness", &ocean.steepness, 0.0F, 0.95F, "%.2f");
+            changed |= ImGui::SliderFloat("Calm below depth", &ocean.calm_depth, 0.0F, 60.0F, "%.0f");
+            changed |= ImGui::SliderFloat("Full waves from depth", &ocean.full_depth, 1.0F, 200.0F, "%.0f");
+            changed |= ImGui::SliderFloat("Crest foam from", &ocean.crest_foam_start, 0.0F, 0.99F, "%.2f");
+            if (ImGui::Button("Defaults##ocean"))
+            {
+                ocean = eaw::VisualOceanWaves{};
+                changed = true;
+            }
+            ImGui::Unindent();
+        }
         auto heat = static_cast<int>(graphics.heat);
         ImGui::TextUnformatted("Heat");
         ImGui::SameLine();

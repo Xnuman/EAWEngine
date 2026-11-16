@@ -42,8 +42,9 @@ float terrain_surface_height(const TedMapData& map, const float world_x, const f
 // wave's crest spans a few cells at the shortest wavelengths the shader uses.
 constexpr float water_cell_size = 12.0F;
 constexpr std::uint32_t water_max_cells = 512;
-// How far waves may lift or lower the surface (sandbox.hlsl, the sum of OCEAN_WAVES' amplitudes,
-// rounded up): the mesh's bounds, so culling never drops a raised crest.
+// How far waves may lift or lower the surface: the sum of sandbox.hlsl's OCEAN_AMPLITUDES (9.6) at
+// the largest height the Graphics panel allows (VisualOceanWaves::max_height_scale, 1.25); the mesh's
+// bounds, so culling never drops a raised crest.
 constexpr float water_wave_reach = 12.0F;
 
 } // namespace
