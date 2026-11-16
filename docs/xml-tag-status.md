@@ -1311,7 +1311,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Land_Model_Anim_Override_Name` | `done` |  |
 | `Specific_Death_Anim_Index` | `done` |  |
 | `Specific_Death_Anim_Type` | `partial` | Crushed (and DIE) for crushing; the Force and fire types wait for abilities |
-| `Should_Death_Clone_Play_Idle` | `gap` |  |
+| `Should_Death_Clone_Play_Idle` | `gap` | no stock effect: the 16 station clone models it is set on have only a DIE clip (2026-11-16); for mods whose clone models have an IDLE |
 | `Cinematic_Anim_Index` | `needs cinematics` |  |
 | `Cinematic_Anim_Blend_Seconds` | `needs cinematics` |  |
 | `Pause_During_Cinematic_Anim` | `needs cinematics` |  |
