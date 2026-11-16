@@ -75,6 +75,7 @@ void test_sandbox_options()
     require(later.spawns.empty() && later.later_spawns.size() == 1 && later.later_spawns[0].type == "AT_ST_Walker" && later.later_spawns[0].count == 2 && later.later_spawns[0].owner == 2U,
             "--spawn-later must read like --spawn into its own list");
     require(expect_ok(parse({"battle", "--replay", "in.log"}), "parsing a replay").replay == std::filesystem::path("in.log"), "a replay needs no map");
+    require(expect_ok(parse({"sandbox", "--replay", "in.log"}), "parsing a sandbox replay").replay == std::filesystem::path("in.log"), "the sandbox replays a log too");
     const auto capture =
         expect_ok(parse({"--map", "X.TED", "--capture", "out/kuat.png", "--capture-frame", "90", "--fixed-frame-time", "0.05", "--camera", "-100", "250.5", "1200"}), "parsing capture options");
     require(capture.capture == std::filesystem::path("out/kuat.png") && capture.capture_frame == 90U && capture.fixed_frame_time == 0.05F && capture.camera_view &&
@@ -86,7 +87,7 @@ void test_sandbox_options()
                 !parse({"--camera", "1", "2", "0"}) && !parse({"--camera", "1", "2", "nan"}),
             "invalid capture options must be rejected");
     require(!parse({"battle"}) && !parse({"battle", "--map", "X.TED", "--ticks", "0"}) && !parse({"battle", "--replay", "in.log", "--spawn", "Tank:1"}) &&
-                !parse({"battle", "--replay", "in.log", "--auto-move"}) && !parse({"sandbox", "--replay", "in.log"}) && !parse({"battle", "--map", "X.TED", "--tick-rate", "0"}) &&
+                !parse({"battle", "--replay", "in.log", "--auto-move"}) && !parse({"sandbox", "--replay", "in.log", "--spawn", "Tank:1"}) && !parse({"battle", "--map", "X.TED", "--tick-rate", "0"}) &&
                 !parse({"battle", "--map", "X.TED", "--tick-rate", "nan"}),
             "invalid battle options must be rejected");
     const auto rate = expect_ok(parse({"battle", "--map", "X.TED", "--tick-rate", "30"}), "parsing a tick rate");

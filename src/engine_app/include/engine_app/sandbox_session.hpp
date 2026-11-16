@@ -113,6 +113,11 @@ struct SandboxSession
     // Picks of Shift + right-clicks: an object under the cursor turns the guard of the point into a
     // guard of the object.
     std::unordered_set<std::uint32_t> guard_picks;
+    // --replay: the log's orders, the next one to give, and whether its end tick was reached (the
+    // world then stays paused there).
+    std::optional<eaw::BattleLog> replay_log;
+    std::size_t replay_next = 0;
+    bool replay_done = false;
     bool initial_spawns_sent = false;
     // Tick at which the initial spawn orders were given (they apply in the next step).
     std::uint64_t initial_spawn_tick = 0;
@@ -251,6 +256,11 @@ struct SandboxSession
     bool frame();
     // Waits for the GPU and prints the run summary.
     int finish();
+    // Replays `log` on the battle's clock from its first tick (--replay).
+    void start_replay(eaw::BattleLog log)
+    {
+        replay_log = std::move(log);
+    }
     // Presentation time now (see virtual_now), and its once-per-frame advance.
     [[nodiscard]] std::chrono::steady_clock::time_point presentation_now() const;
     void advance_presentation_clock();
@@ -327,6 +337,9 @@ struct SandboxSession
     void advance_animation(const std::chrono::steady_clock::time_point now);
     // Fixed simulation ticks, then this frame's interpolated instances and debug lines.
     void step_simulation(const std::chrono::steady_clock::time_point now);
+    // Gives the replayed orders due at the world's tick; pauses and reports at the log's end.
+    void feed_replay();
+    void finish_replay();
     // Particle effects advance on the frame clock and are drawn back to front from the camera.
     void step_particles(const std::chrono::steady_clock::time_point now);
 

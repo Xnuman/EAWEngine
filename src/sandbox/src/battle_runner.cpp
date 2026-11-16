@@ -11,8 +11,6 @@
 #include "sandbox/text_format.hpp"
 
 #include <algorithm>
-#include <array>
-#include <charconv>
 #include <chrono>
 #include <iostream>
 #include <numeric>
@@ -32,14 +30,6 @@ constexpr double frame_budget_ms = 1000.0 / 60.0;
 // orders given before the first tick reach the world in the second (Battle::step).
 constexpr std::uint64_t first_measured_tick = 2;
 constexpr double frame_percentile = 0.99;
-
-std::string hex(const std::uint64_t value)
-{
-    std::array<char, 17> buffer{};
-    const auto [end, error] = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value, 16);
-    (void)error;
-    return "0x" + std::string(buffer.data(), end);
-}
 
 struct BattleRun
 {
@@ -221,7 +211,7 @@ void print_run(const BattleRun& run, const std::uint64_t ticks_run)
     const auto& stats = run.stats;
     std::cout << "Ran " << ticks_run << " ticks in " << format_fixed(run.seconds, 2) << " s: average " << format_fixed(ticks_run > 0 ? run.seconds * 1000.0 / static_cast<double>(ticks_run) : 0.0, 3)
               << " ms, slowest " << format_fixed(run.slowest_ms, 2) << " ms (tick " << run.slowest_tick << ")\n"
-              << "State hash: " << hex(run.hash) << " at tick " << stats.tick << '\n'
+              << "State hash: " << format_hex(run.hash) << " at tick " << stats.tick << '\n'
               << "Entities: " << run.starting_entities << " at start, " << stats.entities << " at end | orders " << run.log.entries.size() << ", commands applied " << stats.commands_applied
               << ", stale references " << stats.stale_references << ", rejected spawns " << stats.rejected_spawns << '\n'
               << "Combat: " << stats.shots_fired << " shots, " << stats.hits << " hits, " << stats.kills << " kills, " << stats.hardpoints_destroyed << " hardpoints destroyed, " << stats.crushed
@@ -344,7 +334,7 @@ int run_battle(const SandboxOptions& options, const VirtualFileSystem& vfs)
     if (replay && replay->end_hash && replay->end_tick == first.stats.tick)
     {
         const bool same = *replay->end_hash == first.hash;
-        std::cout << "Replay: state hash " << (same ? "matches the recording" : "differs from the recording (" + hex(*replay->end_hash) + ")") << '\n';
+        std::cout << "Replay: state hash " << (same ? "matches the recording" : "differs from the recording (" + format_hex(*replay->end_hash) + ")") << '\n';
         exit_code = same ? exit_code : 4;
     }
     else if (replay && replay->end_hash)
@@ -357,7 +347,7 @@ int run_battle(const SandboxOptions& options, const VirtualFileSystem& vfs)
         // depend on how their work was split or scheduled (docs/ecs-design.md, 7.4).
         const auto second = run_once(asset, map_name, options, replay ? &*replay : nullptr, ticks, scripts_reader, nullptr);
         const bool same = !second.failed && second.hash == first.hash;
-        std::cout << "Determinism: second run, serial, " << (same ? "matches" : "differs (" + hex(second.hash) + ")") << '\n';
+        std::cout << "Determinism: second run, serial, " << (same ? "matches" : "differs (" + format_hex(second.hash) + ")") << '\n';
         exit_code = same ? exit_code : 4;
         if (!same && options.hash_trace)
         {

@@ -134,7 +134,8 @@ void print_sandbox_usage()
               << "  --ticks <count>    Battle: total simulation ticks to run (default 6000, or the replayed log's end)\n"
               << "  --tick-rate <hz>   Battle: simulation ticks per second (default 60; replay a log at its recording's rate)\n"
               << "  --record <file>    Write the battle's order log when it ends (battle and sandbox)\n"
-              << "  --replay <file>    Battle: replay a recorded order log (its map unless --map is given) and check its state hash\n"
+              << "  --replay <file>    Battle or sandbox: replay a recorded order log (its map unless --map is given) and check its\n"
+              << "                     state hash; the sandbox pauses at the log's end (with --capture, it runs there fast and captures)\n"
               << "  --workers <count>  Battle: job system worker threads (default the hardware threads less one)\n"
               << "  --check-determinism  Battle: run again without the job system and require identical state hashes\n"
               << "  --hash-trace       Battle, with --check-determinism: hash each subject of the state every tick and name\n"
@@ -704,9 +705,9 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
     {
         return make_error("battle needs --map or --replay");
     }
-    if (options.replay && (options.mode != RunMode::battle || !options.spawns.empty() || options.auto_move || options.stress_orders))
+    if (options.replay && ((options.mode != RunMode::battle && options.mode != RunMode::sandbox) || !options.spawns.empty() || options.auto_move || options.stress_orders))
     {
-        return make_error("--replay runs in battle mode and takes its orders from the log, not --spawn, --auto-move, or --stress-orders");
+        return make_error("--replay runs a battle or the sandbox and takes its orders from the log, not --spawn, --auto-move, or --stress-orders");
     }
     if (options.stress_orders && (options.mode != RunMode::battle || options.auto_move))
     {

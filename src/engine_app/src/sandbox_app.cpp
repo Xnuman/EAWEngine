@@ -140,7 +140,8 @@ void SandboxSession::advance_presentation_clock()
 
 void SandboxSession::request_due_capture()
 {
-    if (!options.capture || capture_requested || !content_shown_at || !textures_streamed)
+    // A replay is captured at its end.
+    if (!options.capture || capture_requested || !content_shown_at || !textures_streamed || (replay_log && !replay_done))
     {
         return;
     }
@@ -339,8 +340,33 @@ int SandboxSession::finish()
     return 0;
 }
 
-int run_sandbox(const SandboxOptions& options, VirtualFileSystem& vfs, const GameProfile& profile)
+int run_sandbox(const SandboxOptions& given_options, VirtualFileSystem& vfs, const GameProfile& profile)
 {
+    // --replay: the log's map unless --map names one, and the types its orders spawn made
+    // spawnable without spawning any at start (count 0).
+    auto options = given_options;
+    std::optional<eaw::BattleLog> replay;
+    if (options.replay)
+    {
+        auto loaded = eaw::load_battle_log(*options.replay);
+        if (!loaded)
+        {
+            std::cerr << "error: " << loaded.error().message << '\n';
+            return 1;
+        }
+        replay = std::move(loaded).value();
+        if (!options.map)
+        {
+            options.map = replay->map;
+        }
+        for (const auto& entry : replay->entries)
+        {
+            if (entry.command.order == eaw::BattleOrder::spawn && std::ranges::find(options.spawns, entry.command.type, &SandboxSpawnRequest::type) == options.spawns.end())
+            {
+                options.spawns.push_back({.type = entry.command.type, .count = 0});
+            }
+        }
+    }
     eaw::WindowDescription window_description;
     window_description.title = "EAWEngine Visual Sandbox — " + std::string(to_string(profile.variant));
     window_description.width = options.width;
@@ -390,6 +416,10 @@ int run_sandbox(const SandboxOptions& options, VirtualFileSystem& vfs, const Gam
     }
     std::cout << "Job workers: " << (*created_jobs)->worker_count() << '\n';
     SandboxSession session(options, vfs, window, renderer, **created_jobs);
+    if (replay)
+    {
+        session.start_replay(std::move(*replay));
+    }
     while (!window.close_requested())
     {
         if (!session.frame())

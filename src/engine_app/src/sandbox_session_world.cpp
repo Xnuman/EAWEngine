@@ -8,6 +8,14 @@
 
 namespace eaw::engine_app {
 
+namespace {
+
+// Ticks a frame a replay runs toward its end when it is to be captured: the end of a long log in a
+// few dozen frames, each still presented (an engine choice).
+constexpr std::uint32_t replay_capture_ticks_per_frame = 240;
+
+} // namespace
+
 std::chrono::steady_clock::time_point SandboxSession::world_now(const std::chrono::steady_clock::time_point now) const
 {
     return world_paused ? paused_since : now;
@@ -52,18 +60,32 @@ void SandboxSession::step_simulation(const std::chrono::steady_clock::time_point
     if (world && presentation)
     {
         eaw::BattlePresenters presenters{*presentation, animator ? &*animator : nullptr, effects, audio ? &*audio : nullptr, &jobs};
-        const auto ticks = world_paused ? 0U : runtime->ticks_due(std::chrono::duration<double>(now - simulation_tick).count());
+        auto ticks = world_paused ? 0U : runtime->ticks_due(std::chrono::duration<double>(now - simulation_tick).count());
+        if (replay_log && !replay_done && options.capture)
+        {
+            // A replay's capture shows its end: run there fast (an engine choice of ticks a frame).
+            ticks = std::max(ticks, replay_capture_ticks_per_frame);
+        }
         simulation_tick = now;
         const auto world_seconds = std::chrono::duration<double>(world_now(now) - map_animation_start).count();
         for (std::uint32_t tick = 0; tick < ticks; ++tick)
         {
+            if (replay_log && replay_done)
+            {
+                break;
+            }
             previous_snapshot = world->snapshot();
             watchdog.enter("simulation tick", world->stats().tick);
+            if (replay_log)
+            {
+                feed_replay();
+            }
             runtime->step();
             last_tick_ms = runtime->last_step_milliseconds();
             slowest_tick_ms = std::max(slowest_tick_ms, last_tick_ms);
             // Every tick's events, so none is lost when a frame runs several ticks.
             eaw::present_tick(*runtime, presenters, world_seconds);
+            finish_replay();
         }
         watchdog.enter("presentation", world->stats().tick);
         eaw::build_battle_frame(*runtime, previous_snapshot, selection, world_seconds, eaw::D3d12Renderer::max_bone_transforms(), presenters, battle_frame);
@@ -80,6 +102,33 @@ void SandboxSession::step_simulation(const std::chrono::steady_clock::time_point
         renderer.set_instances(battle_frame.instances);
         update_debug_lines();
     }
+}
+
+void SandboxSession::feed_replay()
+{
+    const auto tick = world->stats().tick;
+    for (; replay_next < replay_log->entries.size() && replay_log->entries[replay_next].tick <= tick; ++replay_next)
+    {
+        if (const auto submitted = runtime->battle().submit(replay_log->entries[replay_next].command); !submitted)
+        {
+            eaw::log_warning("replay", eaw::Error{"the order of tick " + std::to_string(replay_log->entries[replay_next].tick) + " was rejected: " + submitted.error().message});
+        }
+    }
+}
+
+void SandboxSession::finish_replay()
+{
+    if (!replay_log || replay_done || !replay_log->end_tick || world->stats().tick < *replay_log->end_tick)
+    {
+        return;
+    }
+    replay_done = true;
+    world_paused = true;
+    paused_since = std::chrono::steady_clock::now();
+    const auto hash = world->state_hash();
+    const bool same = replay_log->end_hash && *replay_log->end_hash == hash;
+    std::cout << "Replay: reached tick " << world->stats().tick << "; state hash " << eaw::format_hex(hash)
+              << (same ? ", as recorded" : ", the recording's " + eaw::format_hex(replay_log->end_hash.value_or(0))) << " (paused; P resumes)\n";
 }
 
 void SandboxSession::step_particles(const std::chrono::steady_clock::time_point now)
