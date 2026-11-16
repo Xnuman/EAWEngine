@@ -58,7 +58,7 @@ Map owner slot 3 is neutral and every other slot hostile, for now.
 | `--upload-budget <MiB>` | Texture bytes streamed per frame (default 64; 0 uploads all at once). |
 | `--pipeline-cache <dir>` | Keep compiled pipeline states between runs; stale caches are discarded. |
 | `--no-raw-input` | Read mouse and keys from window messages instead of raw input. |
-| `--overlay`, `--panel statistics\|spawn\|sound\|camera\|graphics` | Open the statistics panel or a dev panel at start (`menu` is still accepted; the bar starts shown). |
+| `--overlay`, `--panel statistics\|spawn\|sound\|camera\|graphics\|controls` | Open the statistics panel or a dev panel at start (`menu` is still accepted; the bar starts shown). |
 | `--show-bounds`, `--show-passability` | Start with bounds or passability drawn. |
 
 ### Automation and diagnostics
@@ -99,7 +99,7 @@ On maps the sandbox starts in the fixed (RTS) camera; C or the Camera panel swit
 
 | Key | Action |
 | --- | --- |
-| F1 | Shows or hides the bar at the top: its Panels menu opens the statistics (graphics numbers), spawn (search, category and faction filters), sound, camera, and graphics panels (the graphics panel switches v-sync, anti-aliasing, bloom and its threshold and strength, shadows and their cascades, fog, terrain decals, and detail levels while the sandbox runs; shadow resolution and particle fidelity stay as started); its View menu toggles bounds and passability. Panels first open side by side under the bar; where they are moved and sized is kept in `sandbox_imgui.ini` next to the executable. |
+| F1 | Shows or hides the bar at the top: its Panels menu opens the statistics (graphics numbers), spawn (search, category and faction filters), sound, camera, graphics, and controls panels (the controls panel rebinds every action below but Escape and F1: click a key, press the new one, Escape cancels, Backspace clears; up to two keys an action; saved to `input_bindings.txt` next to the executable, `action = key, key` a line, read at start with each line it cannot read reported and left out) (the graphics panel switches v-sync, anti-aliasing, bloom and its threshold and strength, shadows and their cascades, fog, terrain decals, and detail levels while the sandbox runs; shadow resolution and particle fidelity stay as started); its View menu toggles bounds and passability. Panels first open side by side under the bar; where they are moved and sized is kept in `sandbox_imgui.ini` next to the executable. |
 | N | Spawn the current type at the cursor (a type not loaded yet loads in the background). |
 | Tab, Shift+Tab (Ctrl: by ten) | Cycle spawnable types: every unit type with a model for the map. |
 | O | Cycle the owner of spawned units. |

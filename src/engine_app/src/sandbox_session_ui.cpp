@@ -61,6 +61,10 @@ void SandboxSession::draw_panels()
     }
     volumes_changed = draw_sound_panel(panels, sound) || volumes_changed;
     graphics_changed = draw_graphics_panel(panels, {&graphics_settings, &lod_settings, &show_decals}) || graphics_changed;
+    if (draw_controls_panel(panels, {&bindings, &rebinding}))
+    {
+        save_bindings();
+    }
 }
 
 void SandboxSession::apply_panel_actions()

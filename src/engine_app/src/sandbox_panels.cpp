@@ -21,6 +21,8 @@ constexpr float spawn_height = 460.0F;
 constexpr float statistics_width = 430.0F;
 constexpr float side_width = 320.0F;
 constexpr float camera_height = 150.0F;
+constexpr float controls_width = 520.0F;
+constexpr float controls_height = 560.0F;
 
 bool contains_folded(const std::string_view text, const std::string_view needle)
 {
@@ -118,6 +120,7 @@ void draw_sandbox_bar(SandboxPanels& panels, bool& show_bounds, bool& show_passa
         ImGui::MenuItem("Sound", nullptr, &panels.sound);
         ImGui::MenuItem("Camera", nullptr, &panels.camera);
         ImGui::MenuItem("Graphics", nullptr, &panels.graphics);
+        ImGui::MenuItem("Controls", nullptr, &panels.controls);
         ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("View"))
@@ -462,6 +465,52 @@ SpawnPanelActions draw_spawn_panel(SandboxPanels& panels, const SpawnPanelView& 
     }
     ImGui::End();
     return actions;
+}
+
+bool draw_controls_panel(SandboxPanels& panels, const ControlsPanelView& view)
+{
+    if (!panels.controls || view.bindings == nullptr || view.rebinding == nullptr)
+    {
+        return false;
+    }
+    bool changed = false;
+    first_place(panel_margin, 0.0F, controls_width, controls_height);
+    if (ImGui::Begin("Controls", &panels.controls, ImGuiWindowFlags_NoCollapse))
+    {
+        auto& bindings = *view.bindings;
+        auto& rebinding = *view.rebinding;
+        ImGui::TextWrapped("%s", rebinding ? "Press a key (Escape cancels, Backspace clears)." : "Click a key to rebind it. Saved to input_bindings.txt.");
+        if (ImGui::BeginTable("bindings", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp))
+        {
+            const auto actions = bindings.actions();
+            for (std::size_t action = 0; action < actions.size(); ++action)
+            {
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(actions[action].description.data(), actions[action].description.data() + actions[action].description.size());
+                for (std::size_t slot = 0; slot < eaw::keys_per_action; ++slot)
+                {
+                    ImGui::TableNextColumn();
+                    const auto& key = bindings.keys(action)[slot];
+                    const bool waiting = rebinding && rebinding->first == action && rebinding->second == slot;
+                    const auto label = (waiting ? std::string("...") : key ? std::string(eaw::key_name(*key)) : std::string("-")) + "##" + std::to_string(action) + "_" + std::to_string(slot);
+                    if (ImGui::Button(label.c_str(), ImVec2(-1.0F, 0.0F)))
+                    {
+                        rebinding = std::pair{action, slot};
+                    }
+                }
+            }
+            ImGui::EndTable();
+        }
+        if (ImGui::Button("Defaults##controls"))
+        {
+            bindings.reset();
+            rebinding.reset();
+            changed = true;
+        }
+    }
+    ImGui::End();
+    return changed;
 }
 
 } // namespace eaw::engine_app

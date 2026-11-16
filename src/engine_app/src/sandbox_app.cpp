@@ -9,6 +9,7 @@
 #include "engine_app/sandbox_session.hpp"
 
 #include <chrono>
+#include <filesystem>
 #include <functional>
 #include <future>
 #include <iostream>
@@ -19,10 +20,18 @@
 
 namespace eaw::engine_app {
 
+namespace {
+
+// The input bindings file beside the executable (an engine choice, as sandbox_imgui.ini).
+constexpr std::string_view bindings_file_name = "input_bindings.txt";
+
+} // namespace
+
 SandboxSession::SandboxSession(const eaw::SandboxOptions& session_options, eaw::VirtualFileSystem& session_vfs, eaw::PlatformWindow& session_window, eaw::D3d12Renderer& session_renderer,
                                eaw::JobSystem& session_jobs)
     : options(session_options), vfs(session_vfs), window(session_window), renderer(session_renderer), jobs(session_jobs)
 {
+    load_bindings();
     watchdog.set_threshold(options.use_warp || options.gpu_validation ? std::chrono::seconds(60) : std::chrono::seconds(5));
     if (options.fixed_frame_time || options.capture)
     {
@@ -178,7 +187,9 @@ bool SandboxSession::frame()
 {
     window.poll_events();
     advance_presentation_clock();
-    if (window.input().keys[static_cast<std::size_t>(eaw::Key::escape)].pressed && !renderer.overlay_wants_keyboard())
+    // A key the Controls panel waits for goes to it, not to the scene (nor does Escape quit then).
+    const bool rebound = capture_rebinding(window.input());
+    if (!rebound && window.input().keys[static_cast<std::size_t>(eaw::Key::escape)].pressed && !renderer.overlay_wants_keyboard())
     {
         window.request_close();
     }
@@ -208,7 +219,7 @@ bool SandboxSession::frame()
     overlay_input.shift = down(eaw::Key::shift);
     renderer.set_overlay_input(overlay_input);
     auto scene_input = window_input;
-    if (renderer.overlay_wants_keyboard())
+    if (renderer.overlay_wants_keyboard() || rebound)
     {
         for (auto& key : scene_input.keys)
         {
@@ -338,6 +349,69 @@ int SandboxSession::finish()
     std::cout << "Resources after idle: " << stats.live_textures << " textures, " << stats.free_texture_slots << " free and " << stats.pending_texture_slots << " pending texture slots, "
               << stats.pending_retirements << " pending retirements, " << stats.pending_texture_uploads << " textures still streaming\n";
     return 0;
+}
+
+void SandboxSession::load_bindings()
+{
+    const auto path = eaw::executable_directory() / bindings_file_name;
+    std::error_code error;
+    if (!std::filesystem::exists(path, error))
+    {
+        return;
+    }
+    const auto text = eaw::read_text_file(path);
+    if (!text)
+    {
+        eaw::log_warning("input", text.error());
+        return;
+    }
+    for (const auto& problem : bindings.read(*text))
+    {
+        eaw::log_warning("input", eaw::Error{path.string() + ", " + problem + " (line ignored)"});
+    }
+}
+
+void SandboxSession::save_bindings() const
+{
+    const auto path = eaw::executable_directory() / bindings_file_name;
+    if (const auto written = eaw::write_text_file(path, bindings.write(), eaw::WriteMode::replace); !written)
+    {
+        eaw::log_warning("input", written.error());
+    }
+}
+
+bool SandboxSession::capture_rebinding(const eaw::InputState& input)
+{
+    if (!rebinding)
+    {
+        return false;
+    }
+    const auto pressed = [&](const eaw::Key key)
+    {
+        return input.keys[static_cast<std::size_t>(key)].pressed;
+    };
+    if (pressed(eaw::Key::escape))
+    {
+        rebinding.reset();
+        return true;
+    }
+    std::optional<eaw::Key> chosen;
+    bool clear = pressed(eaw::Key::backspace) || pressed(eaw::Key::del);
+    for (std::size_t index = 0; !clear && !chosen && index < eaw::key_count; ++index)
+    {
+        if (input.keys[index].pressed)
+        {
+            chosen = static_cast<eaw::Key>(index);
+        }
+    }
+    if (clear || chosen)
+    {
+        bindings.set(rebinding->first, rebinding->second, chosen);
+        std::cout << "Bound " << bindings.actions()[rebinding->first].name << " to " << (chosen ? eaw::key_name(*chosen) : std::string_view("nothing")) << '\n';
+        rebinding.reset();
+        save_bindings();
+    }
+    return true;
 }
 
 int run_sandbox(const SandboxOptions& given_options, VirtualFileSystem& vfs, const GameProfile& profile)

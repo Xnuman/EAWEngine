@@ -30,6 +30,7 @@
 #include "sandbox/sandbox_debug_lines.hpp"
 #include "sandbox/text_format.hpp"
 #include "engine_app/frame_watchdog.hpp"
+#include "engine_app/sandbox_actions.hpp"
 #include "engine_app/sandbox_overlay.hpp"
 #include "engine_app/sandbox_panels.hpp"
 
@@ -120,6 +121,11 @@ struct SandboxSession
     bool replay_done = false;
     // Whether a player's order was refused during the replay (said once).
     bool replay_orders_refused = false;
+    // Rebindable input (sandbox_actions), read from input_bindings.txt beside the executable at start
+    // and written whenever the Controls panel changes it; and the key slot (action, 0 or 1) the panel
+    // waits for a key for.
+    eaw::InputBindings bindings{sandbox_actions()};
+    std::optional<std::pair<std::size_t, std::size_t>> rebinding;
     bool initial_spawns_sent = false;
     // Tick at which the initial spawn orders were given (they apply in the next step).
     std::uint64_t initial_spawn_tick = 0;
@@ -211,8 +217,12 @@ struct SandboxSession
     bool reload_check_reported = false;
     std::int64_t click_travel = 0;
     // Dev panels under the bar (F1 hides it); statistics starts as --overlay says.
-    SandboxPanels panels{
-        .statistics = options.overlay || options.panels.statistics, .spawn = options.panels.spawn, .sound = options.panels.sound, .camera = options.panels.camera, .graphics = options.panels.graphics};
+    SandboxPanels panels{.statistics = options.overlay || options.panels.statistics,
+                         .spawn = options.panels.spawn,
+                         .sound = options.panels.sound,
+                         .camera = options.panels.camera,
+                         .graphics = options.panels.graphics,
+                         .controls = options.panels.controls};
     // The graphics panel's settings, handed to the renderer before the next frame when changed
     // (the panel is drawn inside a frame); terrain decals off hands the renderer none.
     eaw::D3d12GraphicsSettings graphics_settings = renderer.graphics_settings();
@@ -329,6 +339,21 @@ struct SandboxSession
     void poll_packages();
     // Command-line automation: initial spawns, --auto-move, and --pick, once the content is shown.
     void run_automation();
+    [[nodiscard]] bool action_down(const SandboxAction action, const eaw::InputState& input) const
+    {
+        return bindings.down(action_index(action), input);
+    }
+    [[nodiscard]] bool action_pressed(const SandboxAction action, const eaw::InputState& input) const
+    {
+        return bindings.pressed(action_index(action), input);
+    }
+    // The bindings file beside the executable: read at start (what it cannot read is logged and left
+    // at the defaults), written after each change.
+    void load_bindings();
+    void save_bindings() const;
+    // While the Controls panel waits for a key: the first key pressed binds the slot (Escape cancels,
+    // Backspace or Delete clears it). True when the frame's keys went to it.
+    bool capture_rebinding(const eaw::InputState& input);
 
     // The simulation, its presentation, and effects over time (sandbox_session_world.cpp).
     // Presentation time of the map world: frozen while paused (resuming shifts the clocks' origins by

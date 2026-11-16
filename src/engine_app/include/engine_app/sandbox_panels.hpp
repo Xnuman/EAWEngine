@@ -12,13 +12,16 @@
 
 #include "render/d3d12_renderer.hpp"
 #include "assets/spawn_catalog.hpp"
+#include "platform/input_bindings.hpp"
 
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace eaw::engine_app {
 
@@ -42,6 +45,7 @@ struct SandboxPanels
     bool sound{};
     bool camera{};
     bool graphics{};
+    bool controls{};
     // Spawn panel: the search text (case-insensitive substring of type names), and the chosen
     // category and faction filters (0: all).
     std::array<char, 96> filter{};
@@ -99,6 +103,13 @@ struct GraphicsPanelView
     bool* decals{};
 };
 
+// What the controls panel edits: every action's two keys, and which key slot waits for a key.
+struct ControlsPanelView
+{
+    eaw::InputBindings* bindings{};
+    std::optional<std::pair<std::size_t, std::size_t>>* rebinding{};
+};
+
 // The category a spawnable XML element type is listed under (Infantry, Vehicles, Heroes,
 // Structures, Space units, Props, Other).
 [[nodiscard]] std::string_view spawn_category(std::string_view kind) noexcept;
@@ -113,5 +124,7 @@ void draw_statistics_panel(SandboxPanels& panels, std::span<const std::string> l
 [[nodiscard]] bool draw_camera_panel(SandboxPanels& panels, const CameraPanelView& view);
 // True when a setting changed.
 [[nodiscard]] bool draw_graphics_panel(SandboxPanels& panels, const GraphicsPanelView& view);
+// True when the bindings changed (a key cleared, or all reset to their defaults).
+[[nodiscard]] bool draw_controls_panel(SandboxPanels& panels, const ControlsPanelView& view);
 
 } // namespace eaw::engine_app

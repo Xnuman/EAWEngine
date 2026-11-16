@@ -376,7 +376,12 @@ Compatibility with the original's multiplayer protocol is an open question, not 
 
 1. Done: Win32 window, raw input, crash handling, log sinks.
 2. Verification with high-polling-rate mice, input timestamps, controllers (GameInput), key
-   rebinding (with UI stage 2).
+   rebinding (with UI stage 2). Key rebinding done 2026-11-16 ahead of the UI, as the owner chose:
+   the full keyboard (`platform/keys.hpp`), an action table with a bindings file
+   (`platform/input_bindings.hpp`), the sandbox's actions (`engine_app/sandbox_actions.hpp`), and a
+   Controls panel; the defaults become the original's hotkeys once the owner's screenshots of its
+   controls menu are transcribed. Controllers (GameInput, a new dependency) wait for the player
+   layer (the owner, 2026-11-16).
 
 ### Code health (ongoing)
 

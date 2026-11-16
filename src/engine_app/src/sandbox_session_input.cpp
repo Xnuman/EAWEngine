@@ -186,10 +186,6 @@ void SandboxSession::set_camera_mode(const SandboxCameraMode mode)
 
 void SandboxSession::update_camera(const eaw::InputState& input, const bool scene_mouse, const bool rts_mode)
 {
-    const auto key_down = [&](const eaw::Key key)
-    {
-        return input.keys[static_cast<std::size_t>(key)].down;
-    };
     const auto camera_now = presentation_now();
     const auto camera_seconds = std::min(std::chrono::duration<float>(camera_now - camera_tick).count(), 0.25F);
     camera_tick = camera_now;
@@ -213,15 +209,15 @@ void SandboxSession::update_camera(const eaw::InputState& input, const bool scen
         {
             fly_speed = std::clamp(fly_speed * std::pow(fly_speed_step, input.wheel_delta), 10.0F, 5000.0F);
         }
-        const auto axis = [&](const eaw::Key positive, const eaw::Key negative)
+        const auto axis = [&](const SandboxAction positive, const SandboxAction negative)
         {
-            return static_cast<float>((key_down(positive) ? 1 : 0) - (key_down(negative) ? 1 : 0));
+            return static_cast<float>((action_down(positive, input) ? 1 : 0) - (action_down(negative, input) ? 1 : 0));
         };
-        const auto step = fly_speed * (key_down(eaw::Key::shift) ? fly_fast_factor : 1.0F) * camera_seconds;
+        const auto step = fly_speed * (action_down(SandboxAction::camera_fast, input) ? fly_fast_factor : 1.0F) * camera_seconds;
         eaw::FlyInput fly;
-        fly.forward = (axis(eaw::Key::w, eaw::Key::s) + axis(eaw::Key::up, eaw::Key::down)) * step;
-        fly.right = (axis(eaw::Key::d, eaw::Key::a) + axis(eaw::Key::right, eaw::Key::left)) * step;
-        fly.up = axis(eaw::Key::e, eaw::Key::q) * step;
+        fly.forward = axis(SandboxAction::camera_forward, SandboxAction::camera_back) * step;
+        fly.right = axis(SandboxAction::camera_right, SandboxAction::camera_left) * step;
+        fly.up = axis(SandboxAction::camera_rise, SandboxAction::camera_sink) * step;
         if (scene_mouse && input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::right)].down)
         {
             fly.yaw = -static_cast<float>(input.raw_mouse_delta_x) * fly_look_rate;
@@ -232,7 +228,7 @@ void SandboxSession::update_camera(const eaw::InputState& input, const bool scen
         return;
     }
     eaw::CameraInput camera_input;
-    camera_input.reset = input.keys[static_cast<std::size_t>(eaw::Key::space)].pressed;
+    camera_input.reset = action_pressed(SandboxAction::camera_reset, input);
     camera_input.zoom_steps = scene_mouse ? input.wheel_delta : 0.0F;
     if (scene_mouse && !rts_mode && input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::left)].down)
     {
@@ -244,9 +240,9 @@ void SandboxSession::update_camera(const eaw::InputState& input, const bool scen
     if (tactical_camera)
     {
         // Pan speed scales with the view distance; panning units are view distances.
-        const auto speed = (key_down(eaw::Key::shift) ? 2.4F : 0.8F) * camera_seconds;
-        camera_input.pan_right = static_cast<float>((key_down(eaw::Key::d) || key_down(eaw::Key::right) ? 1 : 0) - (key_down(eaw::Key::a) || key_down(eaw::Key::left) ? 1 : 0)) * speed;
-        camera_input.pan_forward = static_cast<float>((key_down(eaw::Key::w) || key_down(eaw::Key::up) ? 1 : 0) - (key_down(eaw::Key::s) || key_down(eaw::Key::down) ? 1 : 0)) * speed;
+        const auto speed = (action_down(SandboxAction::camera_fast, input) ? 2.4F : 0.8F) * camera_seconds;
+        camera_input.pan_right = static_cast<float>((action_down(SandboxAction::camera_right, input) ? 1 : 0) - (action_down(SandboxAction::camera_left, input) ? 1 : 0)) * speed;
+        camera_input.pan_forward = static_cast<float>((action_down(SandboxAction::camera_forward, input) ? 1 : 0) - (action_down(SandboxAction::camera_back, input) ? 1 : 0)) * speed;
         if (scene_mouse && !rts_mode && input.mouse_buttons[static_cast<std::size_t>(eaw::MouseButton::right)].down)
         {
             camera_input.pan_right -= static_cast<float>(input.mouse_delta_x) * 0.0015F;
@@ -321,8 +317,8 @@ void SandboxSession::handle_pointer(const eaw::InputState& input, const bool sce
     // the pick names an object there, that object); Alt + right-click moves as one formation.
     if (right_button.pressed && rts_mode && scene_mouse && !selection.empty() && world)
     {
-        const bool attack_move = input.keys[static_cast<std::size_t>(eaw::Key::control)].down;
-        const bool guard = !attack_move && input.keys[static_cast<std::size_t>(eaw::Key::shift)].down;
+        const bool attack_move = action_down(SandboxAction::order_attack_move, input);
+        const bool guard = !attack_move && action_down(SandboxAction::order_guard, input);
         if (const auto target = ground_target(mouse[0], mouse[1]))
         {
             if (attack_move || guard)
@@ -331,7 +327,7 @@ void SandboxSession::handle_pointer(const eaw::InputState& input, const bool sce
             }
             else
             {
-                order_move(*target, input.keys[static_cast<std::size_t>(eaw::Key::alt)].down);
+                order_move(*target, action_down(SandboxAction::order_formation, input));
             }
         }
         if (!attack_move && input.mouse_x >= 0 && input.mouse_y >= 0)
@@ -345,7 +341,7 @@ void SandboxSession::handle_pointer(const eaw::InputState& input, const bool sce
 
 void SandboxSession::handle_command_keys(const eaw::InputState& input, const bool scene_mouse, const Vector2& mouse)
 {
-    if (input.keys[static_cast<std::size_t>(eaw::Key::o)].pressed && !spawn_names.empty())
+    if (action_pressed(SandboxAction::spawn_owner, input) && !spawn_names.empty())
     {
         do
         {
@@ -353,12 +349,13 @@ void SandboxSession::handle_command_keys(const eaw::InputState& input, const boo
         } while (spawn_owner == eaw::neutral_map_owner);
         std::cout << "Spawn owner: " << spawn_owner << '\n';
     }
-    if (input.keys[static_cast<std::size_t>(eaw::Key::tab)].pressed && !spawn_names.empty())
+    if (action_pressed(SandboxAction::spawn_next_type, input) && !spawn_names.empty())
     {
-        // Tab next, Shift+Tab previous, with Ctrl ten at a time.
+        // Next type, back while spawn_type_back is held, ten at a time while spawn_type_ten is (Tab,
+        // Shift, Ctrl by default).
         const auto size = spawn_names.size();
-        const auto step = (input.keys[static_cast<std::size_t>(eaw::Key::control)].down ? 10U : 1U) % size;
-        spawn_choice = input.keys[static_cast<std::size_t>(eaw::Key::shift)].down ? (spawn_choice + size - step) % size : (spawn_choice + step) % size;
+        const auto step = (action_down(SandboxAction::spawn_type_ten, input) ? 10U : 1U) % size;
+        spawn_choice = action_down(SandboxAction::spawn_type_back, input) ? (spawn_choice + size - step) % size : (spawn_choice + step) % size;
         const bool loaded = std::ranges::any_of(spawnable,
                                                 [&](const eaw::SpawnableType& type)
                                                 {
@@ -366,14 +363,14 @@ void SandboxSession::handle_command_keys(const eaw::InputState& input, const boo
                                                 });
         std::cout << "Spawn type: " << spawn_names[spawn_choice] << (loaded ? "" : " (loads on first spawn)") << " [" << spawn_choice + 1U << "/" << size << "]\n";
     }
-    if (input.keys[static_cast<std::size_t>(eaw::Key::n)].pressed && spawn_choice < spawn_names.size() && world && presentation && tactical_camera && scene_mouse)
+    if (action_pressed(SandboxAction::spawn, input) && spawn_choice < spawn_names.size() && world && presentation && tactical_camera && scene_mouse)
     {
         if (const auto target = ground_target(mouse[0], mouse[1]))
         {
             spawn_named(spawn_names[spawn_choice], *target, spawn_count);
         }
     }
-    if (input.keys[static_cast<std::size_t>(eaw::Key::c)].pressed)
+    if (action_pressed(SandboxAction::camera_mode, input))
     {
         // Fixed, debug, free, and around (models: orbit and free).
         const auto next = camera_mode == SandboxCameraMode::fixed   ? (tactical_camera ? SandboxCameraMode::debug : SandboxCameraMode::free)
@@ -444,7 +441,7 @@ void SandboxSession::process_picks()
 
 void SandboxSession::handle_view_keys(const eaw::InputState& input)
 {
-    if (input.keys[static_cast<std::size_t>(eaw::Key::p)].pressed)
+    if (action_pressed(SandboxAction::pause, input))
     {
         if (tactical_camera && world)
         {
@@ -455,17 +452,17 @@ void SandboxSession::handle_view_keys(const eaw::InputState& input)
             animation_playing = !animation_playing;
         }
     }
-    if (input.keys[static_cast<std::size_t>(eaw::Key::b)].pressed)
+    if (action_pressed(SandboxAction::bounds, input))
     {
         show_all_bounds = !show_all_bounds;
         std::cout << "Bounds overlay " << (show_all_bounds ? "on" : "off") << '\n';
     }
-    if (input.keys[static_cast<std::size_t>(eaw::Key::g)].pressed)
+    if (action_pressed(SandboxAction::passability, input))
     {
         show_passability = !show_passability;
         std::cout << "Passability overlay " << (show_passability ? "on" : "off") << '\n';
     }
-    const int animation_step = (input.keys[static_cast<std::size_t>(eaw::Key::right)].pressed ? 1 : 0) - (input.keys[static_cast<std::size_t>(eaw::Key::left)].pressed ? 1 : 0);
+    const int animation_step = (action_pressed(SandboxAction::animation_next, input) ? 1 : 0) - (action_pressed(SandboxAction::animation_previous, input) ? 1 : 0);
     if (visual_model && !tactical_camera && animation_step != 0 && !animation_paths.empty())
     {
         // Choice 0 is the bind pose; reading here is safe because builds only read too, and

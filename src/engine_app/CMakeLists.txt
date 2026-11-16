@@ -20,6 +20,7 @@ set(EAW_ENGINE_APP_SOURCES
 if(WIN32)
     list(APPEND EAW_ENGINE_APP_HEADERS
         ${HEADERS_DIR}/frame_watchdog.hpp
+        ${HEADERS_DIR}/sandbox_actions.hpp
         ${HEADERS_DIR}/sandbox_app.hpp
         ${HEADERS_DIR}/sandbox_overlay.hpp
         ${HEADERS_DIR}/sandbox_panels.hpp
@@ -27,6 +28,7 @@ if(WIN32)
     )
     list(APPEND EAW_ENGINE_APP_SOURCES
         ${SOURCES_DIR}/frame_watchdog.cpp
+        ${SOURCES_DIR}/sandbox_actions.cpp
         ${SOURCES_DIR}/sandbox_app.cpp
         ${SOURCES_DIR}/sandbox_overlay.cpp
         ${SOURCES_DIR}/sandbox_panels.cpp

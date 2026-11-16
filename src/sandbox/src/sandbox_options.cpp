@@ -311,9 +311,13 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
             {
                 options.panels.graphics = true;
             }
+            else if (value == "controls")
+            {
+                options.panels.controls = true;
+            }
             else
             {
-                return make_error("--panel must be menu, statistics, spawn, sound, camera, or graphics");
+                return make_error("--panel must be menu, statistics, spawn, sound, camera, graphics, or controls");
             }
         }
         else if (argument == "--no-overlay")
