@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/status.hpp"
+#include "platform/keys.hpp"
 
 #include <array>
 #include <cstddef>
@@ -9,47 +10,6 @@
 #include <string>
 
 namespace eaw {
-
-enum class Key : std::uint8_t
-{
-    escape,
-    enter,
-    space,
-    left,
-    right,
-    up,
-    down,
-    w,
-    a,
-    s,
-    d,
-    p,
-    b,
-    c,
-    g,
-    n,
-    o,
-    q,
-    e,
-    tab,
-    f1,
-    shift,
-    control,
-    alt,
-    backspace,
-    del,
-    home,
-    end,
-    count,
-};
-
-enum class MouseButton : std::uint8_t
-{
-    left,
-    right,
-    middle,
-    count,
-};
 
 struct ButtonState
 {

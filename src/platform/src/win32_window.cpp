@@ -406,16 +406,36 @@ struct PlatformWindow::Impl
 
     static std::optional<Key> translate_key(const WPARAM virtual_key)
     {
+        // Letters, digits, and function keys by offset (their virtual keys and Key values are both
+        // contiguous and in order).
+        if (virtual_key >= 'A' && virtual_key <= 'Z')
+        {
+            return static_cast<Key>(static_cast<std::size_t>(Key::a) + (virtual_key - 'A'));
+        }
+        if (virtual_key >= '0' && virtual_key <= '9')
+        {
+            return static_cast<Key>(static_cast<std::size_t>(Key::digit0) + (virtual_key - '0'));
+        }
+        if (virtual_key >= VK_F1 && virtual_key <= VK_F12)
+        {
+            return static_cast<Key>(static_cast<std::size_t>(Key::f1) + (virtual_key - VK_F1));
+        }
         switch (virtual_key)
         {
         case VK_BACK:
             return Key::backspace;
         case VK_DELETE:
             return Key::del;
+        case VK_INSERT:
+            return Key::insert;
         case VK_HOME:
             return Key::home;
         case VK_END:
             return Key::end;
+        case VK_PRIOR:
+            return Key::page_up;
+        case VK_NEXT:
+            return Key::page_down;
         case VK_ESCAPE:
             return Key::escape;
         case VK_RETURN:
@@ -430,34 +450,30 @@ struct PlatformWindow::Impl
             return Key::up;
         case VK_DOWN:
             return Key::down;
-        case 'W':
-            return Key::w;
-        case 'A':
-            return Key::a;
-        case 'S':
-            return Key::s;
-        case 'D':
-            return Key::d;
-        case 'P':
-            return Key::p;
-        case 'B':
-            return Key::b;
-        case 'C':
-            return Key::c;
-        case 'G':
-            return Key::g;
-        case 'N':
-            return Key::n;
-        case 'O':
-            return Key::o;
-        case 'Q':
-            return Key::q;
-        case 'E':
-            return Key::e;
         case VK_TAB:
             return Key::tab;
-        case VK_F1:
-            return Key::f1;
+        case VK_OEM_MINUS:
+            return Key::minus;
+        case VK_OEM_PLUS:
+            return Key::equals;
+        case VK_OEM_4:
+            return Key::left_bracket;
+        case VK_OEM_6:
+            return Key::right_bracket;
+        case VK_OEM_1:
+            return Key::semicolon;
+        case VK_OEM_7:
+            return Key::apostrophe;
+        case VK_OEM_COMMA:
+            return Key::comma;
+        case VK_OEM_PERIOD:
+            return Key::period;
+        case VK_OEM_2:
+            return Key::slash;
+        case VK_OEM_5:
+            return Key::backslash;
+        case VK_OEM_3:
+            return Key::grave;
         case VK_SHIFT:
         case VK_LSHIFT:
         case VK_RSHIFT:

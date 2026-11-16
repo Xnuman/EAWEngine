@@ -7,11 +7,15 @@ set(SOURCES_DIR "src")
 
 set(EAW_PLATFORM_HEADERS
     ${HEADERS_DIR}/crash_handler.hpp
+    ${HEADERS_DIR}/input_bindings.hpp
+    ${HEADERS_DIR}/keys.hpp
     ${HEADERS_DIR}/log_sinks.hpp
     ${HEADERS_DIR}/platform_window.hpp
 )
 
 set(EAW_PLATFORM_SOURCES
+    ${SOURCES_DIR}/input_bindings.cpp
+    ${SOURCES_DIR}/keys.cpp
     ${SOURCES_DIR}/win32_crash_handler.cpp
     ${SOURCES_DIR}/win32_log_sinks.cpp
     ${SOURCES_DIR}/win32_window.cpp
