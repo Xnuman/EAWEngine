@@ -900,6 +900,11 @@ private:
     // nearest place where all of it fits (block_shift_rings rings out), then each slot that still
     // does not fit placed on its own (place_destination), beside the slots placed before it.
     void place_block(std::vector<FormationSlot>& slots, std::span<const std::size_t> movers);
+    // A group move's destinations on the ground (one per entry of `movers`; the owner, 2026-11-16:
+    // the units' footprints packed as close to the ordered point as they fit, not a formation's
+    // spacing): members nearest the point first, each on the free point nearest it (rings of its
+    // size), and on that ring the one nearest the member, group_slot_gap apart.
+    [[nodiscard]] std::vector<Vector3> place_group(std::span<const std::size_t> movers, const Vector3& target);
     // Builds the occupancy grid for this tick if it is not built yet.
     void refresh_occupancy();
     // Whether a footprint of `radius` at (x, y) overlaps a ground unit that `counts` accepts.
@@ -1194,6 +1199,9 @@ private:
         // cannot part is not asked every tick). Hashed.
         std::vector<std::uint32_t> ask_waits;
         std::vector<std::uint8_t> detoured;
+        // Detours a unit planned around held movers since its route was set (at most
+        // mover_detour_limit; then it is held as by standing units). Hashed.
+        std::vector<std::uint8_t> mover_detours;
         template <class Visit> void for_each_column(Visit&& visit)
         {
             visit(move_targets);
@@ -1210,6 +1218,7 @@ private:
             visit(blocked_ticks);
             visit(ask_waits);
             visit(detoured);
+            visit(mover_detours);
         }
     };
     // Flight (pooled: flyers only, the entities whose recipe has a minimum speed above 0): the
@@ -2044,6 +2053,9 @@ private:
         // a route around the standing units near it, as obstacles, and follows it; where even that
         // way ends where it stands, it has reached the closest point and stops.
         void plan_detours(const View& view);
+        // A unit that can no longer see the waypoint it heads for across its ground (avoidance pushed
+        // it around a corner) gets a short leg back to it, at most route_repairs_per_tick a tick.
+        void repair_routes(const View& view);
         // Where the unit at `yielder` steps to let `passer` (heading `heading`) by: the shortest free
         // step out of its corridor in any of give_way_directions directions, or one a line of standing
         // allies opens by stepping on the same way (shift_on); its requests (and the chain's) go to

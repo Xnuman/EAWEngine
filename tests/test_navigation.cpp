@@ -537,6 +537,53 @@ void test_group_move()
         require(closest >= 9.99F && std::hypot(entities[1].position.x - 150.0F, entities[1].position.y - 50.0F) < 1.0F,
                 "the ally must make way without being touched and return to its place (at " + std::to_string(entities[1].position.x) + ", " + std::to_string(entities[1].position.y) + ")");
     }
+    // A group move packs its members' footprints around the ordered point (the owner, 2026-11-16):
+    // ten tanks whose XML FormationSpacing (2.75) made formation slots 169 units apart end within two
+    // rings of their size of the point, none overlapping another's destination.
+    {
+        eaw::GroundMap open;
+        open.width = 80;
+        open.height = 80;
+        open.spacing = 10.0F;
+        open.heights.assign(6400, 0.0F);
+        open.passability.assign(6400, eaw::passability::clear);
+        eaw::SimulationWorld world(0.1);
+        world.set_ground(open);
+        std::vector<eaw::EntityId> tanks;
+        for (int index = 0; index < 10; ++index)
+        {
+            tanks.push_back(expect_ok(test_spawn(world, {.type_name = "Tank",
+                                                         .position = {100.0F + 60.0F * static_cast<float>(index), 100.0F + 40.0F * static_cast<float>(index % 3), 0.0F},
+                                                         .max_speed = 30.0F,
+                                                         .follows_ground = true,
+                                                         .passable_types = eaw::passability::clear,
+                                                         .radius = 22.6F,
+                                                         .formation_spacing = 2.75F}),
+                                      "test spawn"));
+        }
+        const eaw::Vector3 point{400.0F, 500.0F, 0.0F};
+        world.submit({.kind = eaw::SimCommandKind::group_move, .entities = tanks, .target = point});
+        world.step();
+        world.step();
+        std::vector<eaw::Vector3> goals;
+        float farthest = 0.0F;
+        for (const auto id : tanks)
+        {
+            const auto route = world.route(id);
+            require(!route.empty(), "every tank must have a route");
+            goals.push_back(route.back());
+            farthest = std::max(farthest, std::hypot(route.back().x - point.x, route.back().y - point.y));
+        }
+        // Two rings of 2 * radius * (1 + gap), plus a cell for the route's last waypoint.
+        require(farthest <= 2.0F * 2.0F * 22.6F * 1.25F + 10.0F, "a group move must pack its destinations around the point (farthest " + std::to_string(farthest) + ")");
+        for (std::size_t first = 0; first < goals.size(); ++first)
+        {
+            for (auto second = first + 1; second < goals.size(); ++second)
+            {
+                require(std::hypot(goals[first].x - goals[second].x, goals[first].y - goals[second].y) >= 2.0F * 22.6F - 0.01F, "packed destinations must not overlap");
+            }
+        }
+    }
     // A large unit sent through a line of standing allies packed too close to pass between (the owner's
     // report, 2026-11-15: an AT-ST stopped at a line of stormtrooper squads): the line makes way, or
     // the unit goes around it; either way it arrives, and nobody overlaps.
@@ -668,16 +715,16 @@ void test_group_move()
         float closest = 1000.0F;
         for (std::size_t first = 0; first < entities.size(); ++first)
         {
-            require(!entities[first].moving && entities[first].position.x >= 200.0F,
-                    "a group's block must shift to where every member fits (one stands at " + std::to_string(entities[first].position.x) + ", " + std::to_string(entities[first].position.y) + ")");
+            require(!entities[first].moving && entities[first].position.x >= 195.0F, "a group ordered against impassable ground must stand beside it, on ground it may enter (one stands at " +
+                                                                                         std::to_string(entities[first].position.x) + ", " + std::to_string(entities[first].position.y) + ")");
             for (auto second = first + 1; second < entities.size(); ++second)
             {
                 closest = std::min(closest, std::hypot(entities[first].position.x - entities[second].position.x, entities[first].position.y - entities[second].position.y));
             }
         }
-        // In the shifted block members keep their formation spacing (15 here); members whose slots lay on
-        // the wall would pile up at its edge, touching.
-        require(closest >= 14.0F, "the shifted block must keep its shape (closest members " + std::to_string(closest) + " apart)");
+        // Packed around the point (the owner, 2026-11-16: a group move packs its members, not a
+        // formation's block): beside each other, none overlapping.
+        require(closest >= 10.0F - 0.01F, "members packed against impassable ground must not overlap (closest members " + std::to_string(closest) + " apart)");
     }
     // Six in a column in a corridor five cells wide, one group move ahead: the ones whose slots lie past
     // group-mates already standing in theirs get by them (the owner's report: units stopped while others

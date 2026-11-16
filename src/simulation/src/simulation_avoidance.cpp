@@ -440,101 +440,151 @@ void SimulationWorld::NavigationSystem::plan_detours(const View& view)
             continue;
         }
         route.blocked_ticks[index] = 0;
-        if (route.detoured[index] == detour_fresh)
-        {
-            // Held up again before passing a waypoint of its detour: where it stands is the closest
-            // point it can reach (planning the same detour again, a unit in contact with the standing
-            // units around it never stopped).
-            route.last_goals[index] = *route.move_targets[index];
-            route.move_targets[index].reset();
-            route.paths[index].clear();
-            route.detoured[index] = detour_none;
-            continue;
-        }
-        // The standing units near it block the cells within their summed radii (not those under the
-        // unit itself, where it stands).
+        // The units near it block the cells within their summed radii (not those under the unit
+        // itself, where it stands): standing units, and with `held` also the movers held up there
+        // themselves. Only a unit held by one of them beside it detours; units flowing past are
+        // avoidance's. Counting only standing units, a knot of held movers never detoured (the
+        // owner's Kamino recording, 2026-11-16: seven tanks held for good between a pillar and a
+        // wall). The cells marked are cleared again after each search (only they, not the map).
         const auto& here = placement.positions[index];
         const auto own = radii[index];
-        // The cells marked are cleared again after the search (only they, not the whole map).
-        marked_cells_.clear();
+        const auto& goal = *route.move_targets[index];
+        const auto goal_cell = map.cell_at(goal.x, goal.y);
         query_.clear();
         avoidance.grid.query_overlapping(here, own + detour_window, query_);
-        // Only a unit held by a standing unit beside it detours: a jam of moving units is avoidance's.
-        bool beside = false;
-        for (const auto other : query_)
+        struct Marked
         {
-            if (other == index || radii[other] <= 0.0F || route.move_targets[other])
+            bool beside{};
+            bool movers{};
+        };
+        const auto mark = [&](const bool held)
+        {
+            Marked marked;
+            for (const auto other : query_)
             {
-                continue;
-            }
-            const auto& there = placement.positions[other];
-            const auto reach = own + radii[other];
-            beside = beside || distance_xy(there, here) <= reach * detour_beside;
-            const auto first_x = static_cast<long>(std::floor((there.x - reach) / map.spacing));
-            const auto last_x = static_cast<long>(std::ceil((there.x + reach) / map.spacing));
-            const auto first_y = static_cast<long>(std::floor((there.y - reach) / map.spacing));
-            const auto last_y = static_cast<long>(std::ceil((there.y + reach) / map.spacing));
-            for (auto y = std::max(0L, first_y); y <= std::min(static_cast<long>(map.height) - 1, last_y); ++y)
-            {
-                for (auto x = std::max(0L, first_x); x <= std::min(static_cast<long>(map.width) - 1, last_x); ++x)
+                const bool held_mover = held && route.move_targets[other] && length(motion.velocities[other]) < travel_speed(view, other) * give_way_held_fraction;
+                if (other == index || radii[other] <= 0.0F || (route.move_targets[other] && !held_mover))
                 {
-                    const Vector3 center{static_cast<float>(x) * map.spacing, static_cast<float>(y) * map.spacing, 0.0F};
-                    if (distance_xy(center, there) < reach && distance_xy(center, here) > own)
+                    continue;
+                }
+                marked.movers = marked.movers || held_mover;
+                const auto& there = placement.positions[other];
+                const auto reach = own + radii[other];
+                marked.beside = marked.beside || distance_xy(there, here) <= reach * detour_beside;
+                const auto first_x = static_cast<long>(std::floor((there.x - reach) / map.spacing));
+                const auto last_x = static_cast<long>(std::ceil((there.x + reach) / map.spacing));
+                const auto first_y = static_cast<long>(std::floor((there.y - reach) / map.spacing));
+                const auto last_y = static_cast<long>(std::ceil((there.y + reach) / map.spacing));
+                for (auto y = std::max(0L, first_y); y <= std::min(static_cast<long>(map.height) - 1, last_y); ++y)
+                {
+                    for (auto x = std::max(0L, first_x); x <= std::min(static_cast<long>(map.width) - 1, last_x); ++x)
                     {
-                        const auto cell = static_cast<std::uint32_t>(y) * map.width + static_cast<std::uint32_t>(x);
-                        if (obstacle_cells_[cell] == 0)
+                        const Vector3 center{static_cast<float>(x) * map.spacing, static_cast<float>(y) * map.spacing, 0.0F};
+                        if (distance_xy(center, there) < reach && distance_xy(center, here) > own)
                         {
-                            obstacle_cells_[cell] = 1;
-                            marked_cells_.push_back(cell);
+                            const auto cell = static_cast<std::uint32_t>(y) * map.width + static_cast<std::uint32_t>(x);
+                            if (obstacle_cells_[cell] == 0)
+                            {
+                                obstacle_cells_[cell] = 1;
+                                marked_cells_.push_back(cell);
+                            }
                         }
                     }
                 }
             }
-        }
+            return marked;
+        };
         const auto unmark = [&]
         {
             for (const auto cell : marked_cells_)
             {
                 obstacle_cells_[cell] = 0;
             }
+            marked_cells_.clear();
         };
-        const auto& goal = *route.move_targets[index];
+        // A search around the cells marked (then cleared); whether it leads nowhere from here.
+        const auto search = [&](PathResult& found)
+        {
+            ++planned;
+            detour_pathfinder_.set_obstacles(obstacle_cells_);
+            found = detour_pathfinder_.find(navigation_data_, map, {here.x, here.y}, {goal.x, goal.y}, footing_of(view, index));
+            detour_pathfinder_.set_obstacles({});
+            unmark();
+            ++path_searches;
+            path_expansions += found.expanded;
+            return found.waypoints.empty() || (found.status != PathStatus::reached && std::hypot(found.waypoints.back().x - here.x, found.waypoints.back().y - here.y) <= std::max(own, map.spacing));
+        };
+        // Where a unit stops for good, the closest point it can reach: where standing units close
+        // its way. Held movers leave in time: closed by them, it keeps its order and plans again
+        // later (stopping there, three tanks of the Kamino recording ended 600 units short).
+        const auto standing_close_way = [&]
+        {
+            if (!mark(false).beside)
+            {
+                unmark();
+                return false;
+            }
+            PathResult found;
+            return search(found);
+        };
+        const auto stop_here = [&]
+        {
+            route.last_goals[index] = goal;
+            route.move_targets[index].reset();
+            route.paths[index].clear();
+            route.detoured[index] = detour_none;
+        };
         // A goal among the standing units is taken: no way leads closer through them, and where it
-        // stops is the arrival rules' (goal_taken), which a detour would keep from ever applying.
-        const auto goal_cell = map.cell_at(goal.x, goal.y);
-        if (!beside || (goal_cell && obstacle_cells_[*goal_cell] != 0))
+        // stops is the arrival rules' (goal_taken), which a detour would keep from ever applying; so
+        // is a crowd at the goal, whose held movers it would go around and around (the budget test).
+        mark(false);
+        const bool goal_taken_by_standing = goal_cell && obstacle_cells_[*goal_cell] != 0;
+        unmark();
+        if (goal_taken_by_standing)
+        {
+            continue;
+        }
+        // Around held movers only while the unit has detours around them left.
+        const auto marked = mark(route.mover_detours[index] < mover_detour_limit);
+        // Held up again before passing a waypoint of its detour (planning the same detour again, a
+        // unit in contact with the standing units around it never stopped).
+        if (route.detoured[index] == detour_fresh && !marked.movers)
+        {
+            unmark();
+            stop_here();
+            continue;
+        }
+        if (!marked.beside)
         {
             unmark();
             continue;
         }
-        ++planned;
-        detour_pathfinder_.set_obstacles(obstacle_cells_);
-        const auto found = detour_pathfinder_.find(navigation_data_, map, {here.x, here.y}, {goal.x, goal.y}, footing_of(view, index));
-        detour_pathfinder_.set_obstacles({});
-        unmark();
-        ++path_searches;
-        path_expansions += found.expanded;
-        if (found.waypoints.empty())
+        PathResult found;
+        if (search(found))
         {
-            continue;
-        }
-        const auto& end = found.waypoints.back();
-        if (found.status != PathStatus::reached && std::hypot(end.x - here.x, end.y - here.y) <= std::max(own, map.spacing))
-        {
-            // No way closer than where it stands: the closest point it can reach.
-            route.last_goals[index] = goal;
-            route.move_targets[index].reset();
-            route.paths[index].clear();
+            if (!marked.movers || standing_close_way())
+            {
+                stop_here();
+            }
             continue;
         }
         // Around them, then on to its goal as before (the goal stays the order's).
+        if (marked.movers)
+        {
+            ++route.mover_detours[index];
+        }
         auto& path = route.paths[index];
         path.clear();
-        for (auto waypoint = found.waypoints.rbegin(); waypoint != found.waypoints.rend(); ++waypoint)
+        // A detour that reaches the goal ends on it: the goal stays the move target, not a waypoint
+        // (as set_route does). Kept as a waypoint (its cell's center, a little off the goal), a unit
+        // held short of it in a crowd never came to its last leg, where the arrival rules apply,
+        // and stood "moving" for good (the budget test).
+        const auto first = found.status == PathStatus::reached ? found.waypoints.rbegin() + 1 : found.waypoints.rbegin();
+        for (auto waypoint = first; waypoint != found.waypoints.rend(); ++waypoint)
         {
             path.push_back({waypoint->x, waypoint->y, 0.0F});
         }
-        route.detoured[index] = detour_fresh;
+        route.detoured[index] = path.empty() ? detour_none : detour_fresh;
     }
 }
 

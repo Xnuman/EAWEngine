@@ -42,6 +42,9 @@ inline constexpr std::uint32_t free_ground_rings = 24;
 // How far a group's whole block is shifted to fit before its slots are placed one by one: rings one
 // largest member's diameter apart, this many. An engine choice.
 inline constexpr std::uint32_t block_shift_rings = 8;
+// A group move's destinations keep this share of a member's radius free around it beyond contact, so
+// arriving units do not press against those already there. An engine choice.
+inline constexpr float group_slot_gap = 0.25F;
 // The occupancy grid's cells (an engine choice: a few vehicle footprints wide).
 inline constexpr float occupancy_cell_size = 32.0F;
 // The fastest separation pushes a flyer, in its radii per second: half a radius per tick at the old
@@ -109,12 +112,18 @@ inline constexpr float detour_after_seconds = 2.0F;
 inline constexpr std::uint8_t detour_none = 0;
 inline constexpr std::uint8_t detour_fresh = 1;
 inline constexpr std::uint8_t detour_under_way = 2;
+// Detours around held movers a unit plans for one route: a jam in passing dissolves within one or
+// two (the owner's Kamino recording); a crowd at the goal does not, and after these the unit is
+// held as by standing units (stopping where its way stays closed). An engine choice.
+inline constexpr std::uint8_t mover_detour_limit = 3;
 inline constexpr float detour_window = 300.0F;
 // A unit detours only when a standing unit is within this many summed radii of it (what holds it up).
 inline constexpr float detour_beside = 1.5F;
 // Detours planned a tick at most (a whole group held up at once plans over a few ticks). An engine
 // choice.
 inline constexpr std::uint32_t detours_per_tick = 4;
+// Route repairs (repair_routes) a tick, in entity order. An engine choice.
+inline constexpr std::uint32_t route_repairs_per_tick = 8;
 // A unit heading for its destination stops where it touches (within this share of their summed radii
 // beyond contact) a standing unit that covers the destination, or, having come no closer to it by the
 // progress distance (world units) for the stall time, a standing unit of its owner nearer the
@@ -307,6 +316,39 @@ template <class Free> std::optional<Vector2> nearest_free_point(const Vector3& a
             {
                 return Vector2{x, y};
             }
+        }
+    }
+    return std::nullopt;
+}
+
+// The free point nearest `at` on the first ring (`at` itself, then rings `step` apart, the k-th with
+// 6k points, out to `rings`) where `free` accepts one, and on that ring the one nearest `toward`
+// (ties to the first in angle order); none when no point is accepted.
+template <class Free> std::optional<Vector2> nearest_free_point_toward(const Vector3& at, const float step, const std::uint32_t rings, const Vector2 toward, Free&& free)
+{
+    if (free(at.x, at.y))
+    {
+        return Vector2{at.x, at.y};
+    }
+    for (std::uint32_t ring = 1; ring <= rings; ++ring)
+    {
+        const auto points = 6U * ring;
+        std::optional<Vector2> best;
+        auto best_distance = 0.0F;
+        for (std::uint32_t point = 0; point < points; ++point)
+        {
+            const auto angle = two_pi * static_cast<float>(point) / static_cast<float>(points);
+            const Vector2 candidate{at.x + std::cos(angle) * step * static_cast<float>(ring), at.y + std::sin(angle) * step * static_cast<float>(ring)};
+            const auto distance = length(candidate - toward);
+            if ((!best || distance < best_distance) && free(candidate.x, candidate.y))
+            {
+                best = candidate;
+                best_distance = distance;
+            }
+        }
+        if (best)
+        {
+            return best;
         }
     }
     return std::nullopt;

@@ -28,6 +28,7 @@ void SimulationWorld::NavigationSystem::run(const View& view)
     }
     measure_remaining_routes(route, placement);
     measure_arrival_progress(view);
+    repair_routes(view);
     update_group_cohesion(view);
     plan_space_avoidance(view);
     plan_ground_avoidance(view);
@@ -102,12 +103,57 @@ template <class Plan> void SimulationWorld::NavigationSystem::plan_batch(Plan&& 
     navigation_data_.freeze(false);
 }
 
+void SimulationWorld::NavigationSystem::repair_routes(const View& view)
+{
+    const auto& placement = view.get<PlacementColumns>();
+    const auto& ground = view.get<GroundState>();
+    auto& route = view.get<RouteColumns>();
+    if (!ground.map.has_passability())
+    {
+        return;
+    }
+    std::uint32_t repaired = 0;
+    for (std::size_t index = 0; index < placement.positions.size() && repaired < route_repairs_per_tick; ++index)
+    {
+        // Held up only: a unit moving on goes around a corner by its route as before.
+        if (!ground_steers(view, index) || in_moving_frame(view, index) || length(view.get<MotionColumns>().velocities[index]) >= travel_speed(view, index) * give_way_held_fraction)
+        {
+            continue;
+        }
+        auto& path = route.paths[index];
+        const auto& next = path.empty() ? *route.move_targets[index] : path.back();
+        const PathPoint here{placement.positions[index].x, placement.positions[index].y};
+        const auto footing = footing_of(view, index);
+        if (ground_line_passable(ground.map, here, {next.x, next.y}, footing))
+        {
+            continue;
+        }
+        // Pushed off its way (avoidance moved it aside around a corner): a short leg back to the
+        // waypoint it heads for, followed before it. Straight at it, it pressed against the wall
+        // for good, and the allies behind it waited (the owner's Kamino recording, 2026-11-16).
+        ++repaired;
+        const auto leg = route_scratch_.front().legs.find(navigation_data_, ground.map, here, {next.x, next.y}, footing);
+        ++path_searches;
+        path_expansions += leg.expanded;
+        if (leg.status != PathStatus::reached || leg.waypoints.size() < 2)
+        {
+            continue;
+        }
+        // The leg's last waypoint is the one it heads for: the rest, nearest last, on top of it.
+        for (auto waypoint = leg.waypoints.rbegin() + 1; waypoint != leg.waypoints.rend(); ++waypoint)
+        {
+            path.push_back({waypoint->x, waypoint->y, 0.0F});
+        }
+    }
+}
+
 void SimulationWorld::NavigationSystem::set_route(const View& view, const std::size_t index, const std::vector<PathPoint>& waypoints, const float height)
 {
     auto& route = view.get<RouteColumns>();
     auto& path = route.paths[index];
     path.clear();
     route.detoured[index] = detour_none;
+    route.mover_detours[index] = 0;
     if (waypoints.empty())
     {
         route.move_targets[index].reset();
@@ -692,7 +738,21 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
     }
     const auto facing = formation_facing(members, command.target);
     auto slots = formation_slots(members, command.target, facing);
-    place_block(slots, movers);
+    if (command.kind == SimCommandKind::group_move && ground_.map.valid())
+    {
+        // On the ground a group move's members pack around the ordered point instead of keeping a
+        // formation's spacing (the owner, 2026-11-16: a Canderous company's FormationSpacing 2.75
+        // put its slots 169 units apart, half the group 200-350 units from the point).
+        const auto goals = place_group(movers, command.target);
+        for (std::size_t member = 0; member < movers.size(); ++member)
+        {
+            slots[member].position = goals[member];
+        }
+    }
+    else
+    {
+        place_block(slots, movers);
+    }
     if (command.kind == SimCommandKind::group_move)
     {
         // A group move (the default; the owner, 2026-11-15): each member from where it stands to its

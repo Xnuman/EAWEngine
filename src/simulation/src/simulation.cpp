@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cmath>
 #include <limits>
+#include <numeric>
 #include <unordered_map>
 
 namespace eaw {
@@ -272,6 +273,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn, const EntityId
     route_.blocked_ticks.push_back(0);
     route_.ask_waits.push_back(0);
     route_.detoured.push_back(0);
+    route_.mover_detours.push_back(0);
     placement_.pitches.push_back(0.0F);
     motion_.speeds.push_back(0.0F);
     motion_.starts.push_back(spawn.position);
@@ -527,6 +529,7 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
         hasher.add(route_.blocked_ticks[index]);
         hasher.add(route_.ask_waits[index]);
         hasher.add(route_.detoured[index]);
+        hasher.add(route_.mover_detours[index]);
         hasher.add(route_.loiter_points[index].has_value());
         if (route_.loiter_points[index])
         {
@@ -1111,6 +1114,46 @@ void SimulationWorld::place_block(std::vector<FormationSlot>& slots, const std::
         slots[member].position = place_destination(slots[member].position, index, movers, reserved);
         reserved.push_back({slots[member].position, unit_radius(*this, index)});
     }
+}
+
+std::vector<Vector3> SimulationWorld::place_group(const std::span<const std::size_t> movers, const Vector3& target)
+{
+    std::vector<std::size_t> order(movers.size());
+    std::iota(order.begin(), order.end(), std::size_t{0});
+    std::ranges::sort(order,
+                      [&](const std::size_t left, const std::size_t right)
+                      {
+                          const auto left_distance = distance_xy(placement_.positions[movers[left]], target);
+                          const auto right_distance = distance_xy(placement_.positions[movers[right]], target);
+                          if (left_distance != right_distance)
+                          {
+                              return left_distance < right_distance;
+                          }
+                          return identity_.ids[movers[left]] < identity_.ids[movers[right]];
+                      });
+    std::vector<Vector3> goals(movers.size(), target);
+    std::vector<ReservedGround> reserved;
+    for (const auto member : order)
+    {
+        const auto index = movers[member];
+        const auto radius = unit_radius(*this, index);
+        if (ground_mover_.follows_ground[index] == 0 || !(radius > 0.0F))
+        {
+            continue;
+        }
+        const Vector2 here{placement_.positions[index].x, placement_.positions[index].y};
+        const auto found = nearest_free_point_toward(target, 2.0F * radius * (1.0F + group_slot_gap), free_ground_rings, here,
+                                                     [&](const float x, const float y)
+                                                     {
+                                                         return destination_free(x, y, index, movers, reserved);
+                                                     });
+        if (found)
+        {
+            goals[member] = {found->x, found->y, target.z};
+        }
+        reserved.push_back({goals[member], radius * (1.0F + group_slot_gap)});
+    }
+    return goals;
 }
 
 Vector3 SimulationWorld::place_destination(const Vector3& at, const std::size_t index, const std::span<const std::size_t> movers, const std::span<const ReservedGround> reserved)

@@ -233,6 +233,15 @@ Built 2026-11-15 (step 6), except the blocked-unit replans; `simulation_avoidanc
   A unit still moving at its speed straight along its way asks no one; one turned aside or slowed
   asks a standing ally in its corridor before it is held (without this, avoidance slid it around a
   line instead of the line opening).
+- **Group moves pack** (the owner, 2026-11-16: a group ordered to a position takes it, not a block
+  50-100 meters across): on the ground each member's destination is the free point nearest the
+  ordered point, members nearest it choosing first, on rings of the member's size and on its ring
+  the point nearest the member; destinations keep a quarter of a radius free. Formation moves keep
+  their formation's spacing.
+- **Jams of moving units** (the owner's Kamino recording, 2026-11-16): a unit pushed around a corner
+  so that it no longer sees its next waypoint plans a short leg back to it; a unit held up by units
+  that are themselves held (not only standing ones) detours around them, at most three times a route
+  and not into a crowd at its goal; a way closed only by held movers does not end the order.
 - **Any direction, and lanes** (the owner, 2026-11-15: units may step diagonally and in other
   directions as long as the way is free, and go back to their place; lines open): the point aside is
   the shortest step out of the passer's corridor in any of 16 directions (sideways, diagonally,
