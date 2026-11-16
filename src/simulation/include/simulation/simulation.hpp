@@ -1968,9 +1968,7 @@ private:
         }
         void ground_changed() noexcept
         {
-            pathfinder_.reset();
-            local_pathfinder_.reset();
-            detour_pathfinder_.reset();
+            navigation_data_.reset();
         }
         // Route searches so far, those that ended partial, and the nodes they expanded; members
         // planned on a shared route; group members waiting in the last tick, and members released from
@@ -2044,13 +2042,15 @@ private:
         // searches expand 0.12 of the plain search's nodes (0.035 before the first stretch is
         // ready), time 0.38, paths 1.5% longer, against 0.52, 0.61, and 0.5% for one level held to
         // its corridor (2026-11-15).
+        // The regions and chunk graphs of the ground, which the pathfinders below search with.
+        NavigationData navigation_data_;
         GridPathfinder pathfinder_{0, ChunkLayout::refined};
 
     public:
         // Builds what searches with `footing` use now (a battle's map load), not in a tick.
         void prepare(const GroundMap& ground, const Footing& footing)
         {
-            pathfinder_.prepare(ground, footing);
+            pathfinder_.prepare(navigation_data_, ground, footing);
         }
 
     private:

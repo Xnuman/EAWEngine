@@ -1,5 +1,7 @@
 #include "simulation/pathfinding.hpp"
 
+#include "core/fatal_error.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -206,23 +208,36 @@ GridPathfinder::GridPathfinder(const std::uint32_t max_expansions, const ChunkLa
 
 void GridPathfinder::reset() noexcept
 {
-    regions_.clear();
-    chunk_graphs_.clear();
+    own_.reset();
 }
 
-void GridPathfinder::prepare(const GroundMap& ground, const Footing& footing)
+void GridPathfinder::prepare(NavigationData& navigation, const GroundMap& ground, const Footing& given) const
 {
-    if (layout_ == ChunkLayout::none || !ground.has_passability() || footing.passable_types == 0)
+    if (!ground.has_passability() || given.passable_types == 0)
+    {
+        return;
+    }
+    // What find reads: the regions at the whole-unit radius, the chunk graphs at its bucket.
+    const Footing footing(given.passable_types, given.clearance, static_cast<float>(region_radius(given)));
+    (void)navigation.regions(ground, footing);
+    if (layout_ == ChunkLayout::none)
     {
         return;
     }
     const auto bucket = footing.clearance != nullptr && footing.radius > 0.0F ? footing_bucket(footing.radius) : 0.0F;
     const Footing bucket_footing(footing.passable_types, footing.clearance, bucket);
-    (void)chunks(ground, bucket_footing, fine_chunk_cells);
+    (void)navigation.chunks(ground, bucket_footing, fine_chunk_cells);
     if (layout_ == ChunkLayout::two_level || layout_ == ChunkLayout::refined)
     {
-        (void)chunks(ground, bucket_footing, coarse_chunk_cells);
+        (void)navigation.chunks(ground, bucket_footing, coarse_chunk_cells);
     }
+}
+
+void NavigationData::reset() noexcept
+{
+    EAW_ASSERT_MSG(!frozen_, "navigation data was reset while searches read it");
+    regions_.clear();
+    chunk_graphs_.clear();
 }
 
 GridPathfinder::CellSearch GridPathfinder::search_cells(const GroundMap& ground, const Footing& footing, const std::uint32_t start_cell, const std::uint32_t goal_cell, const ChunkGraph* graph,
@@ -360,7 +375,7 @@ std::vector<std::uint32_t> GridPathfinder::way_back(const std::uint32_t start_ce
     return cells;
 }
 
-const ChunkGraph& GridPathfinder::chunks(const GroundMap& ground, const Footing& footing, const std::uint32_t chunk_cells)
+const ChunkGraph& NavigationData::chunks(const GroundMap& ground, const Footing& footing, const std::uint32_t chunk_cells)
 {
     const auto radius = static_cast<std::uint32_t>(std::max(0.0F, footing.radius));
     for (const auto& graph : chunk_graphs_)
@@ -370,10 +385,11 @@ const ChunkGraph& GridPathfinder::chunks(const GroundMap& ground, const Footing&
             return graph;
         }
     }
+    EAW_ASSERT_MSG(!frozen_, "a chunk graph was missing while searches ran in parallel (GridPathfinder::prepare builds it before)");
     return chunk_graphs_.emplace_back(build_chunk_graph(ground, footing, chunk_cells));
 }
 
-const std::vector<std::uint32_t>& GridPathfinder::regions(const GroundMap& ground, const Footing& given)
+const std::vector<std::uint32_t>& NavigationData::regions(const GroundMap& ground, const Footing& given)
 {
     const auto cells = ground.passability.size();
     const auto radius = region_radius(given);
@@ -388,6 +404,7 @@ const std::vector<std::uint32_t>& GridPathfinder::regions(const GroundMap& groun
             return cached.labels;
         }
     }
+    EAW_ASSERT_MSG(!frozen_, "region labels were missing while searches ran in parallel (GridPathfinder::prepare builds them before)");
     // 4-connected flood fill in cell order: a diagonal step needs both side cells, so diagonal
     // neighbors that are connected at all are connected through a side cell. Labels start at 1.
     auto& entry = regions_.emplace_back();
@@ -423,7 +440,7 @@ const std::vector<std::uint32_t>& GridPathfinder::regions(const GroundMap& groun
     return entry.labels;
 }
 
-PathResult GridPathfinder::find(const GroundMap& ground, PathPoint start, PathPoint goal, const Footing& given)
+PathResult GridPathfinder::find(NavigationData& navigation, const GroundMap& ground, PathPoint start, PathPoint goal, const Footing& given)
 {
     // The search plans at the whole-unit radius its regions are labeled at, so the two agree.
     const Footing footing(given.passable_types, given.clearance, static_cast<float>(region_radius(given)));
@@ -458,7 +475,7 @@ PathResult GridPathfinder::find(const GroundMap& ground, PathPoint start, PathPo
     // A goal outside the start's region (on a cell the class may not enter, or in a region it cannot
     // reach) moves to the region's cell nearest to it, so the search below always succeeds instead
     // of exhausting the region.
-    const auto& labels = regions(ground, footing);
+    const auto& labels = navigation.regions(ground, footing);
     auto goal_cell = cell_of(ground, goal);
     bool goal_moved = false;
     if (labels[goal_cell] != labels[start_cell])
@@ -489,7 +506,7 @@ PathResult GridPathfinder::find(const GroundMap& ground, PathPoint start, PathPo
         // and a search held to the corridor always finds the way.
         const auto bucket = footing.clearance != nullptr && footing.radius > 0.0F ? footing_bucket(footing.radius) : 0.0F;
         const Footing bucket_footing(footing.passable_types, footing.clearance, bucket);
-        const auto& fine = chunks(ground, bucket_footing, fine_chunk_cells);
+        const auto& fine = navigation.chunks(ground, bucket_footing, fine_chunk_cells);
         const auto start_part = fine.part_of[start_cell];
         const auto goal_part = fine.part_of[goal_cell];
         if (start_part != 0 && goal_part != 0 && start_part != goal_part)
@@ -498,7 +515,7 @@ PathResult GridPathfinder::find(const GroundMap& ground, PathPoint start, PathPo
             if (layout_ == ChunkLayout::two_level || layout_ == ChunkLayout::refined)
             {
                 // The 32-cell route first; a 16-cell part lies inside one 32-cell part.
-                const auto& coarse = chunks(ground, bucket_footing, coarse_chunk_cells);
+                const auto& coarse = navigation.chunks(ground, bucket_footing, coarse_chunk_cells);
                 const auto coarse_route = chunk_route(ground, coarse, coarse.part_of[start_cell], coarse.part_of[goal_cell], {}, result.expanded);
                 if (!coarse_route.empty())
                 {

@@ -184,7 +184,7 @@ void SimulationWorld::NavigationSystem::plan_frame_route(const View& view, const
     }
     auto footing = footing_of(view, *largest);
     footing.radius = std::max(footing.radius, radius);
-    const auto found = pathfinder_.find(ground.map, {frame->position.x, frame->position.y}, {frame->target.x, frame->target.y}, footing);
+    const auto found = pathfinder_.find(navigation_data_, ground.map, {frame->position.x, frame->position.y}, {frame->target.x, frame->target.y}, footing);
     ++path_searches;
     path_expansions += found.expanded;
     if (found.status == PathStatus::partial)

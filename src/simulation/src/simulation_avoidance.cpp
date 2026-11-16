@@ -509,7 +509,7 @@ void SimulationWorld::NavigationSystem::plan_detours(const View& view)
         }
         ++planned;
         detour_pathfinder_.set_obstacles(obstacle_cells_);
-        const auto found = detour_pathfinder_.find(map, {here.x, here.y}, {goal.x, goal.y}, footing_of(view, index));
+        const auto found = detour_pathfinder_.find(navigation_data_, map, {here.x, here.y}, {goal.x, goal.y}, footing_of(view, index));
         detour_pathfinder_.set_obstacles({});
         unmark();
         ++path_searches;

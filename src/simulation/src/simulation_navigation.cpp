@@ -37,7 +37,7 @@ void SimulationWorld::NavigationSystem::plan_route_now(const View& view, const s
     auto& route = view.get<RouteColumns>();
     auto& ground = view.get<GroundState>();
     const auto& position = placement.positions[index];
-    const auto planned = pathfinder_.find(ground.map, {position.x, position.y}, {target.x, target.y}, footing_of(view, index));
+    const auto planned = pathfinder_.find(navigation_data_, ground.map, {position.x, position.y}, {target.x, target.y}, footing_of(view, index));
     if (planned.status == PathStatus::unavailable)
     {
         route.paths[index].clear();
@@ -167,7 +167,7 @@ bool SimulationWorld::NavigationSystem::plan_shared_route(const View& view, Path
                 footing.radius = std::max(footing.radius, placement.radii[*member]);
             }
         }
-        const auto shared = pathfinder_.find(ground.map, request.shared_start, {request.group_target.x, request.group_target.y}, footing);
+        const auto shared = pathfinder_.find(navigation_data_, ground.map, request.shared_start, {request.group_target.x, request.group_target.y}, footing);
         ++path_searches;
         path_expansions += shared.expanded;
         if (shared.status == PathStatus::partial)
@@ -216,7 +216,7 @@ void SimulationWorld::NavigationSystem::plan_shared_member(const View& view, con
     // Onto the shared path: straight to its first waypoint, or a short search to the commander.
     if (!ground_line_passable(ground.map, position, request.shared_waypoints.front(), footing))
     {
-        const auto onto = local_pathfinder_.find(ground.map, position, request.shared_start, footing);
+        const auto onto = local_pathfinder_.find(navigation_data_, ground.map, position, request.shared_start, footing);
         path_expansions += onto.expanded;
         if (onto.status != PathStatus::reached)
         {
@@ -236,7 +236,7 @@ void SimulationWorld::NavigationSystem::plan_shared_member(const View& view, con
         }
         else
         {
-            const auto off = local_pathfinder_.find(ground.map, shared_end, slot, footing);
+            const auto off = local_pathfinder_.find(navigation_data_, ground.map, shared_end, slot, footing);
             path_expansions += off.expanded;
             path_points.insert(path_points.end(), off.waypoints.begin(), off.waypoints.end());
         }

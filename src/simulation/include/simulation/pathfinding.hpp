@@ -72,6 +72,39 @@ inline constexpr std::size_t refined_first_chunks = 2;
 inline constexpr std::uint32_t fine_chunk_cells = 16;
 inline constexpr std::uint32_t coarse_chunk_cells = 32;
 
+// What searches over one ground know besides the ground itself, built on first use and shared by
+// the pathfinders that search it (docs/pathfinding-design.md, 4.2): per movement class and whole-unit
+// radius the connected regions, and per size bucket and chunk size the chunk graph. Searches only
+// read it; while it is frozen (searches run in parallel) building anything is a programming error,
+// so whatever they will need is built before (GridPathfinder::prepare).
+class NavigationData final
+{
+public:
+    // Per cell: 0 where `footing` (at its whole-unit radius) may not stand, otherwise its connected
+    // region (from 1).
+    [[nodiscard]] const std::vector<std::uint32_t>& regions(const GroundMap& ground, const Footing& footing);
+    // The chunk graph of `footing` (at its radius) in squares of `chunk_cells`.
+    [[nodiscard]] const ChunkGraph& chunks(const GroundMap& ground, const Footing& footing, std::uint32_t chunk_cells);
+    // Forgets everything built (the ground changed).
+    void reset() noexcept;
+    void freeze(bool frozen) noexcept
+    {
+        frozen_ = frozen;
+    }
+
+private:
+    struct RegionLabels
+    {
+        std::uint32_t passable_types{};
+        std::uint32_t radius{};
+        std::vector<std::uint32_t> labels;
+    };
+    // Deques: a reference handed out stays valid while more is built.
+    std::deque<RegionLabels> regions_;
+    std::deque<ChunkGraph> chunk_graphs_;
+    bool frozen_{};
+};
+
 class GridPathfinder final
 {
 public:
@@ -80,11 +113,22 @@ public:
     // size bucket and holds the cell search to the corridor of parts it found.
     explicit GridPathfinder(std::uint32_t max_expansions = 0, ChunkLayout layout = ChunkLayout::none) noexcept;
 
-    [[nodiscard]] PathResult find(const GroundMap& ground, PathPoint start, PathPoint goal, const Footing& footing);
-    // Builds now what searches with `footing` use (its size bucket's chunk graph), so the first
-    // search does not.
-    void prepare(const GroundMap& ground, const Footing& footing);
-    // Forgets the cached region labels.
+    // A search with the navigation data of `ground` given (shared by several pathfinders, or read by
+    // several searches at once while frozen), or with the pathfinder's own.
+    [[nodiscard]] PathResult find(NavigationData& navigation, const GroundMap& ground, PathPoint start, PathPoint goal, const Footing& footing);
+    [[nodiscard]] PathResult find(const GroundMap& ground, PathPoint start, PathPoint goal, const Footing& footing)
+    {
+        return find(own_, ground, start, goal, footing);
+    }
+    // Builds now in `navigation` (or its own) what its searches with `footing` read (the regions and
+    // the size bucket's chunk graphs), so a search does not: before searches run in parallel, and to
+    // keep the first one cheap.
+    void prepare(NavigationData& navigation, const GroundMap& ground, const Footing& footing) const;
+    void prepare(const GroundMap& ground, const Footing& footing)
+    {
+        prepare(own_, ground, footing);
+    }
+    // Forgets its own navigation data.
     void reset() noexcept;
     // Cells the next searches may not enter besides the ground's (one entry per cell, nonzero blocked;
     // empty for none): the units a detour goes around. The caller keeps them alive and clears them.
@@ -94,18 +138,6 @@ public:
     }
 
 private:
-    // Per movement class and, with clearance, per whole-unit radius (each radius its own labels:
-    // a unit fits through what its radius fits through, no more and no less).
-    struct RegionLabels
-    {
-        std::uint32_t passable_types{};
-        std::uint32_t radius{};
-        // Per cell: 0 when the class may not enter it, otherwise its connected region (from 1).
-        std::vector<std::uint32_t> labels;
-    };
-
-    [[nodiscard]] const std::vector<std::uint32_t>& regions(const GroundMap& ground, const Footing& footing);
-
     struct OpenNode
     {
         std::uint32_t estimate{};
@@ -126,13 +158,10 @@ private:
                                           const std::vector<std::uint8_t>* parts, std::size_t budget, std::uint32_t& expanded);
     // The cells of the last search's way from `start_cell` to `end`, in order (both included).
     [[nodiscard]] std::vector<std::uint32_t> way_back(std::uint32_t start_cell, std::uint32_t end) const;
-    // The chunk graph of `footing` (at its radius) in squares of `chunk_cells`, built on first use.
-    [[nodiscard]] const ChunkGraph& chunks(const GroundMap& ground, const Footing& footing, std::uint32_t chunk_cells);
-
     std::uint32_t max_expansions_;
     ChunkLayout layout_;
-    // A deque: a graph's reference stays valid while another is built.
-    std::deque<ChunkGraph> chunk_graphs_;
+    // The navigation data of searches given none.
+    NavigationData own_;
     // Per-cell search stamps: a cell's cost and parent are valid when seen_ equals search_, and it
     // is closed when closed_ does. Stamps avoid clearing the arrays for every search.
     std::uint32_t search_{};
@@ -141,7 +170,6 @@ private:
     std::vector<std::uint32_t> cost_;
     std::vector<std::uint32_t> parent_;
     std::vector<OpenNode> open_;
-    std::vector<RegionLabels> regions_;
     std::span<const std::uint8_t> obstacles_;
     // Whether `cell` is one of the obstacles set.
     [[nodiscard]] bool obstacle(std::uint32_t cell) const noexcept
