@@ -1109,8 +1109,10 @@ cohesion stall (to be reworked with group movement).
   listed type spawns once; the one count range (a prison: 4 to 8) spawns its minimum (engine
   choices). Types added at runtime leave only survivors whose types the battle already has.
 - Not yet: garrisons, abilities (SWAP_WEAPONS, ROCKET_ATTACK, the shield abilities), AI behavior,
-  ground detonations, death clones as wrecks the simulation knows (`Death_Clone_Is_Obstacle`), bombs'
-  fall, and instant-hit beams.
+  death clones as wrecks the simulation knows (`Death_Clone_Is_Obstacle`), and bombs' fall. Beams
+  come only with abilities: no stock weapon fires an instant beam (the nine projectiles without a
+  speed are ability blasts and two bombs); the beams are the superlasers, laser defense, the energy
+  weapon, shield leech, tractor beams, and drain life (`Super_Laser_Ability` and the rest).
 
 ## Battles
 

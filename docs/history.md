@@ -829,3 +829,6 @@ rewritten to describe the current state; the source document is noted in bracket
 - Damaged smoke: Damaged_Smoke_Asset_Name (7 stock aircraft) now trails its particle below half
   health (an engine choice). The transform-scale split of attached effects moved into a shared
   helper, without_uniform_scale. No hash changed.
+- "Beams for instant-hit weapons" left the open list: no stock weapon fires an instant beam (the
+  nine projectiles without a speed are ability blasts and two bombs); every stock beam belongs to an
+  ability (superlasers, laser defense, energy weapon, shield leech, tractor beams, drain life).
