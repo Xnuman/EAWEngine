@@ -27,6 +27,8 @@ enum class GraphAccess : std::uint8_t
     // depth while testing against it).
     depth_read,
     shader_read,
+    // Read by vertex and pixel shaders alike (the ocean's cascades: the water's vertices move by them).
+    all_shader_read,
     // Read by a compute shader.
     compute_read,
     // Written by a compute shader.

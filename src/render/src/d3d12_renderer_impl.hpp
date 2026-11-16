@@ -10,6 +10,7 @@
 #include "render/d3d12_renderer.hpp"
 #include "render/frame_graph.hpp"
 #include "render/lod_selection.hpp"
+#include "render/ocean_spectrum.hpp"
 #include "render/shadow_cascades.hpp"
 #include "render/wind_bend.hpp"
 
@@ -147,11 +148,16 @@ struct D3d12Renderer::Impl
         // Particles: soft particles on.
         std::array<std::uint32_t, 4> particle_parameters{};
         // Enhanced water's waves (VisualOceanWaves): x height scale, y length scale, z speed scale, w
-        // steepness; then x calm depth, y full depth, z crest foam start.
+        // steepness; then x calm depth, y full depth, z crest foam start, w 1 on open sea (waves on).
         std::array<float, 4> ocean_shape{};
         std::array<float, 4> ocean_shore{};
         // Distance fade (VisualMaterial::distance_fade): x the start, y one over the fade's length.
         std::array<float, 4> distance_fade{};
+        // The FFT ocean (ocean.hlsl): the cascades' patch sizes and whether it runs, and their
+        // displacement and derivative textures' slots.
+        std::array<float, 4> ocean_cascades{};
+        std::array<std::uint32_t, 4> ocean_displacement_slots{};
+        std::array<std::uint32_t, 4> ocean_derivative_slots{};
     };
     // Layout of TerrainDecal in terrain.hlsl (64 bytes).
     struct GpuDecal
@@ -473,6 +479,24 @@ struct D3d12Renderer::Impl
     ComPtr<ID3D12PipelineState> sky_capture_alpha_pipeline;
     ComPtr<ID3D12PipelineState> sky_capture_additive_pipeline;
     ComPtr<ID3D12PipelineState> sky_light_pipeline;
+    // The FFT ocean (ocean.hlsl; docs/water-research.md, "The ocean plan"): the cascades' starting
+    // spectra (uploaded when the sea state changes), the complex fields the passes transform in place,
+    // the packed results, and each cascade's displacement and derivative textures with their slots.
+    ComPtr<ID3D12RootSignature> ocean_root_signature;
+    ComPtr<ID3D12PipelineState> ocean_evolve_pipeline;
+    ComPtr<ID3D12PipelineState> ocean_rows_pipeline;
+    ComPtr<ID3D12PipelineState> ocean_columns_pipeline;
+    ComPtr<ID3D12PipelineState> ocean_pack_pipeline;
+    ComPtr<ID3D12Resource> ocean_spectrum;
+    ComPtr<ID3D12Resource> ocean_fields;
+    ComPtr<ID3D12Resource> ocean_packed;
+    std::array<ComPtr<ID3D12Resource>, ocean_cascades.size()> ocean_displacement;
+    std::array<ComPtr<ID3D12Resource>, ocean_cascades.size()> ocean_derivatives;
+    std::array<std::uint32_t, ocean_cascades.size()> ocean_displacement_slots{};
+    std::array<std::uint32_t, ocean_cascades.size()> ocean_derivative_slots{};
+    std::optional<OceanSeaState> ocean_sea_state;
+    // Whether this frame runs the ocean's passes (waves on, enhanced water, a spectrum uploaded).
+    bool ocean_this_frame{};
     // Occlusion silhouettes: the hidden parts into the mask (depth greater, max blend), then the mask
     // over the scene.
     ComPtr<ID3D12PipelineState> silhouette_pipeline;
@@ -705,6 +729,12 @@ struct D3d12Renderer::Impl
     // Retires resources that may have been uploaded since the last render() at `fence_value`,
     // dropping their pending transitions first (they are never drawn again).
     void retire_uploaded(std::vector<ComPtr<ID3D12Resource>> resources, std::uint64_t fence_value);
+    // The FFT ocean (d3d12_renderer_ocean.cpp): creates its buffers and textures on first use and
+    // uploads the cascades' starting spectra when the sea state changed; records its compute passes at
+    // `seconds` of scene time; copies the packed results into the cascades' textures.
+    void prepare_ocean(const OceanSeaState& state);
+    void record_ocean(float seconds, float gravity);
+    void copy_ocean();
 
     ComPtr<ID3D12Resource> upload_buffer(UploadBatch& upload, const std::span<const std::byte> bytes, const D3D12_RESOURCE_STATES final_state, const std::wstring_view name);
 

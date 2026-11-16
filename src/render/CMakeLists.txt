@@ -83,6 +83,7 @@ set(EAW_RENDER_D3D12_SOURCES
     ${SOURCES_DIR}/d3d12_renderer_device.cpp
     ${SOURCES_DIR}/d3d12_renderer_frame.cpp
     ${SOURCES_DIR}/d3d12_renderer_impl.hpp
+    ${SOURCES_DIR}/d3d12_renderer_ocean.cpp
     ${SOURCES_DIR}/d3d12_renderer_overlay.cpp
     ${SOURCES_DIR}/d3d12_renderer_pipelines.cpp
     ${SOURCES_DIR}/d3d12_renderer_resources.cpp
@@ -93,6 +94,7 @@ set(EAW_RENDER_D3D12_SOURCES
 set(EAW_RENDER_D3D12_SHADERS
     shaders/debug.hlsl
     shaders/legacy_common.hlsli
+    shaders/ocean.hlsl
     shaders/particle.hlsl
     shaders/post.hlsl
     shaders/sandbox.hlsl
@@ -127,6 +129,10 @@ eaw_compile_shader(eaw_render_d3d12 dxc shaders/sandbox.hlsl ps_main ps_6_0 g_ea
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/sandbox.hlsl shadow_vs vs_6_0 g_eaw_shadow_vs)
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/sandbox.hlsl shadow_ps ps_6_0 g_eaw_shadow_ps)
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/sandbox.hlsl water_ps ps_6_0 g_eaw_water_ps)
+eaw_compile_shader(eaw_render_d3d12 dxc shaders/ocean.hlsl evolve_cs cs_6_0 g_eaw_ocean_evolve_cs)
+eaw_compile_shader(eaw_render_d3d12 dxc shaders/ocean.hlsl fft_rows_cs cs_6_0 g_eaw_ocean_rows_cs)
+eaw_compile_shader(eaw_render_d3d12 dxc shaders/ocean.hlsl fft_columns_cs cs_6_0 g_eaw_ocean_columns_cs)
+eaw_compile_shader(eaw_render_d3d12 dxc shaders/ocean.hlsl pack_cs cs_6_0 g_eaw_ocean_pack_cs)
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/sandbox.hlsl silhouette_ps ps_6_0 g_eaw_silhouette_ps)
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/post.hlsl silhouette_composite_ps ps_6_0 g_eaw_silhouette_composite_ps)
 eaw_compile_shader(eaw_render_d3d12 dxc shaders/water_reflections.hlsl clear_cs cs_6_0 g_eaw_water_clear_cs)

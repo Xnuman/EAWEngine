@@ -20,6 +20,8 @@ const char* to_string(const GraphAccess access) noexcept
         return "depth read";
     case GraphAccess::shader_read:
         return "shader read";
+    case GraphAccess::all_shader_read:
+        return "all shader read";
     case GraphAccess::compute_read:
         return "compute read";
     case GraphAccess::unordered_access:

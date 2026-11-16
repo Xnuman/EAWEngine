@@ -213,15 +213,14 @@ legacy maps keep the engine's own table of ocean maps (`ocean_map`), and a futur
 engine's would mark water kinds by brush.
 
 1. Normal detail fades with distance on open sea: each layer fades as its repeat shrinks on screen,
-   and the faded slopes widen the glint (`water_layer_presence` in `sandbox.hlsl`). Built; it lands
-   with stage 2, since alone it leaves the broad layer's own pattern showing (the owner's choice,
-   seeing both captures).
-2. Three FFT cascades replace the four Gerstner waves on ocean maps: the spectrum
-   (`render/ocean_spectrum.hpp`: JONSWAP with TMA, Hasselmann spreading, swell; a seeded patch per
-   cascade, each keeping its band), then a compute pass evolving it and running the inverse FFTs
-   into displacement and derivative textures, the long cascades moving the 12-unit grid (only
-   wavelengths of four cells or more) and all of them bending the normals; a sea-state setting
-   replaces the wave sliders.
+   and the faded slopes widen the glint (`water_layer_presence` in `sandbox.hlsl`). Done with
+   stage 2; alone it left the normal maps' broad layer's own pattern showing, so on open sea the
+   cascades now make the normal instead of the normal maps.
+2. Three FFT cascades replace the four Gerstner waves on ocean maps (status.md, "Ocean waves"):
+   done, but for the sea-state setting that replaces the wave sliders (step D). First result on
+   Kamino: no repeat or lattice anywhere, soft irregular swells, faint foam where crests fold; at the
+   default sea state (peak wavelength about 300, significant height about 7) the slopes are gentle
+   and the surface reads calm from above.
 3. Foam that builds up and fades, injected from the cascades' Jacobian, in place of the procedural
    crest patches.
 4. Each map's depth beneath the water and distance to the coast, baked at load, so waves die down

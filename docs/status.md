@@ -383,9 +383,19 @@ improvements, off or optional unless stated; legacy is the default.
   bottom is steep, with lines rolling in every 2.5 units of depth. Refraction and reflections only
   when the scene renders into its own target (bloom or anti-aliasing on). At the tactical camera's
   pitch reflectance is 2-6%.
-- **Ocean waves** (enhanced water): four Gerstner waves around the map's wind (wavelengths 170, 97,
-  61, 37 units, amplitudes 4.5, 2.6, 1.6, 0.9, deep-water speeds under a gravity of 30 units per
-  second squared, steepness bounded below folding; `ocean_waves`), faded in from the calm depth to
+- **Ocean waves** (enhanced water on ocean maps; docs/water-research.md, "The ocean plan"): an FFT
+  ocean of three cascades (patches of 1000, 263, and 67 world units without a common factor, bands of
+  200-1000, 50-200, and 4-50 units; `render/ocean_spectrum.hpp`). Their starting spectra (JONSWAP
+  limited by depth, Hasselmann spreading around the map's wind, a swell term; seeded) upload when the
+  sea state changes; each frame a compute pass (`ocean.hlsl`) evolves them (deep-water dispersion,
+  gravity 30), runs 256-point inverse FFTs along rows and columns on eight real fields carried two to
+  a complex value, and packs half-float displacement (choppy x, y, height) and derivatives (slopes,
+  Jacobian), copied into six textures (`d3d12_renderer_ocean.cpp`; about 3 MB of spectra and 6 MB of
+  fields). The two long cascades move the 12-unit water grid and bend its normal; all three bend the
+  pixel's normal, each fading as its patch shrinks on screen with its slopes moved into the glint's
+  width (`water_layer_presence`); crests foam where the long cascades' Jacobian falls below 0.6. The
+  scene texture table and the anisotropic sampler are visible to vertex shaders for it, and the frame
+  graph has an `all_shader_read` access. Faded in from the calm depth to
   the full depth so shores and units in the shallows keep the flat plane, which the simulation keeps
   too; the normal follows the waves, and pinched crests foam in patches (a broad two-octave value
   noise of about 420-unit cells drifting with the wind decides where, a fine one of about 7-unit

@@ -8,7 +8,7 @@
 #define SANDBOX_ROOT_SIGNATURE \
     "RootFlags(ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT), " \
     "CBV(b0), " \
-    "DescriptorTable(SRV(t0, space = 1, numDescriptors = 4096), visibility = SHADER_VISIBILITY_PIXEL), " \
+    "DescriptorTable(SRV(t0, space = 1, numDescriptors = 4096)), " \
     "SRV(t1, visibility = SHADER_VISIBILITY_VERTEX), " \
     "SRV(t2, visibility = SHADER_VISIBILITY_VERTEX), " \
     "SRV(t3), " \
@@ -20,8 +20,7 @@
     "SRV(t8, visibility = SHADER_VISIBILITY_PIXEL), " \
     "DescriptorTable(SRV(t9, numDescriptors = 1), visibility = SHADER_VISIBILITY_PIXEL), " \
     "StaticSampler(s0, filter = FILTER_ANISOTROPIC, maxAnisotropy = 8, addressU = TEXTURE_ADDRESS_WRAP, addressV = TEXTURE_ADDRESS_WRAP, " \
-    "addressW = TEXTURE_ADDRESS_WRAP, comparisonFunc = COMPARISON_ALWAYS, borderColor = STATIC_BORDER_COLOR_TRANSPARENT_BLACK, " \
-    "visibility = SHADER_VISIBILITY_PIXEL), " \
+    "addressW = TEXTURE_ADDRESS_WRAP, comparisonFunc = COMPARISON_ALWAYS, borderColor = STATIC_BORDER_COLOR_TRANSPARENT_BLACK), " \
     "StaticSampler(s1, filter = FILTER_MIN_MAG_MIP_LINEAR, addressU = TEXTURE_ADDRESS_CLAMP, addressV = TEXTURE_ADDRESS_CLAMP, " \
     "addressW = TEXTURE_ADDRESS_CLAMP, comparisonFunc = COMPARISON_ALWAYS, borderColor = STATIC_BORDER_COLOR_TRANSPARENT_BLACK, " \
     "visibility = SHADER_VISIBILITY_PIXEL), " \
@@ -107,8 +106,11 @@ cbuffer FrameConstants : register(b0)
     uint4 heat_slots;       // x the signed heat buffer's slot, y TAA weighs heat (1)
     uint4 particle_parameters; // x soft particles on
     float4 ocean_shape; // enhanced water's waves: x height scale, y length scale, z speed scale, w steepness
-    float4 ocean_shore; // x depth below which they are calm, y depth from which they are full, z crest foam start
+    float4 ocean_shore; // x depth below which they are calm, y depth from which they are full, z crest foam start, w open sea (1)
     float4 distance_fade; // x the distance it starts at, y one over its length
+    float4 ocean_cascades; // the FFT ocean's cascades: xyz their patch sizes, w on (1)
+    uint4 ocean_displacement_slots; // xyz each cascade's displacement texture (x, y, height)
+    uint4 ocean_derivative_slots;   // xyz each cascade's derivatives (slope x, slope y, Jacobian)
 };
 
 // Pick ids written to the selection target: 0 is nothing, scene instance index + 1 an object, and

@@ -102,6 +102,35 @@ struct OceanSurface
     float crest;
 };
 
+// The FFT ocean (ocean.hlsl, ocean_cascades.w on): the long cascades (OCEAN_DISPLACED_CASCADES, the
+// ones whose waves the 12-unit grid can carry) move the vertex and bend its normal; their Jacobian
+// below OCEAN_FOAM_JACOBIAN marks folding crests for foam. Faded in by depth and scaled by the height
+// slider like the Gerstner waves (ocean_shore, ocean_shape.x). Engine choices.
+static const uint OCEAN_DISPLACED_CASCADES = 2u;
+static const float OCEAN_FOAM_JACOBIAN = 0.6f;       // folding starts below this
+static const float OCEAN_FOAM_JACOBIAN_RANGE = 0.5f; // and foams fully this far below it
+
+OceanSurface ocean_fft(const float2 position, const float depth)
+{
+    const float scale = smoothstep(ocean_shore.x, ocean_shore.y, depth) * ocean_shape.x;
+    float3 offset = float3(0.0f, 0.0f, 0.0f);
+    float2 slope = float2(0.0f, 0.0f);
+    float jacobian = 1.0f;
+    for (uint cascade = 0u; cascade < OCEAN_DISPLACED_CASCADES; ++cascade)
+    {
+        const float2 uv = position / ocean_cascades[cascade];
+        offset += scene_textures[ocean_displacement_slots[cascade]].SampleLevel(surface_sampler, uv, 0.0f).xyz;
+        const float3 derivatives = scene_textures[ocean_derivative_slots[cascade]].SampleLevel(surface_sampler, uv, 0.0f).xyz;
+        slope += derivatives.xy;
+        jacobian = min(jacobian, derivatives.z);
+    }
+    OceanSurface surface;
+    surface.offset = offset * scale;
+    surface.normal = normalize(float3(-slope * scale, 1.0f));
+    surface.crest = saturate((OCEAN_FOAM_JACOBIAN - jacobian) / OCEAN_FOAM_JACOBIAN_RANGE) * saturate(scale);
+    return surface;
+}
+
 OceanSurface ocean_waves(const float2 position, const float depth, const float time)
 {
     const float2 wind = dot(grass_wind.xy, grass_wind.xy) > 1.0e-6f ? normalize(grass_wind.xy) : OCEAN_CALM_WIND;
@@ -338,7 +367,15 @@ PixelInput vs_main(VertexInput input)
         {
             // Enhanced water's waves (the water grid keeps the depth beneath it in uv1.x). Its motion
             // vectors are left to the depth reprojection (water is blended).
-            const OceanSurface ocean = ocean_waves(world.xy, input.uv1.x, camera_position_time.w);
+            OceanSurface ocean;
+            if (ocean_cascades.w != 0.0f)
+            {
+                ocean = ocean_fft(world.xy, input.uv1.x);
+            }
+            else
+            {
+                ocean = ocean_waves(world.xy, input.uv1.x, camera_position_time.w);
+            }
             world.xyz += ocean.offset;
             previous_world = world;
             normal = ocean.normal;
@@ -455,11 +492,11 @@ float2 water_broad_uv(const MaterialData material, const float2 tiled)
     return mul(float2x2(0.28f, 0.96f, -0.96f, 0.28f), tiled * WATER_BROAD_SCALE) + material.uv_scroll * WATER_BROAD_DRIFT * camera_position_time.w;
 }
 
-// The bend of `layers` (tangent space) with the broad layer's added.
-float3 water_broad_bend(const MaterialData material, const float2 broad_uv, const float3 layers)
+// The bend of `layers` (tangent space) with the broad layer's added at `presence` of its share.
+float3 water_broad_bend(const MaterialData material, const float2 broad_uv, const float3 layers, const float presence)
 {
     const float3 broad = sample_texture(material.normal_texture, broad_uv).xyz * 2.0f - 1.0f;
-    return safe_normalize(float3(layers.xy + broad.xy * WATER_BROAD_SHARE, layers.z * broad.z), float3(0.0f, 0.0f, 1.0f));
+    return safe_normalize(float3(layers.xy + broad.xy * WATER_BROAD_SHARE * presence, layers.z * broad.z), float3(0.0f, 0.0f, 1.0f));
 }
 
 float4 water_broad_base(const MaterialData material, const float2 uv, const float2 broad_uv)
@@ -537,7 +574,7 @@ float4 shade(PixelInput input)
     {
         normal_sample = sample_texture(material.normal_texture, uv);
         const float3 sampled = normal_sample.xyz * 2.0f - 1.0f;
-        const float3 tangent_normal = water ? water_broad_bend(material, broad_uv, sampled) : sampled;
+        const float3 tangent_normal = water ? water_broad_bend(material, broad_uv, sampled, 1.0f) : sampled;
         const float3 tangent = safe_normalize(input.tangent, float3(1.0f, 0.0f, 0.0f));
         const float3 binormal = safe_normalize(input.binormal, float3(0.0f, 1.0f, 0.0f));
         normal = safe_normalize(tangent_normal.x * tangent + tangent_normal.y * binormal + tangent_normal.z * normal, normal);
@@ -626,6 +663,13 @@ static const float WATER_SHORE_FADE = 3.0f;        // depth (units) over which t
 static const float WATER_DETAIL_SCALE = 2.7f;      // second normal layer's repeats per first-layer repeat
 static const float WATER_DETAIL_DRIFT = 1.7f;      // its scroll relative to the first layer's
 static const float WATER_GLINT_POWER = 256.0f;
+// Open sea (ocean_shore.w): each normal layer fades out as its repeat shrinks on screen, so far water
+// keeps only its longer layers and the waves and no repeat reads as a grid; the slopes a faded layer
+// took away widen the sun's glint instead (its specular power from the slope variance, as Toksvig
+// and LEAN mapping do; docs/water-research.md, "The ocean plan"). Engine choices, tuned by eye.
+static const float WATER_LAYER_WHOLE_PIXELS = 384.0f; // a layer whose repeat spans this many pixels is whole
+static const float WATER_LAYER_GONE_PIXELS = 48.0f;   // and gone at this many
+static const float WATER_LAYER_SLOPE_VARIANCE = 0.003f; // a whole layer's slope variance, given to the glint when faded
 static const float WATER_GLINT_STRENGTH = 1.5f;
 static const float WATER_BASE_REFLECTANCE = 0.02f; // water's reflectance looking straight down
 static const float WATER_REFRACTION = 0.02f;       // screen share the bent normal shifts what lies beneath
@@ -691,6 +735,18 @@ float ocean_crest_foam(const float2 position, const float pinch, const float tim
 StructuredBuffer<uint> water_reflections : register(t7);
 
 [RootSignature(SANDBOX_ROOT_SIGNATURE)]
+// How much of a normal layer stays: by the pixels one repeat of its `layer_uv` spans (open sea only).
+float water_layer_presence(const float2 layer_uv)
+{
+    if (ocean_shore.w == 0.0f)
+    {
+        return 1.0f;
+    }
+    const float2 change = fwidth(layer_uv);
+    const float pixels = 1.0f / max(max(change.x, change.y), 1.0e-6f);
+    return smoothstep(WATER_LAYER_GONE_PIXELS, WATER_LAYER_WHOLE_PIXELS, pixels);
+}
+
 PixelOutput water_ps(PixelInput input)
 {
     const MaterialData material = materials[material_index];
@@ -701,11 +757,14 @@ PixelOutput water_ps(PixelInput input)
     const float3 first = sample_texture(material.normal_texture, uv).xyz * 2.0f - 1.0f;
     const float3 second = sample_texture(material.normal_texture, detail_uv).xyz * 2.0f - 1.0f;
     const float2 broad_uv = water_broad_uv(material, tiled);
-    const float3 bent = water_broad_bend(material, broad_uv, float3(first.xy + second.xy, first.z * second.z));
+    const float first_presence = water_layer_presence(uv);
+    const float second_presence = water_layer_presence(detail_uv);
+    const float broad_presence = water_layer_presence(broad_uv);
+    const float3 bent = water_broad_bend(material, broad_uv, float3(first.xy * first_presence + second.xy * second_presence, first.z * second.z), broad_presence);
     const float3 surface_normal = safe_normalize(input.normal, float3(0.0f, 0.0f, 1.0f));
     const float3 tangent = safe_normalize(input.tangent, float3(1.0f, 0.0f, 0.0f));
     const float3 binormal = safe_normalize(input.binormal, float3(0.0f, 1.0f, 0.0f));
-    const float3 normal = safe_normalize(bent.x * tangent + bent.y * binormal + bent.z * surface_normal, surface_normal);
+    float3 normal = safe_normalize(bent.x * tangent + bent.y * binormal + bent.z * surface_normal, surface_normal);
 
     // What lies beneath this pixel: the opaque scene's depth, back to a world position.
     Texture2D scene_depth = scene_textures[water_parameters.y];
@@ -719,6 +778,22 @@ PixelOutput water_ps(PixelInput input)
     const bool bottomless = depth >= 1.0f;
     const float path = bottomless ? 1.0e6f : distance(input.world_position, beneath);
     const float below = bottomless ? 1.0e6f : max(input.world_position.z - beneath.z, 0.0f);
+    float ocean_faded_variance = 0.0f;
+    if (ocean_cascades.w != 0.0f)
+    {
+        // The FFT ocean's normal: every cascade's slopes, each fading as its patch shrinks on screen
+        // (the normal maps' layers do not bend open sea); the faded slopes widen the glint.
+        const float scale = smoothstep(ocean_shore.x, ocean_shore.y, below) * ocean_shape.x;
+        float2 slope = float2(0.0f, 0.0f);
+        for (uint cascade = 0u; cascade < 3u; ++cascade)
+        {
+            const float2 cascade_uv = input.world_position.xy / ocean_cascades[cascade];
+            const float presence = water_layer_presence(cascade_uv);
+            slope += scene_textures[ocean_derivative_slots[cascade]].Sample(surface_sampler, cascade_uv).xy * presence;
+            ocean_faded_variance += (1.0f - presence) * WATER_LAYER_SLOPE_VARIANCE;
+        }
+        normal = normalize(float3(-slope * scale, 1.0f));
+    }
 
     const float3 view = safe_normalize(camera_position_time.xyz - input.world_position, float3(0.0f, 0.0f, 1.0f));
     const float fresnel = WATER_BASE_REFLECTANCE + (1.0f - WATER_BASE_REFLECTANCE) * pow(1.0f - saturate(dot(normal, view)), 5.0f);
@@ -731,7 +806,14 @@ PixelOutput water_ps(PixelInput input)
     const float3 light = safe_normalize(key_direction.xyz, float3(0.0f, 0.0f, 1.0f));
     const float3 half_vector = safe_normalize(light + view, normal);
     const float lit = dot(surface_normal, light) > 0.0f ? key_light_visibility(input.world_position, surface_normal, input.position.xy) : 0.0f;
-    const float3 glint = key_specular.rgb * material.specular.rgb * pow(saturate(dot(normal, half_vector)), WATER_GLINT_POWER) * WATER_GLINT_STRENGTH * lit;
+    // The faded slopes widen the glint: Blinn power from the total slope variance (power + 2 =
+    // 2 / variance), its peak lowered by the normalization's (power + 8) ratio.
+    const float faded_variance = ocean_cascades.w != 0.0f ? ocean_faded_variance
+                                                          : ((1.0f - first_presence) + (1.0f - second_presence) + (1.0f - broad_presence) * WATER_BROAD_SHARE * WATER_BROAD_SHARE) *
+                                                                WATER_LAYER_SLOPE_VARIANCE;
+    const float glint_power = 2.0f / (2.0f / (WATER_GLINT_POWER + 2.0f) + faded_variance) - 2.0f;
+    const float glint_scale = (glint_power + 8.0f) / (WATER_GLINT_POWER + 8.0f);
+    const float3 glint = key_specular.rgb * material.specular.rgb * pow(saturate(dot(normal, half_vector)), glint_power) * WATER_GLINT_STRENGTH * glint_scale * lit;
 
     // Foam, from the depth beneath and the bottom's slope (from the beneath position's screen
     // derivatives).

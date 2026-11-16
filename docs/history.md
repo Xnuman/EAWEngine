@@ -857,3 +857,11 @@ rewritten to describe the current state; the source document is noted in bracket
   Stage 2 began with the spectrum (render/ocean_spectrum, JONSWAP/TMA, Hasselmann spreading, swell;
   default fetch 600,000 units for a peak wavelength near 300 and a significant height near 7, close
   to the Gerstner waves) and Pcg32::gaussian.
+- The FFT ocean runs on ocean maps (stage 2 with stage 1): three cascades evolved and transformed on
+  the GPU each frame (ocean.hlsl, d3d12_renderer_ocean.cpp), moving the water grid and making its
+  normals; the normal maps no longer bend open sea. The spectrum's amplitudes were twice too large
+  at first (caught by a new variance test). The vertex shader needed the scene texture table and the
+  anisotropic sampler visible to all stages. GPU validation on the RTX 3070 is clean on Kamino and
+  Utapau. On Kamino the lattice is gone; the default sea reads calm from above. The Gerstner sliders
+  (length, speed, crest sharpness, crest foam) no longer act until the sea-state setting replaces
+  them.

@@ -11,6 +11,10 @@
 // points embed the root signature, which the renderer creates from the vertex shader blob.
 #include "g_eaw_debug_ps.h"
 #include "g_eaw_debug_vs.h"
+#include "g_eaw_ocean_columns_cs.h"
+#include "g_eaw_ocean_evolve_cs.h"
+#include "g_eaw_ocean_pack_cs.h"
+#include "g_eaw_ocean_rows_cs.h"
 #include "g_eaw_particle_heat_enhanced_ps.h"
 #include "g_eaw_particle_heat_ps.h"
 #include "g_eaw_particle_modulate_ps.h"
@@ -320,6 +324,16 @@ void D3d12Renderer::Impl::create_pipeline()
     check_device_hresult(device->CreateComputePipelineState(&compute, IID_PPV_ARGS(&sky_light_pipeline)), device, "CreateComputePipelineState(sky light)");
     compute.CS = {g_eaw_water_project_cs, sizeof(g_eaw_water_project_cs)};
     check_device_hresult(device->CreateComputePipelineState(&compute, IID_PPV_ARGS(&water_reflection_project_pipeline)), device, "CreateComputePipelineState(water reflection projection)");
+    check_device_hresult(device->CreateRootSignature(0, g_eaw_ocean_evolve_cs, sizeof(g_eaw_ocean_evolve_cs), IID_PPV_ARGS(&ocean_root_signature)), device, "CreateRootSignature(ocean)");
+    compute.pRootSignature = ocean_root_signature.Get();
+    compute.CS = {g_eaw_ocean_evolve_cs, sizeof(g_eaw_ocean_evolve_cs)};
+    check_device_hresult(device->CreateComputePipelineState(&compute, IID_PPV_ARGS(&ocean_evolve_pipeline)), device, "CreateComputePipelineState(ocean evolve)");
+    compute.CS = {g_eaw_ocean_rows_cs, sizeof(g_eaw_ocean_rows_cs)};
+    check_device_hresult(device->CreateComputePipelineState(&compute, IID_PPV_ARGS(&ocean_rows_pipeline)), device, "CreateComputePipelineState(ocean rows)");
+    compute.CS = {g_eaw_ocean_columns_cs, sizeof(g_eaw_ocean_columns_cs)};
+    check_device_hresult(device->CreateComputePipelineState(&compute, IID_PPV_ARGS(&ocean_columns_pipeline)), device, "CreateComputePipelineState(ocean columns)");
+    compute.CS = {g_eaw_ocean_pack_cs, sizeof(g_eaw_ocean_pack_cs)};
+    check_device_hresult(device->CreateComputePipelineState(&compute, IID_PPV_ARGS(&ocean_pack_pipeline)), device, "CreateComputePipelineState(ocean pack)");
 
     description.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_ONE;
     description.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_ONE;

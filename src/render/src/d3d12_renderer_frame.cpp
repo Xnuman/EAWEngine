@@ -38,6 +38,8 @@ D3D12_RESOURCE_STATES d3d12_state(const GraphAccess access) noexcept
         return D3D12_RESOURCE_STATE_DEPTH_READ | D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     case GraphAccess::shader_read:
         return D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    case GraphAccess::all_shader_read:
+        return D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
     case GraphAccess::compute_read:
         return D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
     case GraphAccess::unordered_access:
@@ -902,9 +904,28 @@ bool D3d12Renderer::Impl::render()
     const bool waves = ocean.mode == VisualOceanWavesMode::on || (ocean.mode == VisualOceanWavesMode::automatic && lighting.ocean);
     constants.ocean_shape = {waves ? std::clamp(ocean.height_scale, 0.0F, VisualOceanWaves::max_height_scale) : 0.0F, std::max(ocean.length_scale, 0.1F), std::max(ocean.speed_scale, 0.0F),
                              waves ? std::clamp(ocean.steepness, 0.0F, 0.95F) : 0.0F};
+    // The FFT ocean runs where the waves do, with enhanced water; the wind sets its sea's direction.
+    ocean_this_frame = waves && scene_loaded && options.graphics.water == VisualWaterMode::enhanced;
+    if (ocean_this_frame)
+    {
+        OceanSeaState sea;
+        sea.wind_angle = std::atan2(lighting.wind.direction.y, lighting.wind.direction.x);
+        if (!std::isfinite(sea.wind_angle))
+        {
+            sea.wind_angle = 0.0F;
+        }
+        prepare_ocean(sea);
+        for (std::size_t cascade = 0; cascade < ocean_cascades.size(); ++cascade)
+        {
+            constants.ocean_cascades[cascade] = ocean_cascades[cascade].patch_size;
+            constants.ocean_displacement_slots[cascade] = ocean_displacement_slots[cascade];
+            constants.ocean_derivative_slots[cascade] = ocean_derivative_slots[cascade];
+        }
+        constants.ocean_cascades[3] = 1.0F;
+    }
     const auto fade_start = std::max(options.graphics.distance_fade_start, 0.0F);
     constants.distance_fade = {fade_start, 1.0F / std::max(options.graphics.distance_fade_end - fade_start, 1.0F), 0.0F, 0.0F};
-    constants.ocean_shore = {std::max(ocean.calm_depth, 0.0F), std::max(ocean.full_depth, ocean.calm_depth + 0.01F), std::clamp(ocean.crest_foam_start, 0.0F, 0.99F), 0.0F};
+    constants.ocean_shore = {std::max(ocean.calm_depth, 0.0F), std::max(ocean.full_depth, ocean.calm_depth + 0.01F), std::clamp(ocean.crest_foam_start, 0.0F, 0.99F), waves ? 1.0F : 0.0F};
     if (options.graphics.sky_visibility && sky_visibility_texture && *sky_visibility_texture < scene_textures.size())
     {
         constants.sky_visibility_map = sky_visibility_map;
@@ -1189,6 +1210,36 @@ bool D3d12Renderer::Impl::render()
     auto water_uses = scene_uses;
     auto transparent_uses = scene_uses;
     water_uses[3] = {depth, GraphAccess::depth_read};
+    if (ocean_this_frame && has_water)
+    {
+        // The ocean's cascades for this frame: evolved and transformed, then copied into the textures
+        // the water's vertex and pixel shaders read.
+        const auto spectrum = import_resource(ocean_spectrum.Get(), "ocean spectrum", GraphAccess::compute_read, GraphAccess::compute_read);
+        const auto fields = import_resource(ocean_fields.Get(), "ocean fields", GraphAccess::common, GraphAccess::common);
+        const auto packed = import_resource(ocean_packed.Get(), "ocean packed", GraphAccess::common, GraphAccess::common);
+        frame_graph.add_pass("ocean waves", {{spectrum, GraphAccess::compute_read}, {fields, GraphAccess::unordered_access}, {packed, GraphAccess::unordered_access}},
+                             [&]
+                             {
+                                 record_ocean(scene_time, OceanSeaState{}.gravity);
+                             });
+        std::vector<FrameGraph::Use> copy_uses{{packed, GraphAccess::copy_source}};
+        std::vector<std::uint32_t> ocean_graph_textures;
+        for (std::size_t cascade = 0; cascade < ocean_cascades.size(); ++cascade)
+        {
+            ocean_graph_textures.push_back(import_resource(ocean_displacement[cascade].Get(), "ocean displacement", GraphAccess::all_shader_read, GraphAccess::all_shader_read));
+            ocean_graph_textures.push_back(import_resource(ocean_derivatives[cascade].Get(), "ocean derivatives", GraphAccess::all_shader_read, GraphAccess::all_shader_read));
+        }
+        for (const auto ocean_texture : ocean_graph_textures)
+        {
+            copy_uses.push_back({ocean_texture, GraphAccess::copy_dest});
+            water_uses.push_back({ocean_texture, GraphAccess::all_shader_read});
+        }
+        frame_graph.add_pass("ocean copy", std::move(copy_uses),
+                             [&]
+                             {
+                                 copy_ocean();
+                             });
+    }
     // Nothing transparent writes depth, so the pass binds it read-only (soft particles sample it).
     transparent_uses[3] = {depth, GraphAccess::depth_read};
     frame_graph.add_pass("scene", std::move(scene_uses),
