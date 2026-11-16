@@ -185,6 +185,20 @@ void test_projectile_models()
     require(effects.particles().stats().instances == 1 && effects.particles().stats().particles > 0, "a particle-model shot must keep one effect while it flies");
     effects.follow_projectiles({}, {}, {}, {}, 0.5F, 1.0F / 30.0F);
     require(effects.particles().stats().instances == 0, "an ended shot's effect must stop");
+
+    // Damaged smoke: one emitter per listed entity, following it; it stops once not listed.
+    auto scaled = eaw::Matrix4::identity();
+    scaled.values[0] = 2.0F;
+    scaled.values[5] = 2.0F;
+    scaled.values[10] = 2.0F;
+    const auto unscaled = eaw::without_uniform_scale(scaled);
+    require(unscaled.scale == 2.0F && unscaled.transform.values[0] == 1.0F && unscaled.transform.values[10] == 1.0F, "a placement's uniform scale must be taken out");
+    const std::array<eaw::SmokeSource, 1> smoking{{{9U, scaled, spark.effect}}};
+    effects.follow_smoke(smoking);
+    effects.follow_smoke(smoking);
+    require(effects.particles().stats().instances == 1, "a smoking entity must keep one emitter");
+    effects.follow_smoke({});
+    require(effects.particles().stats().instances == 0, "smoke must stop when its entity is no longer listed");
 }
 
 void test_particle_world()

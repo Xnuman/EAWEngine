@@ -55,6 +55,18 @@ Vector3 sample_group(const AloParticleGroup& group, Random& random)
 
 } // namespace
 
+UnscaledPlacement without_uniform_scale(const Matrix4& transform) noexcept
+{
+    const auto& values = transform.values;
+    const auto length = std::sqrt(values[0] * values[0] + values[1] * values[1] + values[2] * values[2]);
+    UnscaledPlacement placement{transform, std::isfinite(length) && length > 0.0F ? length : 1.0F};
+    for (std::size_t element = 0; element < 12; ++element)
+    {
+        placement.transform.values[element] /= placement.scale;
+    }
+    return placement;
+}
+
 float sample_particle_track(const AloParticleTrack& track, const float t) noexcept
 {
     const auto& keys = track.keys;

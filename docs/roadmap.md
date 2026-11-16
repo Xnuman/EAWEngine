@@ -210,7 +210,7 @@ honor are worked through tag by tag from [xml-tag-status.md](xml-tag-status.md) 
    headless battles and replays (status.md). Open:
    - combat presentation and fidelity: turret rotation of hardpoint turrets (unit turrets are
      done); damage-specific death clones; terrain surface kinds for SurfaceFX (dirt, grass, snow:
-     ground hits and footprints know only liquids and default); beams for instant-hit weapons; `Damaged_Smoke_Asset_Name`;
+     ground hits and footprints know only liquids and default); beams for instant-hit weapons;
      `Should_Death_Clone_Play_Idle` (no stock effect; for mods whose clone models have an IDLE);
      the gap rows of [xml-tag-status.md](xml-tag-status.md) list the rest;
    - walkers' `_QUARTER`/`_HALF` turn clips: turns are composed of them, but the angle each stands

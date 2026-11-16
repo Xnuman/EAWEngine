@@ -826,3 +826,6 @@ rewritten to describe the current state; the source document is noted in bracket
   where the type died (8 stock types: exploding crates, orbital resource containers, destroyable
   docks). Their damage was already done; no hash changed (impacts and the new profile key are not
   hashed).
+- Damaged smoke: Damaged_Smoke_Asset_Name (7 stock aircraft) now trails its particle below half
+  health (an engine choice). The transform-scale split of attached effects moved into a shared
+  helper, without_uniform_scale. No hash changed.

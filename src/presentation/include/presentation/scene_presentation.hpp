@@ -48,6 +48,9 @@ inline constexpr std::uint32_t decoration_id_base = 0x40000000U;
 // 0.1, read as one step per scale; the stock values, not read from the file yet).
 inline constexpr std::array<float, 3> shield_flash_scales{1.0F, 1.1F, 1.25F};
 inline constexpr double shield_flash_step = 0.1;
+// Below this share of its health a type with Damaged_Smoke_Asset_Name trails its smoke (an engine
+// choice: the tag says only "when damaged").
+inline constexpr float damaged_smoke_fraction = 0.5F;
 
 class ScenePresentation final
 {
@@ -64,8 +67,10 @@ public:
     // `animations_out`, when given, receives each instance's AnimationProfile (backgrounds a default).
     // `seconds` is presentation time: an entity whose shields flash (flash_shields) is followed by
     // its shield mesh, drawn without an entity.
+    // `smoke_out`, when given, lists the drawn entities that trail their type's damaged smoke (below
+    // damaged_smoke_fraction of their health).
     void build(std::span<const EntitySnapshot> snapshot, const std::unordered_set<std::uint64_t>& selected, std::vector<VisualInstance>& instances_out, std::vector<EntityId>& entities_out,
-               std::vector<AnimationProfile>* animations_out = nullptr, double seconds = 0.0) const;
+               std::vector<AnimationProfile>* animations_out = nullptr, double seconds = 0.0, std::vector<SmokeSource>* smoke_out = nullptr) const;
 
     // Shield flashes: a shot an entity's shields absorbed (ImpactSnapshot::target, kind shield) shows
     // its model's shield mesh, if it has one, growing through shield_flash_scales for
@@ -123,6 +128,7 @@ private:
         std::vector<DamageStep> damage;
         std::optional<std::uint32_t> shield_mesh;
         std::vector<HardpointLook> hardpoints;
+        std::shared_ptr<const ParticleEffect> damaged_smoke;
     };
     std::vector<VisualInstance> backgrounds_;
     // Entity key -> presentation time of its last shield hit (flash_shields).

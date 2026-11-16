@@ -149,4 +149,14 @@ public:
 // Samples a keyframe track at normalized age `t` (0..1).
 [[nodiscard]] float sample_particle_track(const AloParticleTrack& track, float t) noexcept;
 
+// An effect placed by `transform`: the transform with its uniform scale taken out, and that scale (a
+// type's Scale_Factor), which the particle world applies to the effect, particles included (1 when
+// the transform has none usable).
+struct UnscaledPlacement
+{
+    Matrix4 transform{Matrix4::identity()};
+    float scale{1.0F};
+};
+[[nodiscard]] UnscaledPlacement without_uniform_scale(const Matrix4& transform) noexcept;
+
 } // namespace eaw

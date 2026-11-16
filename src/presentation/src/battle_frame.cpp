@@ -62,7 +62,9 @@ void build_battle_frame(const BattleRuntime& runtime, const SimSnapshot& previou
     // Decorations are posed and animated like idle entities the simulation never sees.
     const auto decorations = presenters.presentation.decoration_snapshots();
     entities.insert(entities.end(), decorations.begin(), decorations.end());
-    presenters.presentation.build(entities, selected, frame.instances, frame.entities, &frame.animations, world_seconds);
+    std::vector<SmokeSource> smoke;
+    presenters.presentation.build(entities, selected, frame.instances, frame.entities, &frame.animations, world_seconds, &smoke);
+    presenters.effects.follow_smoke(smoke);
     // Debris pieces, drawn without entities and at rest pose.
     frame.entities.resize(frame.instances.size());
     presenters.effects.append_debris(frame.instances, frame.entities);

@@ -254,6 +254,8 @@ std::string type_animation_source(const GameObjectCatalog& catalog, const XmlDef
 void note_animation_source(SceneBuilder& builder, const std::string& model_path, const GameObjectCatalog& catalog, const XmlDefinition& definition);
 // The type's normal death clone (its Damage_Normal entry, else its first), or null.
 [[nodiscard]] const XmlDefinition* normal_death_clone(const GameObjectCatalog& catalog, const XmlDefinition& definition);
+// The smoke a type trails while damaged (XML Damaged_Smoke_Asset_Name, a particle ALO), or null.
+[[nodiscard]] std::shared_ptr<const ParticleEffect> type_damaged_smoke(SceneBuilder& builder, const GameObjectCatalog& catalog, const XmlDefinition& definition);
 // The corpse style of a type from its normal death clone (DeathStyle; its mesh comes from
 // death_clone_mesh).
 DeathStyle type_death_style(const GameObjectCatalog& catalog, const XmlDefinition& definition);

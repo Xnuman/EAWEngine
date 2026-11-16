@@ -221,6 +221,13 @@ std::optional<std::uint32_t> death_clone_mesh(SceneBuilder& builder, const GameO
     return entry->second;
 }
 
+std::shared_ptr<const ParticleEffect> type_damaged_smoke(SceneBuilder& builder, const GameObjectCatalog& catalog, const XmlDefinition& definition)
+{
+    const auto* field = catalog.field(definition, "Damaged_Smoke_Asset_Name").field;
+    const auto name = field != nullptr ? ascii_trim(field->text) : std::string_view{};
+    return name.empty() ? nullptr : particle_effect(builder, std::string(name));
+}
+
 DeathStyle type_death_style(const GameObjectCatalog& catalog, const XmlDefinition& definition)
 {
     DeathStyle style;

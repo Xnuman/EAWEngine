@@ -178,6 +178,17 @@ void test_scene_presentation()
         cloned.build(shown, {}, instances, ids);
         const auto clone_wreck = cloned.corpse_instance(death);
         require(clone_wreck && clone_wreck->instance.mesh == 7U && clone_wreck->instance.state == 0U, "a wreck must be drawn with its death clone's own model");
+        // Damaged smoke: listed below half health only.
+        auto smoky_look = damaged_look;
+        smoky_look.damaged_smoke = std::make_shared<eaw::ParticleEffect>();
+        eaw::ScenePresentation smoky(scene, std::span(&marker, 1), std::span(&smoky_look, 1), damaged_battle.map_entity_ids(), {});
+        std::vector<eaw::SmokeSource> smoke;
+        shown[0].health = 60.0F;
+        smoky.build(shown, {}, instances, ids, nullptr, 0.0, &smoke);
+        require(smoke.empty(), "a lightly damaged unit must not smoke");
+        shown[0].health = 40.0F;
+        smoky.build(shown, {}, instances, ids, nullptr, 0.0, &smoke);
+        require(smoke.size() == 1 && smoke[0].key == instances.back().key && smoke[0].effect == smoky_look.damaged_smoke, "a badly damaged unit must trail its smoke");
     }
 }
 

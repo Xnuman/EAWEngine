@@ -9,6 +9,7 @@
 #include "presentation/visual_rig.hpp"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -80,6 +81,8 @@ struct MapEntityLook
     // Its model's shield flash mesh (scene_build::append_shield_flash), if it has one.
     std::optional<std::uint32_t> shield_mesh;
     std::vector<HardpointLook> hardpoints;
+    // The smoke it trails while damaged (XML Damaged_Smoke_Asset_Name), or null.
+    std::shared_ptr<const ParticleEffect> damaged_smoke;
 };
 
 // How a spawnable type (a SpawnableType, same index) is drawn: its mesh in the map scene, its team
@@ -103,6 +106,16 @@ struct SpawnableLook
     std::vector<DamageStep> damage;
     std::optional<std::uint32_t> shield_mesh;
     std::vector<HardpointLook> hardpoints;
+    std::shared_ptr<const ParticleEffect> damaged_smoke;
+};
+
+// A smoking entity drawn this frame (ScenePresentation::build): its key, where its model is, and its
+// type's damaged smoke.
+struct SmokeSource
+{
+    std::uint64_t key{};
+    Matrix4 transform{Matrix4::identity()};
+    std::shared_ptr<const ParticleEffect> effect;
 };
 
 // A decoration (XML Is_Decoration): a placed object that is drawn and animated but never simulated.

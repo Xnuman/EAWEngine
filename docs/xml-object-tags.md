@@ -703,7 +703,7 @@ This family covers what makes an object damageable and dangerous: hull health, s
 | `Spin_Away_On_Death_Chance` | the same 22 | 0.2, 0.4 | Probability of spinning away (name). |
 | `Spin_Away_On_Death_Time` | the same 22 | `2.0f`, `1.0f` (C float suffix) | Duration of the spin before the final explosion (name). |
 | `Spin_Away_On_Death_Explosion` | the same 22 | Small_Explosion_Space(_Empire), Medium_Explosion_Land | Explosion at the end of the spin (name). |
-| `Damaged_Smoke_Asset_Name` | GroundVehicle 4, LandBombingUnit 3 (7) | `P_Smoke_Small02.alo` | Smoke model attached when the craft is damaged (name). Not read. |
+| `Damaged_Smoke_Asset_Name` | GroundVehicle 4, LandBombingUnit 3 (7) | `P_Smoke_Small02.alo` | Smoke model attached when the craft is damaged (name). Engine: trailed from the model's origin below half health (an engine choice). |
 | `Destruction_Survivors` | structures 32, units 6 (38) | "type, weight/chance" lines; 5 empty; repeated once | Units spawned when the object is destroyed, such as crews and prisoners (data). Engine: reads it (each listed type once (all stock weights are 1.0)). |
 | `Minimum_Destruction_Survivor_Count` | 1 (Secondary_Prison_E) | 4 | Lower bound of survivors spawned (name). |
 | `Maximum_Destruction_Survivor_Count` | 1 (Secondary_Prison_E) | 8 | Upper bound of survivors spawned (name). |

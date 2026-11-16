@@ -95,6 +95,7 @@ void scene_build::add_spawnable_looks(SceneBuilder& builder, const GameObjectCat
         look.death.mesh = death_clone_mesh(builder, catalog, meshes, *model.type, model.path, land);
         look.bank_limit = type_bank_limit(catalog, *model.type);
         look.animation = type_animation_profile(catalog, *model.type);
+        look.damaged_smoke = type_damaged_smoke(builder, catalog, *model.type);
         if (land)
         {
             look.damage = type_damage_states(catalog, *model.type, &builder.scene.warnings);
@@ -174,6 +175,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
             look.death = type_death_style(catalog, *model.type);
             look.death.mesh = death_clone_mesh(builder, catalog, meshes, *model.type, model.path, battle.land);
             look.bank_limit = type_bank_limit(catalog, *model.type);
+            look.damaged_smoke = type_damaged_smoke(builder, catalog, *model.type);
             look.hidden = type_is_marker(catalog, *model.type);
             look.animation = type_animation_profile(catalog, *model.type);
             // Land_Damage_*: the land model's states.

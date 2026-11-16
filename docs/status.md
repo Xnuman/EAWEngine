@@ -1345,6 +1345,13 @@ tracks.
   choice). The rest: objects and the types' death explosions (the first `Death_Explosions` entry; one naming a
   Projectile plays its detonation particle) and spin-away explosions (`load_effect_objects`); each
   plays once at its point, upright, sized by `Scale_Factor`. Objects that cannot play are reported.
+- Damaged smoke: a type's `Damaged_Smoke_Asset_Name` (a particle ALO: the Snowspeeder, the Lancet,
+  the Gallofree transport, and the Y-wing, TIE bomber, and Skipray bombing runs) trails from its
+  model's origin while it is below half its health (`damaged_smoke_fraction`, an engine choice: the
+  tag says only "when damaged"). `ScenePresentation::build` lists the smoking entities it draws and
+  `BattleEffects::follow_smoke` keeps one emitter on each, sized by the type's scale
+  (`without_uniform_scale`, shared with attached effects); healed, dead, or undrawn, it stops and
+  its smoke lives out.
 - Shield hits show the projectile's absorb particle; the shield-mesh flash (growing through 1.0, 1.1,
   and 1.25 for 0.1 s each: GameConstants' `Shield_Flash_Scale` and `Shield_Flash_Duration`, read as
   one step per scale, an interpretation, values written in) is kept for the shield abilities

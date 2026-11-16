@@ -108,9 +108,7 @@ void AttachedEffects::update(ParticleWorld& world, const std::span<const VisualI
             // The instance's uniform scale (a type's Scale_Factor) sizes the effect, particles
             // included: it is taken out of the transform and given to the particle world.
             auto world_transform = bone * instance.transform;
-            const auto& placed = instance.transform.values;
-            const auto scale = std::sqrt(placed[0] * placed[0] + placed[1] * placed[1] + placed[2] * placed[2]);
-            const auto effect_scale = std::isfinite(scale) && scale > 0.0F ? scale : 1.0F;
+            const auto effect_scale = without_uniform_scale(instance.transform).scale;
             for (std::size_t element = 0; element < 12; ++element)
             {
                 world_transform.values[element] /= effect_scale;

@@ -37,6 +37,7 @@ void BattleEffects::reset(const BattleEffectContent& content)
     wreck_attached_.clear(particles_);
     projectile_attached_.clear(particles_);
     projectile_effects_.clear();
+    smoke_.clear();
     particles_.clear();
     projectile_visuals_.clear();
     atlas_ = invalid_visual_texture;
@@ -137,6 +138,35 @@ void BattleEffects::attach(const std::span<const VisualInstance> instances, cons
                            const std::span<const EntitySnapshot> snapshot, const double seconds)
 {
     attached_.update(particles_, instances, entities, palette, snapshot, seconds);
+}
+
+void BattleEffects::follow_smoke(const std::span<const SmokeSource> sources)
+{
+    ++smoke_frame_;
+    for (const auto& source : sources)
+    {
+        const auto placement = without_uniform_scale(source.transform);
+        auto [entry, inserted] = smoke_.try_emplace(source.key);
+        if (inserted)
+        {
+            entry->second.instance = particles_.play(source.effect, placement.transform, seed_++, {}, placement.scale);
+        }
+        else
+        {
+            particles_.set_transform(entry->second.instance, placement.transform);
+        }
+        entry->second.frame = smoke_frame_;
+    }
+    std::erase_if(smoke_,
+                  [&](auto& entry)
+                  {
+                      if (entry.second.frame == smoke_frame_)
+                      {
+                          return false;
+                      }
+                      particles_.stop(entry.second.instance);
+                      return true;
+                  });
 }
 
 void BattleEffects::attach_wrecks(const std::span<const VisualInstance> wrecks, const std::span<const EntityId> keys, const std::span<const Matrix4> palette)

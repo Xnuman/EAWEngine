@@ -85,6 +85,10 @@ public:
     void play_tick_events(const SimSnapshot& snapshot, const GroundMap* ground = nullptr);
     // Keeps attached effects on this frame's drawn units (see AttachedEffects::update).
     void attach(std::span<const VisualInstance> instances, std::span<const EntityId> entities, std::span<const Matrix4> palette, std::span<const EntitySnapshot> snapshot, double seconds);
+    // Keeps one damaged-smoke emitter on each of this frame's smoking entities (ScenePresentation::
+    // build), at its model's origin; an entity no longer listed (healed, dead, out of the frame) stops
+    // emitting and its smoke lives out.
+    void follow_smoke(std::span<const SmokeSource> sources);
     // Keeps the proxy effects of this frame's wrecks (`wrecks` keyed by `keys`, the dead units' ids;
     // UnitAnimator::wreck_keys): fire and explosions on broken ships and rubble, by damage state.
     void attach_wrecks(std::span<const VisualInstance> wrecks, std::span<const EntityId> keys, std::span<const Matrix4> palette);
@@ -171,6 +175,14 @@ private:
     AttachedEffects attached_;
     BattleDebris debris_;
     std::vector<BattleDebris::Ended> ended_debris_;
+    // Damaged smoke by entity key, and the frame each was last listed.
+    struct Smoke
+    {
+        ParticleInstanceId instance;
+        std::uint64_t frame{};
+    };
+    std::unordered_map<std::uint64_t, Smoke> smoke_;
+    std::uint64_t smoke_frame_{};
     // Wrecks' proxies, keyed by the dead unit's id (apart from units, whose effects of the same id
     // stop when it dies).
     AttachedEffects wreck_attached_;

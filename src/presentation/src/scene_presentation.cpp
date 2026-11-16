@@ -71,8 +71,8 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
                        "entity '" + entity.recipe.type_name + "' names scene instance " + std::to_string(look.instance) + ", which is missing or a background");
         if (ids[index])
         {
-            templates_.emplace(entity_key(*ids[index]),
-                               Template{scene.instances[look.instance], entity.spawn.heading, look.death, look.bank_limit, look.animation, look.damage, look.shield_mesh, look.hardpoints});
+            templates_.emplace(entity_key(*ids[index]), Template{scene.instances[look.instance], entity.spawn.heading, look.death, look.bank_limit, look.animation, look.damage, look.shield_mesh,
+                                                                 look.hardpoints, look.damaged_smoke});
         }
     }
     add_spawnable(spawnable);
@@ -86,7 +86,7 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
         EAW_ASSERT_MSG(decoration.look.instance < scene.instances.size() && !scene.instances[decoration.look.instance].background, "a decoration names a scene instance it does not have");
         const EntityId id{decoration_id_base + static_cast<std::uint32_t>(index), 1};
         templates_.emplace(entity_key(id), Template{scene.instances[decoration.look.instance], decoration.heading, decoration.look.death, decoration.look.bank_limit, decoration.look.animation,
-                                                    decoration.look.damage, decoration.look.shield_mesh, decoration.look.hardpoints});
+                                                    decoration.look.damage, decoration.look.shield_mesh, decoration.look.hardpoints, decoration.look.damaged_smoke});
         EntitySnapshot snapshot;
         snapshot.id = id;
         snapshot.position = decoration.position;
@@ -121,8 +121,12 @@ ScenePresentation::ScenePresentation(const VisualScene& scene, const std::span<c
 }
 
 void ScenePresentation::build(const std::span<const EntitySnapshot> snapshot, const std::unordered_set<std::uint64_t>& selected, std::vector<VisualInstance>& instances_out,
-                              std::vector<EntityId>& entities_out, std::vector<AnimationProfile>* animations_out, const double seconds) const
+                              std::vector<EntityId>& entities_out, std::vector<AnimationProfile>* animations_out, const double seconds, std::vector<SmokeSource>* smoke_out) const
 {
+    if (smoke_out != nullptr)
+    {
+        smoke_out->clear();
+    }
     if (animations_out != nullptr)
     {
         animations_out->clear();
@@ -171,6 +175,10 @@ void ScenePresentation::build(const std::span<const EntitySnapshot> snapshot, co
         if (animations_out != nullptr)
         {
             animations_out->push_back(found->animation);
+        }
+        if (smoke_out != nullptr && found->damaged_smoke && entity.max_health > 0.0F && entity.health < entity.max_health * damaged_smoke_fraction)
+        {
+            smoke_out->push_back({instance.key, instance.transform, found->damaged_smoke});
         }
         // The shield flash: the model's shield mesh around it, grown by the step's scale (about the
         // model's origin), drawn in its rest pose without an entity.
@@ -255,7 +263,7 @@ void ScenePresentation::add_spawnable(const std::span<const SpawnableLook> types
         instance.lod_bias = type.lod_bias;
         instance.receives_shadows = type.receives_shadows;
         instance.silhouette = type.silhouette;
-        spawn_templates_.push_back(Template{instance, identity_model_heading, type.death, type.bank_limit, type.animation, type.damage, type.shield_mesh, type.hardpoints});
+        spawn_templates_.push_back(Template{instance, identity_model_heading, type.death, type.bank_limit, type.animation, type.damage, type.shield_mesh, type.hardpoints, type.damaged_smoke});
     }
 }
 

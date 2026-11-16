@@ -26,9 +26,9 @@ Ability fields and classes are listed as the catalogue lists them (one row per f
 
 | Status | Tags |
 | --- | --- |
-| `done` | 189 |
+| `done` | 190 |
 | `partial` | 26 |
-| `gap` | 177 |
+| `gap` | 176 |
 | `needs` | 705 |
 | `n/a` | 20 |
 | total | 1117 |
@@ -231,7 +231,7 @@ Systems that `needs` rows wait for, by tag count:
 
 ## Health, shields, armor, weapons, targeting, turrets, and death
 
-55 done, 3 partial, 42 gap, 35 needs.
+56 done, 3 partial, 41 gap, 35 needs.
 
 ### Health, shields, armor, and energy
 
@@ -397,7 +397,7 @@ Systems that `needs` rows wait for, by tag count:
 | `Spin_Away_On_Death_Chance` | `done` |  |
 | `Spin_Away_On_Death_Time` | `done` |  |
 | `Spin_Away_On_Death_Explosion` | `done` |  |
-| `Damaged_Smoke_Asset_Name` | `gap` |  |
+| `Damaged_Smoke_Asset_Name` | `done` | trailed below half health (an engine choice), from the model's origin |
 | `Destruction_Survivors` | `done` | each listed type once (all stock weights are 1.0) |
 | `Minimum_Destruction_Survivor_Count` | `done` | the count spawned |
 | `Maximum_Destruction_Survivor_Count` | `partial` | not read: the minimum is spawned (deterministic) |
