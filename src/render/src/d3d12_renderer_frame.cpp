@@ -1222,7 +1222,8 @@ bool D3d12Renderer::Impl::render()
         frame_graph.add_pass("ocean waves", {{spectrum, GraphAccess::compute_read}, {fields, GraphAccess::unordered_access}, {packed, GraphAccess::unordered_access}},
                              [&]
                              {
-                                 record_ocean(scene_time, OceanSeaState{}.gravity, std::clamp(options.graphics.ocean.choppiness, 0.0F, 2.0F));
+                                 record_ocean(scene_time, OceanSeaState{}.gravity, std::clamp(options.graphics.ocean.choppiness, 0.0F, 2.0F),
+                                              std::clamp(options.graphics.ocean.foam_jacobian, -1.0F, 1.0F));
                              });
         std::vector<FrameGraph::Use> copy_uses{{packed, GraphAccess::copy_source}};
         std::vector<std::uint32_t> ocean_graph_textures;

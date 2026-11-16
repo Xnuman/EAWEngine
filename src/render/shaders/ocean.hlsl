@@ -4,10 +4,13 @@
 // rows and then the columns (256 points in shared memory, radix 2), and the result is packed as
 // half floats for the copy into each cascade's displacement and derivative textures. Written from
 // Tessendorf's "Simulating Ocean Water" (2002): the choppy horizontal displacement -i k/|k| h, the
-// slopes i k h, and the Jacobian of the displaced surface for folding (foam).
+// slopes i k h, and the Jacobian of the displaced surface for folding (foam). Foam persists: each
+// cascade's foam lives in the packed buffer between frames, fades by its half-life, and gathers where
+// the cascade folds (the surface's Jacobian below the threshold), as Crest, Atlas, and Sea of Thieves
+// keep theirs.
 
 #define OCEAN_ROOT_SIGNATURE \
-    "RootConstants(num32BitConstants = 8, b0), " \
+    "RootConstants(num32BitConstants = 12, b0), " \
     "SRV(t0), " \
     "UAV(u0), " \
     "UAV(u1)"
@@ -15,6 +18,10 @@
 static const uint OCEAN_N = 256u;
 static const uint OCEAN_LOG2_N = 8u;
 static const float OCEAN_TAU = 6.2831853f;
+// Foam: a crest foams fully this far below the threshold; foam halves in this many seconds (engine
+// choices, by eye).
+static const float OCEAN_FOAM_JACOBIAN_RANGE = 0.5f;
+static const float OCEAN_FOAM_HALF_LIFE = 2.0f;
 
 cbuffer OceanConstants : register(b0)
 {
@@ -23,6 +30,9 @@ cbuffer OceanConstants : register(b0)
     float ocean_choppiness;
     uint ocean_cascade_count;
     float4 ocean_patch_sizes; // world units, per cascade
+    float ocean_delta;          // seconds since the last update (foam's fading)
+    float ocean_foam_threshold; // the Jacobian below which crests foam
+    float2 ocean_unused;
 };
 
 // Per cascade, N x N cells (row-major, wave numbers -N/2 .. N/2 - 1): h0(k) in xy, conj(h0(-k)) in zw.
@@ -31,7 +41,7 @@ StructuredBuffer<float4> spectrum : register(t0);
 // (hx + i hy, Dxx + i Dyy).
 RWStructuredBuffer<float4> fields : register(u0);
 // Per cascade, two blocks of N x N half4 texels: displacement (x, y, height) and derivatives
-// (slope x, slope y, Jacobian).
+// (slope x, slope y, Jacobian, foam). The foam is read back the next frame.
 RWStructuredBuffer<uint2> packed : register(u1);
 
 float2 complex_multiply(const float2 a, const float2 b)
@@ -185,5 +195,9 @@ void pack_cs(const uint3 thread : SV_DispatchThreadID)
     const uint texel = thread.y * OCEAN_N + thread.x;
     const uint block = OCEAN_N * OCEAN_N;
     packed[cascade * 2u * block + texel] = uint2(pack_halves(lambda * first.x, lambda * first.y), pack_halves(first.z, 0.0f));
-    packed[(cascade * 2u + 1u) * block + texel] = uint2(pack_halves(second.x, second.y), pack_halves(jacobian, 0.0f));
+    const uint derivative_texel = (cascade * 2u + 1u) * block + texel;
+    const float previous = f16tof32(packed[derivative_texel].y >> 16u);
+    const float gathered = saturate((ocean_foam_threshold - jacobian) / OCEAN_FOAM_JACOBIAN_RANGE);
+    const float foam = max(previous * exp2(-ocean_delta / OCEAN_FOAM_HALF_LIFE), gathered);
+    packed[derivative_texel] = uint2(pack_halves(second.x, second.y), pack_halves(jacobian, foam));
 }

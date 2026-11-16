@@ -393,7 +393,11 @@ improvements, off or optional unless stated; legacy is the default.
   Jacobian), copied into six textures (`d3d12_renderer_ocean.cpp`; about 3 MB of spectra and 6 MB of
   fields). The two long cascades move the 12-unit water grid and bend its normal; all three bend the
   pixel's normal, each fading as its patch shrinks on screen with its slopes moved into the glint's
-  width (`water_layer_presence`); crests foam where the long cascades' Jacobian falls below 0.6. The
+  width (`water_layer_presence`). Foam persists: each cascade's foam (the derivative textures'
+  fourth channel, read back from the packed buffer the next frame) halves every 2 seconds and gathers
+  where the cascade folds (its Jacobian below the panel's threshold, 0.6, fully 0.5 below it); the
+  pixel shader takes the most of the three cascades' foam, each faded like its slopes, broken up by
+  a fine value noise (`ocean_whitecaps`). The
   water's body on open sea is lit with the flat surface's normal and a tenth of the key light's
   direct term (`legacy_lit_color_scaled`), plus three times the change in the key light's facing
   between the wave's normal and the flat surface, so the sea keeps the legacy water's deep blue
@@ -402,9 +406,7 @@ improvements, off or optional unless stated; legacy is the default.
   scene texture table and the anisotropic sampler are visible to vertex shaders for it, and the frame
   graph has an `all_shader_read` access. Faded in from the calm depth to
   the full depth so shores and units in the shallows keep the flat plane, which the simulation keeps
-  too; folding crests foam in patches (a broad two-octave value noise of about 420-unit cells
-  drifting with the wind decides where, a fine one of about 7-unit cells breaks it up, procedural in
-  world space). The Graphics panel tunes the ocean (`VisualOceanWaves`): the sea state (wind speed,
+  too. The Graphics panel tunes the ocean (`VisualOceanWaves`): the sea state (wind speed,
   fetch, swell; a change uploads new spectra), choppiness, a height scale (at most 2), the calm and
   full depths (0 and 10 by default, the owner's tuning), the Jacobian below which crests foam, and
   Defaults. The mesh's bounds allow 40 units of wave height (`water_wave_reach`).

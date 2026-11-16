@@ -140,11 +140,8 @@ choices.
 - The flat plane survives. The waves fade in from none at the calm depth to full at the full depth,
   so shores, shore foam, and units in the shallows see the flat plane, which the simulation keeps
   too. A shelf in the sea floor can show as a sharp line between calm water and waves.
-- Crest foam. Where the long cascades' Jacobian falls below a threshold (a folding crest), foam
-  shows. It gathers in procedural patches drifting with the wind (`ocean_crest_foam`): a broad value noise of
-  about 420-unit cells (drifting 6 units per second) decides where crests may foam, and a fine one
-  of about 7-unit cells breaks the foam up, both in world space, so no lattice repeats (foam
-  breakup sampled from the tiling normal map showed one).
+- Crest foam. Foam gathers where a cascade folds and fades by a half-life (stage 3 of "The ocean
+  plan"); a fine value noise of about 7-unit cells breaks it up in world space (`ocean_whitecaps`).
 - Sliders. With enhanced water the Graphics panel tunes the ocean (`VisualOceanWaves` in
   `d3d12_renderer.hpp`): the sea state (wind speed 32 units a second, fetch 600,000 units, swell 0),
   choppiness (0.8), a height scale (1, at most 2), the calm and full depths (0 and 10, the owner's
@@ -219,7 +216,10 @@ engine's would mark water kinds by brush.
    default sea state (peak wavelength about 300, significant height about 7) the slopes are gentle
    and the surface reads calm from above.
 3. Foam that builds up and fades, injected from the cascades' Jacobian, in place of the procedural
-   crest patches.
+   crest patches: done (status.md, "Ocean waves"). Open: a rough sea (wind 60, choppiness 1.4) shows
+   a regular field of dark spots from the overview, likely the 263-unit cascade folding over (its
+   triangles turned inside out) and repeating; fading a cascade's displacement with distance, as
+   Atlas does, or bounding the choppiness are the candidates.
 4. Each map's depth beneath the water and distance to the coast, baked at load, so waves die down
    over shelves by their wavelength instead of by a fixed depth.
 5. The rest: the water grid culled by tiles, wave motion in the motion vectors if TAA ghosts, ocean

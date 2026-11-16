@@ -495,6 +495,8 @@ struct D3d12Renderer::Impl
     std::array<std::uint32_t, ocean_cascades.size()> ocean_displacement_slots{};
     std::array<std::uint32_t, ocean_cascades.size()> ocean_derivative_slots{};
     std::optional<OceanSeaState> ocean_sea_state;
+    // Scene time of the ocean's last update (its foam fades by the time since).
+    std::optional<float> ocean_last_seconds;
     // Whether this frame runs the ocean's passes (waves on, enhanced water, a spectrum uploaded).
     bool ocean_this_frame{};
     // Occlusion silhouettes: the hidden parts into the mask (depth greater, max blend), then the mask
@@ -733,7 +735,7 @@ struct D3d12Renderer::Impl
     // uploads the cascades' starting spectra when the sea state changed; records its compute passes at
     // `seconds` of scene time; copies the packed results into the cascades' textures.
     void prepare_ocean(const OceanSeaState& state);
-    void record_ocean(float seconds, float gravity, float choppiness);
+    void record_ocean(float seconds, float gravity, float choppiness, float foam_threshold);
     void copy_ocean();
 
     ComPtr<ID3D12Resource> upload_buffer(UploadBatch& upload, const std::span<const std::byte> bytes, const D3D12_RESOURCE_STATES final_state, const std::wstring_view name);

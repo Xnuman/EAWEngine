@@ -876,3 +876,8 @@ rewritten to describe the current state; the source document is noted in bracket
   wave normal faced the light. The open sea's body now takes the flat normal with a tenth of the
   direct key light (15/17/29) plus three times the wave's change in facing, which brings the swells
   back into view around the deep blue.
+- Persistent foam (stage 3): each cascade's foam lives in the packed buffer between frames, halves
+  every 2 seconds, and gathers where the cascade's Jacobian falls below the threshold; the drifting
+  value-noise patches and the vertex's crest value are gone. A rough test sea (wind 60, choppiness
+  1.4) showed a regular field of dark spots from the overview, likely the 263-unit cascade folding
+  and repeating; recorded as open.

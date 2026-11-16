@@ -85,35 +85,29 @@ struct OceanSurface
 {
     float3 offset;
     float3 normal;
-    // How much a folding crest foams here (0 none, 1 fully; from the cascades' Jacobian).
-    float crest;
 };
 
 // The FFT ocean (ocean.hlsl, ocean_cascades.w on): the long cascades (OCEAN_DISPLACED_CASCADES, the
-// ones whose waves the 12-unit grid can carry) move the vertex and bend its normal; their Jacobian
-// below the settings' threshold (ocean_shape.y) marks folding crests for foam. Faded in by depth and scaled by the height
+// ones whose waves the 12-unit grid can carry) move the vertex and bend its normal; foam is the
+// pixel shader's, from each cascade's persistent foam (ocean.hlsl). Faded in by depth and scaled by the height
 // slider (ocean_shore, ocean_shape.x). Engine choices.
 static const uint OCEAN_DISPLACED_CASCADES = 2u;
-static const float OCEAN_FOAM_JACOBIAN_RANGE = 0.5f; // foams fully this far below the threshold (ocean_shape.y)
 
 OceanSurface ocean_fft(const float2 position, const float depth)
 {
     const float scale = smoothstep(ocean_shore.x, ocean_shore.y, depth) * ocean_shape.x;
     float3 offset = float3(0.0f, 0.0f, 0.0f);
     float2 slope = float2(0.0f, 0.0f);
-    float jacobian = 1.0f;
     for (uint cascade = 0u; cascade < OCEAN_DISPLACED_CASCADES; ++cascade)
     {
         const float2 uv = position / ocean_cascades[cascade];
         offset += scene_textures[ocean_displacement_slots[cascade]].SampleLevel(surface_sampler, uv, 0.0f).xyz;
         const float3 derivatives = scene_textures[ocean_derivative_slots[cascade]].SampleLevel(surface_sampler, uv, 0.0f).xyz;
         slope += derivatives.xy;
-        jacobian = min(jacobian, derivatives.z);
     }
     OceanSurface surface;
     surface.offset = offset * scale;
     surface.normal = normalize(float3(-slope * scale, 1.0f));
-    surface.crest = saturate((ocean_shape.y - jacobian) / OCEAN_FOAM_JACOBIAN_RANGE) * saturate(scale);
     return surface;
 }
 
@@ -272,9 +266,6 @@ PixelInput vs_main(VertexInput input)
     // Last frame's skinned position, from last frame's palette.
     const float4 previous = skinned_position(input, instance.previous_bone_offset);
     float3 grass_tint = float3(1.0f, 1.0f, 1.0f);
-    // Enhanced water's crest foam (ocean_fft), passed to water_ps in the vertex color's alpha,
-    // which water does not otherwise use.
-    float ocean_crest = 0.0f;
 
     PixelInput output;
     if ((instance.flags & INSTANCE_BACKGROUND) != 0u)
@@ -328,7 +319,6 @@ PixelInput vs_main(VertexInput input)
             normal = ocean.normal;
             tangent = safe_normalize(float3(1.0f, 0.0f, 0.0f) - normal * normal.x, float3(1.0f, 0.0f, 0.0f));
             binormal = cross(normal, tangent);
-            ocean_crest = ocean.crest;
         }
         output.position = mul(world, view_projection);
         output.world_position = world.xyz;
@@ -354,7 +344,7 @@ PixelInput vs_main(VertexInput input)
         const float facing = dot(safe_normalize(output.normal, float3(0.0f, 0.0f, 1.0f)), camera_forward.xyz);
         vertex_scale = pow(facing, 8.0f) * 2.0f + 0.1f;
     }
-    output.vertex_color = float4(input.color.rgb * grass_tint * vertex_scale, (vertex_material.flags & MATERIAL_WATER) != 0u && water_parameters.x != 0u ? ocean_crest : input.color.a);
+    output.vertex_color = float4(input.color.rgb * grass_tint * vertex_scale, input.color.a);
     if ((vertex_material.flags & MATERIAL_DISTANCE_FADE) != 0u)
     {
         // Linear with distance from the camera: blended surfaces take it as opacity, opaque ones as
@@ -638,15 +628,9 @@ static const float WATER_FOAM_LINE_SPEED = 1.2f;    // their travel (units of de
 static const float3 WATER_FOAM_COLOR = float3(0.9f, 0.92f, 0.95f);
 static const float WATER_REFLECTION_DISTORTION = 0.015f; // screen share the bent normal shifts the reflection
 
-// Crest foam's structure (the owner's report, 2026-11-16: with foam on most crests the ocean showed a
-// regular lattice: the four waves' crests repeat, and the foam's breakup sampled the tiling normal
-// map). Whitecaps gather in patches: a broad value noise, drifting with the wind, decides where crests
-// may foam (where it passes OCEAN_FOAM_PATCH_START), and a fine one breaks the foam up; both are
-// procedural in world space, so nothing repeats. Engine choices, tuned by eye.
-static const float OCEAN_FOAM_PATCH_SIZE = 420.0f;  // world units a patch noise cell spans
-static const float OCEAN_FOAM_PATCH_START = 0.45f;  // patch noise below this keeps crests clear
-static const float OCEAN_FOAM_PATCH_DRIFT = 6.0f;   // the patches' drift (world units per second)
-static const float OCEAN_FOAM_GRAIN_SIZE = 7.0f;    // world units a breakup noise cell spans
+// Whitecaps' breakup: a fine value noise in world space, so the foam's edges never repeat (engine
+// choices, by eye). Where they foam comes from the cascades' persistent foam (ocean.hlsl).
+static const float OCEAN_FOAM_GRAIN_SIZE = 7.0f; // world units a breakup noise cell spans
 static const float OCEAN_FOAM_STRENGTH = 1.8f;
 
 // A hash of a cell to [0, 1) (integer mixing: stable for any world coordinate).
@@ -672,16 +656,11 @@ float ocean_value_noise(const float2 position)
     return lerp(lerp(a, b, blend.x), lerp(c, d, blend.x), blend.y);
 }
 
-// How much of a crest's pinch shows as foam at `position`.
-float ocean_crest_foam(const float2 position, const float pinch, const float time)
+// How much of `coverage` (the cascades' foam) shows as whitecaps at `position`.
+float ocean_whitecaps(const float2 position, const float coverage, const float time)
 {
-    const float2 wind = dot(grass_wind.xy, grass_wind.xy) > 1.0e-6f ? normalize(grass_wind.xy) : float2(0.8f, 0.6f);
-    const float2 drifted = position - wind * OCEAN_FOAM_PATCH_DRIFT * time;
-    // Two octaves, so patches are not one cell's square.
-    const float patches = ocean_value_noise(drifted / OCEAN_FOAM_PATCH_SIZE) * 0.65f + ocean_value_noise(drifted / (OCEAN_FOAM_PATCH_SIZE * 0.37f) + 17.3f) * 0.35f;
-    const float patch = smoothstep(OCEAN_FOAM_PATCH_START, 1.0f, patches);
     const float grain = ocean_value_noise(position / OCEAN_FOAM_GRAIN_SIZE + time * 0.3f) * 0.6f + ocean_value_noise(position / (OCEAN_FOAM_GRAIN_SIZE * 0.43f) - time * 0.2f) * 0.4f;
-    return saturate(pinch * patch * smoothstep(0.35f, 0.75f, grain) * OCEAN_FOAM_STRENGTH);
+    return saturate(coverage * smoothstep(0.35f, 0.75f, grain) * OCEAN_FOAM_STRENGTH);
 }
 
 // Planar reflections (water_reflections.hlsl): per screen pixel 0, or the source pixel the
@@ -733,6 +712,7 @@ PixelOutput water_ps(PixelInput input)
     const float path = bottomless ? 1.0e6f : distance(input.world_position, beneath);
     const float below = bottomless ? 1.0e6f : max(input.world_position.z - beneath.z, 0.0f);
     float ocean_faded_variance = 0.0f;
+    float ocean_foam = 0.0f;
     if (ocean_cascades.w != 0.0f)
     {
         // The FFT ocean's normal: every cascade's slopes, each fading as its patch shrinks on screen
@@ -743,7 +723,9 @@ PixelOutput water_ps(PixelInput input)
         {
             const float2 cascade_uv = input.world_position.xy / ocean_cascades[cascade];
             const float presence = water_layer_presence(cascade_uv);
-            slope += scene_textures[ocean_derivative_slots[cascade]].Sample(surface_sampler, cascade_uv).xy * presence;
+            const float4 derivatives = scene_textures[ocean_derivative_slots[cascade]].Sample(surface_sampler, cascade_uv);
+            slope += derivatives.xy * presence;
+            ocean_foam = max(ocean_foam, derivatives.w * presence * saturate(scale));
             ocean_faded_variance += (1.0f - presence) * WATER_LAYER_SLOPE_VARIANCE;
         }
         normal = normalize(float3(-slope * scale, 1.0f));
@@ -791,9 +773,8 @@ PixelOutput water_ps(PixelInput input)
     const float breakup = saturate((first.x + second.y) * 1.5f + 0.5f);
     const float shore_foam = bottomless ? 0.0f
                                         : saturate(shallow * shallow * (WATER_FOAM_FLAT_SHARE + (1.0f - WATER_FOAM_FLAT_SHARE) * steepness) * (0.6f + rolling) * breakup * 1.5f);
-    // Foam on the waves' folding crests (ocean_fft, in the vertex color's alpha), in drifting
-    // patches and broken up by procedural noise (ocean_crest_foam).
-    const float foam = max(shore_foam, ocean_crest_foam(input.world_position.xy, input.vertex_color.a, time));
+    // Whitecaps on open sea: the cascades' persistent foam, broken up (ocean_whitecaps).
+    const float foam = max(shore_foam, ocean_whitecaps(input.world_position.xy, ocean_foam, time));
     const float3 foam_lit = legacy_lit_color(WATER_FOAM_COLOR, surface_normal, input.world_position, 0.0f, float3(1.0f, 1.0f, 1.0f), float3(0.0f, 0.0f, 0.0f), float3(0.0f, 0.0f, 0.0f),
                                              float3(1.0f, 1.0f, 1.0f), input.position.xy, true);
 

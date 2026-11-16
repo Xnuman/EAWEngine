@@ -4,6 +4,7 @@
 
 #include "d3d12_renderer_impl.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include <span>
 
@@ -90,8 +91,10 @@ void D3d12Renderer::Impl::prepare_ocean(const OceanSeaState& state)
     ocean_sea_state = state;
 }
 
-void D3d12Renderer::Impl::record_ocean(const float seconds, const float gravity, const float choppiness)
+void D3d12Renderer::Impl::record_ocean(const float seconds, const float gravity, const float choppiness, const float foam_threshold)
 {
+    // The longest step foam fades by at once (a paused or stalled scene); an engine choice.
+    constexpr float maximum_foam_step = 0.25F;
     struct OceanConstants
     {
         float time{};
@@ -99,8 +102,13 @@ void D3d12Renderer::Impl::record_ocean(const float seconds, const float gravity,
         float choppiness{};
         std::uint32_t cascade_count{};
         std::array<float, 4> patch_sizes{};
+        float delta{};
+        float foam_threshold{};
+        std::array<float, 2> unused{};
     };
-    OceanConstants constants{seconds, gravity, choppiness, static_cast<std::uint32_t>(ocean_cascades.size()), {}};
+    const auto delta = ocean_last_seconds ? std::clamp(seconds - *ocean_last_seconds, 0.0F, maximum_foam_step) : 0.0F;
+    ocean_last_seconds = seconds;
+    OceanConstants constants{seconds, gravity, choppiness, static_cast<std::uint32_t>(ocean_cascades.size()), {}, delta, foam_threshold, {}};
     for (std::size_t cascade = 0; cascade < ocean_cascades.size(); ++cascade)
     {
         constants.patch_sizes[cascade] = ocean_cascades[cascade].patch_size;
