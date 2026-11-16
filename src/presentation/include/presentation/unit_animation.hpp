@@ -166,6 +166,16 @@ public:
     };
     // Valid until the next animate(); wrecks dropped for the corpse limit are not listed.
     [[nodiscard]] const std::vector<EndedCorpse>& ended_corpses() const noexcept;
+    // The wrecks the last animate() drew, last among the instances: the first one's index, and the
+    // dead units' ids in drawn order (keys for their models' proxy effects; wrecks have no entity).
+    [[nodiscard]] std::size_t first_wreck() const noexcept
+    {
+        return first_wreck_;
+    }
+    [[nodiscard]] std::span<const EntityId> wreck_keys() const noexcept
+    {
+        return wreck_keys_;
+    }
     // Rigs of meshes added to the scene at runtime (a SpawnablePackage's rigs and rest palette,
     // rest offsets relative to it); they must follow the meshes the animator already knows.
     void add_rigs(std::span<const VisualRig> rigs, std::span<const Matrix4> rest_palette);
@@ -258,6 +268,7 @@ private:
         double cue_frame{-1.0};
         std::uint32_t end_effect{};
         std::string end_sound;
+        EntityId id;
     };
     // Reports the frames a clip passed from `from` to `to` (a loop of `loop_frames` wraps).
     void add_cue(EntityId entity, const Vector3& position, const VisualClip& clip, double from, double to, double loop_frames, std::size_t instance);
@@ -355,6 +366,8 @@ private:
     // Bone indices by mesh and name key (bone_of).
     std::unordered_map<std::uint64_t, std::int32_t> bones_;
     std::vector<Corpse> corpses_;
+    std::size_t first_wreck_{};
+    std::vector<EntityId> wreck_keys_;
     std::vector<AnimationCue> cues_;
     std::vector<EndedCorpse> ended_corpses_;
     std::uint64_t frame_{};

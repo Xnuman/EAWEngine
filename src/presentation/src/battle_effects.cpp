@@ -34,6 +34,7 @@ void BattleEffects::reset(const BattleEffectContent& content)
 {
     debris_.clear(particles_);
     attached_.clear(particles_);
+    wreck_attached_.clear(particles_);
     projectile_attached_.clear(particles_);
     projectile_effects_.clear();
     particles_.clear();
@@ -46,6 +47,7 @@ void BattleEffects::reset(const BattleEffectContent& content)
     track_layers_.clear();
     trails_.clear();
     attached_.set_rigs(content.rigs);
+    wreck_attached_.set_rigs(content.rigs);
     projectile_attached_.set_rigs(content.rigs);
     take(content);
 }
@@ -53,6 +55,7 @@ void BattleEffects::reset(const BattleEffectContent& content)
 void BattleEffects::add(const BattleEffectContent& content)
 {
     attached_.add_rigs(content.rigs);
+    wreck_attached_.add_rigs(content.rigs);
     projectile_attached_.add_rigs(content.rigs);
     take(content);
 }
@@ -123,6 +126,11 @@ void BattleEffects::attach(const std::span<const VisualInstance> instances, cons
                            const std::span<const EntitySnapshot> snapshot, const double seconds)
 {
     attached_.update(particles_, instances, entities, palette, snapshot, seconds);
+}
+
+void BattleEffects::attach_wrecks(const std::span<const VisualInstance> wrecks, const std::span<const EntityId> keys, const std::span<const Matrix4> palette)
+{
+    wreck_attached_.update(particles_, wrecks, keys, palette);
 }
 
 void BattleEffects::follow_projectiles(const std::span<const VisualInstance> instances, const std::span<const std::uint32_t> serials, const std::span<const Matrix4> palette,

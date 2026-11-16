@@ -686,6 +686,7 @@ void test_unit_animation()
     drawn.clear();
     mourner.animate({}, none, drawn, 111.0, 1U << 20U, palette);
     require(drawn.size() == 1 && mourner.ended_corpses().empty(), "a death clone's corpse must stay for its persistence");
+    require(mourner.first_wreck() == 0 && mourner.wreck_keys().size() == 1 && mourner.wreck_keys()[0] == eaw::EntityId{5, 1}, "a wreck must be keyed by its dead unit's id for its proxy effects");
     none.clear();
     drawn.clear();
     mourner.animate({}, none, drawn, 112.5, 1U << 20U, palette);

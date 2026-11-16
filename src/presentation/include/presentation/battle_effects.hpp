@@ -84,6 +84,9 @@ public:
     void play_tick_events(const SimSnapshot& snapshot);
     // Keeps attached effects on this frame's drawn units (see AttachedEffects::update).
     void attach(std::span<const VisualInstance> instances, std::span<const EntityId> entities, std::span<const Matrix4> palette, std::span<const EntitySnapshot> snapshot, double seconds);
+    // Keeps the proxy effects of this frame's wrecks (`wrecks` keyed by `keys`, the dead units' ids;
+    // UnitAnimator::wreck_keys): fire and explosions on broken ships and rubble, by damage state.
+    void attach_wrecks(std::span<const VisualInstance> wrecks, std::span<const EntityId> keys, std::span<const Matrix4> palette);
     // Keeps the effects of shots in flight: the proxies (trails) of model projectiles drawn this frame
     // (`instances` with their shots' `serials`; `palette` as for attach) and the particle systems of
     // shots whose model is one, placed where `projectiles` are drawn. Effects of shots that ended stop
@@ -167,6 +170,9 @@ private:
     AttachedEffects attached_;
     BattleDebris debris_;
     std::vector<BattleDebris::Ended> ended_debris_;
+    // Wrecks' proxies, keyed by the dead unit's id (apart from units, whose effects of the same id
+    // stop when it dies).
+    AttachedEffects wreck_attached_;
     // Model projectiles' proxies, keyed by shot serial (apart from units, so keys never collide).
     AttachedEffects projectile_attached_;
     std::vector<EntityId> projectile_keys_;

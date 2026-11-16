@@ -91,6 +91,8 @@ void build_battle_frame(const BattleRuntime& runtime, const SimSnapshot& previou
         presenters.audio->play_animation_cues(presenters.animator->cues());
     }
     presenters.effects.attach(frame.instances, frame.entities, frame.palette, entities, world_seconds);
+    const auto wreck_keys = presenters.animator->wreck_keys();
+    presenters.effects.attach_wrecks(std::span(frame.instances).subspan(presenters.animator->first_wreck(), wreck_keys.size()), wreck_keys, frame.palette);
     presenters.effects.follow_projectiles(std::span(frame.instances).subspan(first_projectile), frame.projectile_serials, frame.palette, current.projectiles, interpolation, tick_seconds);
 }
 
