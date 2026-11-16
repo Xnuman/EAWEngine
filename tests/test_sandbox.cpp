@@ -87,7 +87,8 @@ void test_sandbox_options()
                 !parse({"--camera", "1", "2", "0"}) && !parse({"--camera", "1", "2", "nan"}),
             "invalid capture options must be rejected");
     require(!parse({"battle"}) && !parse({"battle", "--map", "X.TED", "--ticks", "0"}) && !parse({"battle", "--replay", "in.log", "--spawn", "Tank:1"}) &&
-                !parse({"battle", "--replay", "in.log", "--auto-move"}) && !parse({"sandbox", "--replay", "in.log", "--spawn", "Tank:1"}) && !parse({"battle", "--map", "X.TED", "--tick-rate", "0"}) &&
+                !parse({"battle", "--replay", "in.log", "--auto-move"}) && !parse({"sandbox", "--replay", "in.log", "--spawn", "Tank:1"}) &&
+                !parse({"sandbox", "--replay", "in.log", "--spawn-later", "Tank:1"}) && !parse({"battle", "--map", "X.TED", "--tick-rate", "0"}) &&
                 !parse({"battle", "--map", "X.TED", "--tick-rate", "nan"}),
             "invalid battle options must be rejected");
     const auto rate = expect_ok(parse({"battle", "--map", "X.TED", "--tick-rate", "30"}), "parsing a tick rate");

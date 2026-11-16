@@ -118,6 +118,8 @@ struct SandboxSession
     std::optional<eaw::BattleLog> replay_log;
     std::size_t replay_next = 0;
     bool replay_done = false;
+    // Whether a player's order was refused during the replay (said once).
+    bool replay_orders_refused = false;
     bool initial_spawns_sent = false;
     // Tick at which the initial spawn orders were given (they apply in the next step).
     std::uint64_t initial_spawn_tick = 0;
@@ -337,6 +339,9 @@ struct SandboxSession
     void advance_animation(const std::chrono::steady_clock::time_point now);
     // Fixed simulation ticks, then this frame's interpolated instances and debug lines.
     void step_simulation(const std::chrono::steady_clock::time_point now);
+    // Gives a player's order (moves, standing orders, attacks, spawns) to the battle; refused while a
+    // log replays. False when it was not given.
+    bool give_order(const eaw::BattleCommand& command);
     // Gives the replayed orders due at the world's tick; pauses and reports at the log's end.
     void feed_replay();
     void finish_replay();

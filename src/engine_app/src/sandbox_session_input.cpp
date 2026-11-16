@@ -88,9 +88,8 @@ void SandboxSession::order_move(const eaw::Vector3& target, const bool formation
     std::ranges::sort(movers, {}, eaw::entity_key);
     const auto count = movers.size();
     const auto responder = movers.front();
-    if (const auto submitted = runtime->battle().submit({.order = formation ? eaw::BattleOrder::formation_move : eaw::BattleOrder::move, .entities = movers, .point = target}); !submitted)
+    if (!give_order({.order = formation ? eaw::BattleOrder::formation_move : eaw::BattleOrder::move, .entities = movers, .point = target}))
     {
-        eaw::log_warning("simulation", submitted.error());
         return;
     }
     ++orders_issued;
@@ -116,9 +115,8 @@ void SandboxSession::order_standing(const eaw::BattleOrder order, const eaw::Vec
     std::ranges::sort(units, {}, eaw::entity_key);
     const auto count = units.size();
     const auto responder = units.front();
-    if (const auto submitted = runtime->battle().submit({.order = order, .entities = units, .point = point, .target = target}); !submitted)
+    if (!give_order({.order = order, .entities = units, .point = point, .target = target}))
     {
-        eaw::log_warning("simulation", submitted.error());
         return;
     }
     ++orders_issued;
@@ -151,9 +149,8 @@ void SandboxSession::order_attack(const eaw::EntityId victim)
     }
     std::ranges::sort(attackers, {}, eaw::entity_key);
     const auto responder = attackers.front();
-    if (const auto submitted = runtime->battle().submit({.order = eaw::BattleOrder::attack, .entities = attackers, .target = victim}); !submitted)
+    if (!give_order({.order = eaw::BattleOrder::attack, .entities = attackers, .target = victim}))
     {
-        eaw::log_warning("simulation", submitted.error());
         return;
     }
     ++orders_issued;

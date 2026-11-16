@@ -71,7 +71,7 @@ Map owner slot 3 is neutral and every other slot hostile, for now.
 | `--pick <x> <y>` | Select what is at a client pixel once the scene is shown. |
 | `--reload-every <n>` | Replace the scene with a fresh copy every n frames (resource-retirement test); remaining texture, slot, and retirement counts print on exit. |
 | `--record <file>` | Write the order log on exit, for headless replay. |
-| `--replay <file>` | Play a recorded order log (its map unless `--map` is given) on the battle's clock, pause at its end, and print the state hash against the recording's; it ends in the same state as the headless replay. With `--capture`, run there fast (240 ticks a frame) and capture the end, e.g. `sandbox --game foc --replay stuck.log --capture end.png --camera 2888 2154 900`. |
+| `--replay <file>` | Play a recorded order log (its map unless `--map` is given) on the battle's clock, pause at its end (it does not run on), and print the state hash against the recording's; it ends in the same state as the headless replay. The player gives no orders and spawns nothing meanwhile (cameras, selection, and pausing work). With `--capture`, run there fast (240 ticks a frame) and capture the end, e.g. `sandbox --game foc --replay stuck.log --capture end.png --camera 2888 2154 900`. |
 | `--capture`, `--capture-frame`, `--fixed-frame-time`, `--camera` | Reproducible captures; see [Captures and image regression](#captures-and-image-regression). |
 | `--log-dir <path>` | Folder for the per-run log (default `logs/` next to the executable; the 20 newest are kept). |
 | `--no-error-dialog` | Report fatal errors on stderr and in the log only (also the case when stderr is redirected). |

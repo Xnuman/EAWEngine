@@ -16,9 +16,8 @@ namespace eaw::engine_app {
 void SandboxSession::spawn_units(const std::size_t type_index, const eaw::Vector3& point, const std::uint32_t count)
 {
     const auto& type = spawnable[type_index];
-    if (const auto submitted = runtime->battle().submit({.order = eaw::BattleOrder::spawn, .point = point, .type = type.type_name, .count = count, .owner = spawn_owner}); !submitted)
+    if (!give_order({.order = eaw::BattleOrder::spawn, .point = point, .type = type.type_name, .count = count, .owner = spawn_owner}))
     {
-        eaw::log_warning("simulation", submitted.error());
         return;
     }
     std::cout << "Spawning " << count << " " << type.type_name << (type.members.empty() ? std::string{} : " (" + std::to_string(type.members.size()) + " units each)") << " for owner " << spawn_owner

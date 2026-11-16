@@ -705,9 +705,10 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
     {
         return make_error("battle needs --map or --replay");
     }
-    if (options.replay && ((options.mode != RunMode::battle && options.mode != RunMode::sandbox) || !options.spawns.empty() || options.auto_move || options.stress_orders))
+    if (options.replay &&
+        ((options.mode != RunMode::battle && options.mode != RunMode::sandbox) || !options.spawns.empty() || !options.later_spawns.empty() || options.auto_move || options.stress_orders))
     {
-        return make_error("--replay runs a battle or the sandbox and takes its orders from the log, not --spawn, --auto-move, or --stress-orders");
+        return make_error("--replay runs a battle or the sandbox and takes its orders from the log, not --spawn, --spawn-later, --auto-move, or --stress-orders");
     }
     if (options.stress_orders && (options.mode != RunMode::battle || options.auto_move))
     {

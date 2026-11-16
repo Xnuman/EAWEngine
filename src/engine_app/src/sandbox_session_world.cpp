@@ -23,6 +23,12 @@ std::chrono::steady_clock::time_point SandboxSession::world_now(const std::chron
 
 void SandboxSession::toggle_world_pause()
 {
+    // A finished replay stays at its end: running on would be a battle the log never had.
+    if (replay_done)
+    {
+        std::cout << "Replay: ended at its last tick; it does not run on\n";
+        return;
+    }
     const auto now = presentation_now();
     if (!world_paused)
     {
@@ -104,6 +110,26 @@ void SandboxSession::step_simulation(const std::chrono::steady_clock::time_point
     }
 }
 
+bool SandboxSession::give_order(const eaw::BattleCommand& command)
+{
+    if (replay_log)
+    {
+        // A replay's orders are the log's: the player's would make it another battle.
+        if (!replay_orders_refused)
+        {
+            replay_orders_refused = true;
+            std::cout << "Replay: orders and spawns are disabled while a log replays\n";
+        }
+        return false;
+    }
+    if (const auto submitted = runtime->battle().submit(command); !submitted)
+    {
+        eaw::log_warning("simulation", submitted.error());
+        return false;
+    }
+    return true;
+}
+
 void SandboxSession::feed_replay()
 {
     const auto tick = world->stats().tick;
@@ -128,7 +154,7 @@ void SandboxSession::finish_replay()
     const auto hash = world->state_hash();
     const bool same = replay_log->end_hash && *replay_log->end_hash == hash;
     std::cout << "Replay: reached tick " << world->stats().tick << "; state hash " << eaw::format_hex(hash)
-              << (same ? ", as recorded" : ", the recording's " + eaw::format_hex(replay_log->end_hash.value_or(0))) << " (paused; P resumes)\n";
+              << (same ? ", as recorded" : ", the recording's " + eaw::format_hex(replay_log->end_hash.value_or(0))) << " (paused at the end)\n";
 }
 
 void SandboxSession::step_particles(const std::chrono::steady_clock::time_point now)
