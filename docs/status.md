@@ -394,6 +394,11 @@ improvements, off or optional unless stated; legacy is the default.
   fields). The two long cascades move the 12-unit water grid and bend its normal; all three bend the
   pixel's normal, each fading as its patch shrinks on screen with its slopes moved into the glint's
   width (`water_layer_presence`); crests foam where the long cascades' Jacobian falls below 0.6. The
+  water's body on open sea is lit with the flat surface's normal and a tenth of the key light's
+  direct term (`legacy_lit_color_scaled`), plus three times the change in the key light's facing
+  between the wave's normal and the flat surface, so the sea keeps the legacy water's deep blue
+  (a flat wave normal facing the light had washed it grey) while slopes toward the light brighten and
+  slopes away darken (engine choices, by eye against the legacy water). The
   scene texture table and the anisotropic sampler are visible to vertex shaders for it, and the frame
   graph has an `all_shader_read` access. Faded in from the calm depth to
   the full depth so shores and units in the shallows keep the flat plane, which the simulation keeps

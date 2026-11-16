@@ -610,6 +610,13 @@ static const float WATER_SHORE_FADE = 3.0f;        // depth (units) over which t
 static const float WATER_DETAIL_SCALE = 2.7f;      // second normal layer's repeats per first-layer repeat
 static const float WATER_DETAIL_DRIFT = 1.7f;      // its scroll relative to the first layer's
 static const float WATER_GLINT_POWER = 256.0f;
+// The open sea body's share of the key light's direct term (see water_ps): an engine choice,
+// calibrated by eye against the legacy water's deep blue.
+static const float WATER_OCEAN_BODY_KEY = 0.1f;
+// The waves' shading on the open sea's body: the key light's change in facing between the wave's
+// normal and the flat surface, this much of it, so slopes toward the light brighten and slopes away
+// darken around the body's color (an engine choice, by eye).
+static const float WATER_OCEAN_SLOPE_SHADE = 3.0f;
 // Open sea (ocean_shore.w): each normal layer fades out as its repeat shrinks on screen, so far water
 // keeps only its longer layers and the waves and no repeat reads as a grid; the slopes a faded layer
 // took away widen the sun's glint instead (its specular power from the slope variance, as Toksvig
@@ -746,7 +753,20 @@ PixelOutput water_ps(PixelInput input)
     const float fresnel = WATER_BASE_REFLECTANCE + (1.0f - WATER_BASE_REFLECTANCE) * pow(1.0f - saturate(dot(normal, view)), 5.0f);
     const float4 base = water_broad_base(material, uv, broad_uv);
     const float3 tint = (material.tint * input.tint * input.vertex_color).rgb;
-    const float3 body = legacy_lit_color(base.rgb, normal, input.world_position, 0.0f, material.diffuse.rgb, float3(0.0f, 0.0f, 0.0f), material.emissive.rgb, tint, input.position.xy, true);
+    // Open sea: the water's body is lit by light scattered beneath the surface, not by each wave's
+    // facing, so it takes the flat surface's normal with the key light's direct share at
+    // WATER_OCEAN_BODY_KEY (the normal maps' steep normals kept the legacy body that dark; a flat
+    // wave normal facing the light washed it grey).
+    float3 body = legacy_lit_color(base.rgb, normal, input.world_position, 0.0f, material.diffuse.rgb, float3(0.0f, 0.0f, 0.0f), material.emissive.rgb, tint, input.position.xy, true);
+    if (ocean_cascades.w != 0.0f)
+    {
+        const float3 key_light = safe_normalize(key_direction.xyz, float3(0.0f, 0.0f, 1.0f));
+        const float slope_facing = saturate(dot(normal, key_light)) - saturate(dot(surface_normal, key_light));
+        body = legacy_lit_color_scaled(base.rgb, surface_normal, input.world_position, 0.0f, material.diffuse.rgb, float3(0.0f, 0.0f, 0.0f), material.emissive.rgb, tint, input.position.xy, true,
+                                       WATER_OCEAN_BODY_KEY) +
+               base.rgb * material.diffuse.rgb * key_diffuse.rgb * tint * (2.0f * WATER_OCEAN_SLOPE_SHADE * slope_facing);
+        body = max(body, float3(0.0f, 0.0f, 0.0f));
+    }
     // The sky the surface reflects, from the map's lights (an engine choice until there is a sky
     // probe).
     const float3 sky = sky_parameters.y != 0u ? sample_sky(reflect(-view, normal)) : ambient.rgb + key_diffuse.rgb * 0.5f;

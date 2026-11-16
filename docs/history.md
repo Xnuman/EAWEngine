@@ -870,3 +870,9 @@ rewritten to describe the current state; the source document is noted in bracket
   Gerstner waves and their constants are gone. The owner's tuned Gerstner values (length 2.5, speed
   2.7, crest sharpness 0.7, crest foam from 0.54) no longer apply; the calm and full depths (0, 10)
   carry over. water_wave_reach grew from 12 to 40 units for the FFT's heights.
+- The owner noticed the FFT ocean had lost the blue. Measured on Kamino (mean color of open water):
+  legacy normal maps 10/15/32, FFT 39/46/66. Neither the reflection nor the glint caused it: the
+  body's key light did, since the normal maps' steep normals had kept the body dark and the flat
+  wave normal faced the light. The open sea's body now takes the flat normal with a tenth of the
+  direct key light (15/17/29) plus three times the wave's change in facing, which brings the swells
+  back into view around the deep blue.

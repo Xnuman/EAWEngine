@@ -479,8 +479,9 @@ float3 sky_fill(const float3 normal, const float3 legacy_fill)
     return lerp(legacy_fill, sky_irradiance(normal) * scale, SKY_AMBIENT_SHARE);
 }
 
-float3 legacy_lit_color(const float3 albedo, const float3 normal, const float3 world_position, const float gloss, const float3 diffuse, const float3 specular,
-                        const float3 emissive, const float3 tint, const float2 pixel, const bool receives_shadows)
+// As legacy_lit_color, with the key light's diffuse term scaled by `key_scale` (the open sea's body).
+float3 legacy_lit_color_scaled(const float3 albedo, const float3 normal, const float3 world_position, const float gloss, const float3 diffuse, const float3 specular,
+                               const float3 emissive, const float3 tint, const float2 pixel, const bool receives_shadows, const float key_scale)
 {
     const float3 view = safe_normalize(camera_position_time.xyz - world_position, float3(0.0f, 0.0f, 1.0f));
     const float3 light = safe_normalize(key_direction.xyz, float3(0.0f, 0.0f, 1.0f));
@@ -496,10 +497,16 @@ float3 legacy_lit_color(const float3 albedo, const float3 normal, const float3 w
     const float facing = saturate(dot(normal, light));
     // Surfaces facing away get no key light anyway; their highlight stays as it was without shadows.
     const float key = facing > 0.0f && receives_shadows ? key_light_visibility(world_position, normal, pixel) : 1.0f;
-    const float3 diffuse_light = diffuse * (fill + facing * key * key_diffuse.rgb) + emissive;
+    const float3 diffuse_light = diffuse * (fill + facing * key * key_scale * key_diffuse.rgb) + emissive;
     const float3 highlight = specular * key_specular.rgb * pow(saturate(dot(normal, half_vector)), 16.0f) * gloss * key;
     // Legacy 2x diffuse convention: lighting near 0.5 reproduces the texture color.
     return albedo * diffuse_light * 2.0f * tint + highlight;
+}
+
+float3 legacy_lit_color(const float3 albedo, const float3 normal, const float3 world_position, const float gloss, const float3 diffuse, const float3 specular,
+                        const float3 emissive, const float3 tint, const float2 pixel, const bool receives_shadows)
+{
+    return legacy_lit_color_scaled(albedo, normal, world_position, gloss, diffuse, specular, emissive, tint, pixel, receives_shadows, 1.0f);
 }
 
 #endif
