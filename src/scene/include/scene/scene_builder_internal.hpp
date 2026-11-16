@@ -251,8 +251,16 @@ bool type_is_marker(const GameObjectCatalog& catalog, const XmlDefinition& defin
 std::string type_animation_source(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 // Records a type's animation source for a model it appended (the first type wins).
 void note_animation_source(SceneBuilder& builder, const std::string& model_path, const GameObjectCatalog& catalog, const XmlDefinition& definition);
-// The corpse style of a type from its normal death clone (DeathStyle).
+// The type's normal death clone (its Damage_Normal entry, else its first), or null.
+[[nodiscard]] const XmlDefinition* normal_death_clone(const GameObjectCatalog& catalog, const XmlDefinition& definition);
+// The corpse style of a type from its normal death clone (DeathStyle; its mesh comes from
+// death_clone_mesh).
 DeathStyle type_death_style(const GameObjectCatalog& catalog, const XmlDefinition& definition);
+// The normal death clone's model as a scene mesh with its clips, when it is not the type's own
+// (`type_model_path`): the break-apart models of capital ships, stations, and transports (184 stock
+// types). Nothing when the clone shares the model or names none for the context.
+[[nodiscard]] std::optional<std::uint32_t> death_clone_mesh(SceneBuilder& builder, const GameObjectCatalog& catalog, std::unordered_map<std::string, std::optional<std::uint32_t>>& meshes,
+                                                            const XmlDefinition& definition, std::string_view type_model_path, bool land);
 // Whether shadows fall on the type's model: not on backdrops (XML In_Background: planets, nebulas).
 bool type_receives_shadows(const GameObjectCatalog& catalog, const XmlDefinition& definition);
 // XML Occlusion_Silhouette_Enabled: the type shows through what hides it.

@@ -278,7 +278,8 @@ rendering rows join item 2).
    movement and formations, space combat with hardpoints, flight, headless battles and replays.
    Open: AT-AT animations are broken (the owner, 2026-11-13: in the sandbox an AT-AT can stay in its
    idle clip while ordered to move); combat presentation and fidelity (hardpoint damage visuals and
-   breakoff debris done 2026-11-13, a wreck's end sound 2026-11-16; open: turret rotation of hardpoint
+   breakoff debris done 2026-11-13, a wreck's end sound and death clones' own models 2026-11-16;
+   open: wrecks' proxy effects (fire and explosions on broken ships and land wrecks), turret rotation of hardpoint
    turrets (unit turrets done 2026-11-12); walkers' `_QUARTER`/`_HALF` turn clips (cycles between
    BEGIN and END, compatibility-research.md "The turn kit"; turns are composed of them, done
    2026-11-14; the angle each stands for is inferred from the names, not measured),

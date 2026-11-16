@@ -39,6 +39,9 @@ struct DeathStyle
     // stock user also has a Death_Explosions_End and names a large explosion sound, so it is read as
     // the wreck's final explosion: an inference), or empty.
     std::string end_sound;
+    // The death clone's own model, when it is not the unit's (capital ships and stations break
+    // apart into another model that plays its DIE clip); the wreck is drawn with it.
+    std::optional<std::uint32_t> mesh;
     // Leaves no corpse: removed the moment it dies (XML Remove_Upon_Death: fighters, debris,
     // satellites, most props).
     bool removed{};

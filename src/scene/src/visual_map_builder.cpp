@@ -92,6 +92,7 @@ void scene_build::add_spawnable_looks(SceneBuilder& builder, const GameObjectCat
         look.receives_shadows = type_receives_shadows(catalog, *model.type);
         look.silhouette = type_silhouette(catalog, *model.type);
         look.death = type_death_style(catalog, *model.type);
+        look.death.mesh = death_clone_mesh(builder, catalog, meshes, *model.type, model.path, land);
         look.bank_limit = type_bank_limit(catalog, *model.type);
         look.animation = type_animation_profile(catalog, *model.type);
         if (land)
@@ -171,6 +172,7 @@ Result<VisualMapAsset> build_visual_map(const AssetReader& vfs, const std::strin
                 note_damage_bones(builder, model.path, *combat);
             }
             look.death = type_death_style(catalog, *model.type);
+            look.death.mesh = death_clone_mesh(builder, catalog, meshes, *model.type, model.path, battle.land);
             look.bank_limit = type_bank_limit(catalog, *model.type);
             look.hidden = type_is_marker(catalog, *model.type);
             look.animation = type_animation_profile(catalog, *model.type);

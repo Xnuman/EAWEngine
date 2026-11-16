@@ -167,11 +167,64 @@ void add_track_layers(SceneBuilder& builder, const GameObjectCatalog& catalog, c
     table.emplace(key, std::move(layers));
 }
 
+const XmlDefinition* normal_death_clone(const GameObjectCatalog& catalog, const XmlDefinition& definition)
+{
+    std::string_view chosen;
+    for (const auto* entry : catalog.fields(definition, "Death_Clone").fields)
+    {
+        const auto [damage, clone] = death_clone_entry(entry->text);
+        if (clone.empty())
+        {
+            continue;
+        }
+        if (chosen.empty() || ascii_lower(std::string(damage)) == "damage_normal")
+        {
+            chosen = clone;
+        }
+    }
+    const auto clones = chosen.empty() ? std::span<const XmlDefinition* const>{} : catalog.find(chosen);
+    return clones.empty() ? nullptr : clones.front();
+}
+
+std::optional<std::uint32_t> death_clone_mesh(SceneBuilder& builder, const GameObjectCatalog& catalog, std::unordered_map<std::string, std::optional<std::uint32_t>>& meshes,
+                                              const XmlDefinition& definition, const std::string_view type_model_path, const bool land)
+{
+    const auto* clone = normal_death_clone(catalog, definition);
+    if (clone == nullptr)
+    {
+        return std::nullopt;
+    }
+    const auto model = catalog.model(*clone, land ? GameModelContext::land : GameModelContext::space);
+    if (!model)
+    {
+        return std::nullopt;
+    }
+    const auto path = resolve_model_path(builder.vfs, model->value);
+    if (!path)
+    {
+        builder.scene.warnings.push_back(clone->name + ": death clone model " + model->value + " was not found; the wreck keeps its unit's model");
+        return std::nullopt;
+    }
+    if (ascii_equal_ignoring_case(*path, type_model_path))
+    {
+        return std::nullopt;
+    }
+    auto [entry, inserted] = meshes.try_emplace(attached_mesh_key(*path, {}));
+    if (inserted)
+    {
+        entry->second = append_scene_model(builder, *path);
+    }
+    if (entry->second)
+    {
+        note_animation_source(builder, *path, catalog, *clone);
+    }
+    return entry->second;
+}
+
 DeathStyle type_death_style(const GameObjectCatalog& catalog, const XmlDefinition& definition)
 {
     DeathStyle style;
     style.removed = TypeFields(catalog, definition).flag("Remove_Upon_Death", false);
-    std::string_view chosen;
     for (const auto* entry : catalog.fields(definition, "Death_Clone").fields)
     {
         // The crush clone's clip, for deaths by crushing.
@@ -187,21 +240,12 @@ DeathStyle type_death_style(const GameObjectCatalog& catalog, const XmlDefinitio
                 style.crushed = clip;
             }
         }
-        const auto [damage, clone] = death_clone_entry(entry->text);
-        if (clone.empty())
-        {
-            continue;
-        }
-        if (chosen.empty() || ascii_lower(std::string(damage)) == "damage_normal")
-        {
-            chosen = clone;
-        }
     }
     // The wreck is the clone's; a type without one is its own wreck (AT-AA, the Dark Troopers),
     // and the same tags on it say how long it stays and what plays when it goes.
-    const auto clones = chosen.empty() ? std::span<const XmlDefinition* const>{} : catalog.find(chosen);
-    const auto& wreck = clones.empty() ? definition : *clones.front();
-    if (!clones.empty() && catalog.field(wreck, "Specific_Death_Anim_Index").field != nullptr)
+    const auto* clone = normal_death_clone(catalog, definition);
+    const auto& wreck = clone == nullptr ? definition : *clone;
+    if (clone != nullptr && catalog.field(wreck, "Specific_Death_Anim_Index").field != nullptr)
     {
         const auto index = type_float_field(catalog, wreck, "Specific_Death_Anim_Index");
         if (index >= 0.0F && index < 100.0F)

@@ -169,6 +169,15 @@ void test_scene_presentation()
         death.id = shown[0].id;
         const auto wreck = damaged.corpse_instance(death);
         require(wreck && wreck->instance.state == 3U, "a wreck must show the damage state for no health");
+        // A death clone with its own model (a capital ship's break-apart model): the wreck is drawn
+        // with it, without the unit's damage state.
+        auto cloned_look = damaged_look;
+        cloned_look.death.mesh = 7U;
+        eaw::ScenePresentation cloned(scene, std::span(&marker, 1), std::span(&cloned_look, 1), damaged_battle.map_entity_ids(), {});
+        shown[0].health = 10.0F;
+        cloned.build(shown, {}, instances, ids);
+        const auto clone_wreck = cloned.corpse_instance(death);
+        require(clone_wreck && clone_wreck->instance.mesh == 7U && clone_wreck->instance.state == 0U, "a wreck must be drawn with its death clone's own model");
     }
 }
 

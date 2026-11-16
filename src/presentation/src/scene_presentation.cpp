@@ -300,6 +300,12 @@ std::optional<ScenePresentation::Corpse> ScenePresentation::corpse_instance(cons
         instance.state = damage_alternate(found->damage, 0.0F);
     }
     const auto style = found->death;
+    if (style.mesh)
+    {
+        // The clone's model has no damage states of the unit's.
+        instance.mesh = *style.mesh;
+        instance.state = 0U;
+    }
     if (placed != templates_.end())
     {
         templates_.erase(placed);
