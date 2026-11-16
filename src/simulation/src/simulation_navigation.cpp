@@ -5,10 +5,12 @@
 
 #include "math/scalar.hpp"
 #include "core/profile.hpp"
+#include "jobs/parallel.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <utility>
 
 namespace eaw {
 
@@ -31,26 +33,73 @@ void SimulationWorld::NavigationSystem::run(const View& view)
     plan_ground_avoidance(view);
 }
 
-void SimulationWorld::NavigationSystem::plan_route_now(const View& view, const std::size_t index, const Vector3& target)
+SimulationWorld::NavigationSystem::PlannedRoute SimulationWorld::NavigationSystem::plan_route(const View& view, const std::size_t index, const Vector3& target, RouteScratch& scratch)
 {
-    auto& placement = view.get<PlacementColumns>();
-    auto& route = view.get<RouteColumns>();
-    auto& ground = view.get<GroundState>();
+    const auto& placement = view.get<PlacementColumns>();
+    const auto& ground = view.get<GroundState>();
     const auto& position = placement.positions[index];
-    const auto planned = pathfinder_.find(navigation_data_, ground.map, {position.x, position.y}, {target.x, target.y}, footing_of(view, index));
-    if (planned.status == PathStatus::unavailable)
+    auto found = scratch.route.find(navigation_data_, ground.map, {position.x, position.y}, {target.x, target.y}, footing_of(view, index));
+    PlannedRoute planned;
+    if (found.status == PathStatus::unavailable)
+    {
+        planned.unavailable = true;
+        return planned;
+    }
+    planned.searches = 1;
+    planned.expansions = found.expanded;
+    planned.partials = found.status == PathStatus::partial ? 1U : 0U;
+    planned.waypoints = std::move(found.waypoints);
+    return planned;
+}
+
+void SimulationWorld::NavigationSystem::give_route(const View& view, const std::size_t index, const Vector3& goal, const PlannedRoute& planned)
+{
+    auto& route = view.get<RouteColumns>();
+    path_searches += planned.searches;
+    partial_paths += planned.partials;
+    path_expansions += planned.expansions;
+    if (planned.unavailable)
     {
         route.paths[index].clear();
-        route.move_targets[index] = target;
+        route.move_targets[index] = goal;
         return;
     }
-    ++path_searches;
-    path_expansions += planned.expanded;
-    if (planned.status == PathStatus::partial)
+    set_route(view, index, planned.waypoints, goal.z);
+}
+
+std::size_t SimulationWorld::NavigationSystem::batch_limit() const noexcept
+{
+    return jobs_ != nullptr ? route_batch : 1;
+}
+
+template <class Plan> void SimulationWorld::NavigationSystem::plan_batch(Plan&& plan)
+{
+    planned_.assign(batch_.size(), PlannedRoute{});
+    navigation_data_.freeze(true);
+    // Only a full batch goes to the job system: a big order's searches. Small trickles of requests
+    // (mostly straight legs of microseconds) cost more to hand out than they take (the 500-unit
+    // stress battle ran 0.5 ms a tick slower with every batch of two or more in parallel).
+    if (jobs_ == nullptr || batch_.size() < route_batch)
     {
-        ++partial_paths;
+        for (std::size_t entry = 0; entry < batch_.size(); ++entry)
+        {
+            planned_[entry] = plan(batch_[entry], route_scratch_.front());
+        }
     }
-    set_route(view, index, planned.waypoints, target.z);
+    else
+    {
+        // One search a chunk, each with its scratch; each writes only its own result.
+        route_scratch_.resize(std::max(route_scratch_.size(), batch_.size()));
+        parallel_for(*jobs_, batch_.size(), 1,
+                     [&](const std::size_t begin, const std::size_t end, const std::size_t chunk)
+                     {
+                         for (auto entry = begin; entry < end; ++entry)
+                         {
+                             planned_[entry] = plan(batch_[entry], route_scratch_[chunk]);
+                         }
+                     });
+    }
+    navigation_data_.freeze(false);
 }
 
 void SimulationWorld::NavigationSystem::set_route(const View& view, const std::size_t index, const std::vector<PathPoint>& waypoints, const float height)
@@ -75,28 +124,80 @@ void SimulationWorld::NavigationSystem::set_route(const View& view, const std::s
 // Requests are planned in the order they were made until the tick's node budget is spent (at least
 // one per tick), so a large order spreads over a few ticks instead of stalling one. Members whose
 // request was superseded or who died are skipped.
+//
+// Single-unit requests and the members of a shared one are searched route_batch at a time on the
+// job system, then given in order under the same budget check as one by one: a search reads only
+// the state navigation does not change, so its result is the same planned early, and those the
+// budget does not reach this tick are planned again in a later one. The result is the serial one
+// (check-battle compares the two).
 void SimulationWorld::NavigationSystem::process_path_queue(const View& view)
 {
     auto& route = view.get<RouteColumns>();
     auto& path_queue = view.get<PathQueue>();
+    const auto& ground = view.get<GroundState>();
     std::uint64_t spent = 0;
     bool first = true;
+    const auto live_single = [&](const PathRequest& request) -> std::optional<std::size_t>
+    {
+        const auto dense = dense_index(view, request.members.front());
+        return dense && route.pending[*dense] == request.serials.front() ? dense : std::nullopt;
+    };
     while (!path_queue.requests.empty() && (first || spent < path_budget_per_tick))
     {
         auto& request = path_queue.requests.front();
+        if (request.frame == 0 && request.members.size() == 1)
+        {
+            // The single-unit requests at the front of the queue, as one batch.
+            batch_.clear();
+            for (std::size_t queued = 0; queued < path_queue.requests.size() && batch_.size() < batch_limit(); ++queued)
+            {
+                const auto& next = path_queue.requests[queued];
+                if (next.frame != 0 || next.members.size() != 1)
+                {
+                    break;
+                }
+                if (const auto dense = live_single(next))
+                {
+                    batch_.push_back({*dense, next.goals.front()});
+                    pathfinder_.prepare(navigation_data_, ground.map, footing_of(view, *dense));
+                }
+            }
+            plan_batch(
+                [&](const BatchEntry& entry, RouteScratch& scratch)
+                {
+                    return plan_route(view, entry.index, entry.goal, scratch);
+                });
+            std::size_t given = 0;
+            while (!path_queue.requests.empty() && (first || spent < path_budget_per_tick))
+            {
+                const auto& next = path_queue.requests.front();
+                if (next.frame != 0 || next.members.size() != 1)
+                {
+                    break;
+                }
+                const auto dense = live_single(next);
+                if (dense && given == batch_.size())
+                {
+                    // Past the batch: plan the rest in the next round.
+                    break;
+                }
+                if (dense)
+                {
+                    route.pending[*dense] = 0;
+                    give_route(view, *dense, next.goals.front(), planned_[given]);
+                    spent += planned_[given].expansions;
+                    ++given;
+                }
+                first = false;
+                path_queue.requests.pop_front();
+            }
+            continue;
+        }
         const auto before = path_expansions;
         bool finished = true;
         if (request.frame != 0)
         {
             plan_frame_route(view, request);
-        }
-        else if (request.members.size() == 1)
-        {
-            if (const auto dense = dense_index(view, request.members.front()); dense && route.pending[*dense] == request.serials.front())
-            {
-                route.pending[*dense] = 0;
-                plan_route_now(view, *dense, request.goals.front());
-            }
         }
         else
         {
@@ -180,48 +281,75 @@ bool SimulationWorld::NavigationSystem::plan_shared_route(const View& view, Path
             ++shared_routes;
         }
     }
-    for (; request.next_member < request.members.size(); ++request.next_member)
+    while (request.next_member < request.members.size())
     {
-        // The budget is spent and this tick already planned something: resume next tick.
-        if (spent() >= path_budget_per_tick && (planned_any || !first_in_tick))
+        // The next route_batch live members, planned at once.
+        batch_.clear();
+        for (auto member = request.next_member; member < request.members.size() && batch_.size() < batch_limit(); ++member)
         {
-            return false;
+            if (const auto dense = live(member))
+            {
+                batch_.push_back({*dense, request.goals[member]});
+                pathfinder_.prepare(navigation_data_, ground.map, footing_of(view, *dense));
+            }
         }
-        const auto dense = live(request.next_member);
-        if (!dense)
+        plan_batch(
+            [&](const BatchEntry& entry, RouteScratch& scratch)
+            {
+                return plan_member(view, request, entry.index, entry.goal, scratch);
+            });
+        std::size_t given = 0;
+        for (; request.next_member < request.members.size(); ++request.next_member)
         {
-            continue;
+            // The budget is spent and this tick already planned something: resume next tick.
+            if (spent() >= path_budget_per_tick && (planned_any || !first_in_tick))
+            {
+                return false;
+            }
+            const auto dense = live(request.next_member);
+            if (!dense)
+            {
+                continue;
+            }
+            if (given == batch_.size())
+            {
+                // Past the batch: plan the next one.
+                break;
+            }
+            route.pending[*dense] = 0;
+            give_route(view, *dense, request.goals[request.next_member], planned_[given]);
+            ++given;
+            planned_any = true;
         }
-        route.pending[*dense] = 0;
-        plan_shared_member(view, request, *dense, request.goals[request.next_member]);
-        planned_any = true;
     }
     return true;
 }
 
-void SimulationWorld::NavigationSystem::plan_shared_member(const View& view, const PathRequest& request, const std::size_t index, const Vector3& goal)
+SimulationWorld::NavigationSystem::PlannedRoute SimulationWorld::NavigationSystem::plan_member(const View& view, const PathRequest& request, const std::size_t index, const Vector3& goal,
+                                                                                               RouteScratch& scratch)
 {
-    auto& placement = view.get<PlacementColumns>();
-    auto& ground = view.get<GroundState>();
+    const auto& placement = view.get<PlacementColumns>();
+    const auto& ground = view.get<GroundState>();
     if (request.shared_waypoints.empty())
     {
-        plan_route_now(view, index, goal);
-        return;
+        return plan_route(view, index, goal, scratch);
     }
     const auto& shared_end = request.shared_waypoints.back();
 
     const PathPoint position{placement.positions[index].x, placement.positions[index].y};
     const auto footing = footing_of(view, index);
+    std::uint64_t leg_expansions = 0;
     std::vector<PathPoint> path_points;
     // Onto the shared path: straight to its first waypoint, or a short search to the commander.
     if (!ground_line_passable(ground.map, position, request.shared_waypoints.front(), footing))
     {
-        const auto onto = local_pathfinder_.find(navigation_data_, ground.map, position, request.shared_start, footing);
-        path_expansions += onto.expanded;
+        const auto onto = scratch.legs.find(navigation_data_, ground.map, position, request.shared_start, footing);
+        leg_expansions += onto.expanded;
         if (onto.status != PathStatus::reached)
         {
-            plan_route_now(view, index, goal);
-            return;
+            auto planned = plan_route(view, index, goal, scratch);
+            planned.expansions += leg_expansions;
+            return planned;
         }
         path_points = onto.waypoints;
     }
@@ -236,15 +364,16 @@ void SimulationWorld::NavigationSystem::plan_shared_member(const View& view, con
         }
         else
         {
-            const auto off = local_pathfinder_.find(navigation_data_, ground.map, shared_end, slot, footing);
-            path_expansions += off.expanded;
+            const auto off = scratch.legs.find(navigation_data_, ground.map, shared_end, slot, footing);
+            leg_expansions += off.expanded;
             path_points.insert(path_points.end(), off.waypoints.begin(), off.waypoints.end());
         }
     }
     // Straighten the composed path_points from the member's position: keep a waypoint only where a
     // straight line to the following one would cross ground the class may not enter. In open
     // ground members head straight for their slots instead of converging on the shared path.
-    std::vector<PathPoint> straightened;
+    PlannedRoute planned;
+    planned.expansions = leg_expansions;
     auto anchor = position;
     for (std::size_t next = 0; next < path_points.size();)
     {
@@ -253,11 +382,11 @@ void SimulationWorld::NavigationSystem::plan_shared_member(const View& view, con
         {
             ++furthest;
         }
-        straightened.push_back(path_points[furthest]);
+        planned.waypoints.push_back(path_points[furthest]);
         anchor = path_points[furthest];
         next = furthest + 1;
     }
-    set_route(view, index, straightened, goal.z);
+    return planned;
 }
 
 void SimulationWorld::NavigationSystem::plan_space_avoidance(const View& view)

@@ -1983,13 +1983,51 @@ private:
     private:
         // Works through queued path requests until the tick's search budget is spent.
         void process_path_queue(const View& view);
-        // Plans now: a full search from the entity's position.
-        void plan_route_now(const View& view, std::size_t index, const Vector3& target);
         // A formation frame's route (simulation_frames.cpp), for its largest member.
         void plan_frame_route(const View& view, const PathRequest& request);
-        void plan_shared_member(const View& view, const PathRequest& request, std::size_t index, const Vector3& goal);
         // Plans a shared request's members until the tick's budget is spent; false when members remain.
         [[nodiscard]] bool plan_shared_route(const View& view, PathRequest& request, std::uint64_t spent_before, bool first_in_tick);
+
+        // A route planned but not yet given (route searches run in batches, docs/ecs-design.md 7.5):
+        // its waypoints, or none at all (no ground data: the unit heads straight for its goal), and
+        // what its searches count in the statistics and the tick's budget.
+        struct PlannedRoute
+        {
+            bool unavailable{};
+            std::vector<PathPoint> waypoints;
+            std::uint64_t searches{};
+            std::uint64_t partials{};
+            std::uint64_t expansions{};
+        };
+        // A search's own scratch: one per chunk of a batch searched at once.
+        struct RouteScratch
+        {
+            GridPathfinder route{0, ChunkLayout::refined};
+            // Short legs onto and off a shared path search at most this many nodes.
+            GridPathfinder legs{4096};
+        };
+        // The route of the unit at `index` to `target`: a full search from where it stands. Reads the
+        // state only.
+        [[nodiscard]] PlannedRoute plan_route(const View& view, std::size_t index, const Vector3& target, RouteScratch& scratch);
+        // The route of a member of `request` onto its shared path and off it to `goal` (a full search
+        // where that fails). Reads the state only.
+        [[nodiscard]] PlannedRoute plan_member(const View& view, const PathRequest& request, std::size_t index, const Vector3& goal, RouteScratch& scratch);
+        // Gives the unit at `index` its planned route and counts its searches.
+        void give_route(const View& view, std::size_t index, const Vector3& goal, const PlannedRoute& planned);
+        // Plans batch_ (up to route_batch units, their footings prepared) at once on the job system,
+        // or one after the other without it, into planned_; the navigation data is frozen meanwhile.
+        template <class Plan> void plan_batch(Plan&& plan);
+        // How many routes a batch plans: route_batch on the job system; one without it, where planning
+        // ahead only searches what the budget may not reach this tick.
+        [[nodiscard]] std::size_t batch_limit() const noexcept;
+        struct BatchEntry
+        {
+            std::size_t index{};
+            Vector3 goal;
+        };
+        std::vector<BatchEntry> batch_;
+        std::vector<PlannedRoute> planned_;
+        std::vector<RouteScratch> route_scratch_ = std::vector<RouteScratch>(1);
         // Local avoidance of space ships: each steering ship's detour (RouteColumns::detours) around
         // the ships in its way.
         void plan_space_avoidance(const View& view);
@@ -2054,8 +2092,6 @@ private:
         }
 
     private:
-        // Short legs onto and off a shared path search at most this many nodes.
-        GridPathfinder local_pathfinder_{4096};
         // Detours search the cells around a unit without chunks (standing units block cells the chunk
         // graphs know nothing of), at most this many nodes (an engine choice).
         static constexpr std::uint32_t detour_search_nodes = 16384;
