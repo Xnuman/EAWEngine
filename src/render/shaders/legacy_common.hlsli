@@ -51,6 +51,7 @@ static const uint MATERIAL_CLOUDS = 1u << 5;
 static const uint MATERIAL_GRASS = 1u << 6;
 static const uint MATERIAL_CLOUD_SHADOW = 1u << 7;
 static const uint MATERIAL_WATER = 1u << 10; // bits 8-9 hold the gloss source
+static const uint MATERIAL_DISTANCE_FADE = 1u << 11;
 static const uint INSTANCE_BACKGROUND = 1u;
 static const uint INSTANCE_HIGHLIGHTED = 2u;
 static const uint INSTANCE_NO_SHADOWS = 4u;
@@ -107,6 +108,7 @@ cbuffer FrameConstants : register(b0)
     uint4 particle_parameters; // x soft particles on
     float4 ocean_shape; // enhanced water's waves: x height scale, y length scale, z speed scale, w steepness
     float4 ocean_shore; // x depth below which they are calm, y depth from which they are full, z crest foam start
+    float4 distance_fade; // x the distance it starts at, y one over its length
 };
 
 // Pick ids written to the selection target: 0 is nothing, scene instance index + 1 an object, and

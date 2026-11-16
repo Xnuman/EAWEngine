@@ -85,6 +85,12 @@ struct D3d12GraphicsSettings
     // Enhanced: depth-tested particles fade out as the surface behind them comes near, instead of
     // cutting a hard line where they meet it (soft particles).
     bool soft_particles{false};
+    // Distance-faded materials (VisualMaterial::distance_fade) are whole within `distance_fade_start`
+    // of the camera and gone from `distance_fade_end` on (world units). The legacy shaders fade
+    // linearly with distance by values the original's engine supplied; these are engine choices,
+    // for the owner to tune in the Graphics panel.
+    float distance_fade_start{5000.0F};
+    float distance_fade_end{7000.0F};
 };
 
 struct D3d12RendererOptions

@@ -319,7 +319,15 @@ improvements, off or optional unless stated; legacy is the default.
   around the model's up axis, the clump's top waves with the map's wind (faster and further in a
   stronger wind, phase-shifted across the map), the color swings between `Diffuse` and `Diffuse1`
   with the wave, lit as facing up. `GRASS_SWAY_SCALE` (0.15) keeps the sway to a few units, an engine
-  choice. The legacy distance fade is not done.
+  choice.
+- **Distance fade** (the legacy Grass, BatchMeshAlpha, and BatchMeshGloss shaders fade linearly with
+  distance from the camera, by values the original's engine supplied at run time): materials with the
+  profile's `distance_fade` feature (`VisualMaterial::distance_fade`) are whole within
+  `distance_fade_start` of the camera and gone from `distance_fade_end` on (5,000 and 7,000 world
+  units by default, engine choices; Graphics panel sliders "Grass and props fade from" and "gone
+  at"). Blended ones (grass, BatchMeshAlpha) fade their opacity; the opaque BatchMeshGloss keeps the
+  share of its pixels by the screen's 4x4 dither, which TAA smooths, instead of the legacy shader's
+  blend (an engine choice; faded props still cast shadows).
 - **Occlusion silhouettes** (the legacy OccludedUnit shaders, on by default, Graphics panel): a unit
   whose type sets `Occlusion_Silhouette_Enabled` (86 stock objects) shows through what hides it in
   its team color at half strength (the legacy default color's alpha; which color the original used

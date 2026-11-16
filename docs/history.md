@@ -838,3 +838,8 @@ rewritten to describe the current state; the source document is noted in bracket
   remote bomb deals Damage_Bomb), Force lightning and telekinesis, and Veers' deployed state.
 - Spinning away is drawn: a craft that spins away rolls at one and a half turns a second (an engine
   choice) until it dies; before, it flew on unrolled. Presentation only.
+- M2 resumed (the owner's choice over the 7 stock hardpoint turrets). The legacy distance fade:
+  grass and batched props (Grass, BatchMeshAlpha, BatchMeshGloss) fade out between 5,000 and 7,000
+  world units from the camera (guesses; Graphics panel sliders); the opaque BatchMeshGloss by a
+  screen-space dither. The pixel shader's dither threshold became a helper shared with the
+  detail-level cross-fade.

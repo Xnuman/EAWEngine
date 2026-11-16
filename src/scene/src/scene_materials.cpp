@@ -414,6 +414,7 @@ VisualMaterial make_visual_material(SceneBuilder& builder, const LegacyMaterial&
         scalar("DistortUVScrollRate", shield.wave_scroll);
         scalar("EdgeBrightness", shield.edge_brightness);
     }
+    result.distance_fade = features.distance_fade;
     if (features.vertex_animation == LegacyVertexAnimation::grass_wind)
     {
         // The Grass material's BendScale and second color (1 and white when absent, its defaults).

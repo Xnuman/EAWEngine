@@ -200,4 +200,4 @@ documented behavior, not the original code. Material translation is in
 | Occluded units (`MeshOccludedUnit`, `RSkinOccludedUnit`) | Implemented as a mask pass and composite: team color at half strength where another object hides a flagged unit, tested in the shader against the depth and pick targets instead of depth-greater plus stencil. ALO submeshes with the occluded family are skipped with a warning. |
 | Heat (`MeshHeat`, `RSkinHeat`) | The distortion pass exists and heat particles draw into it ([heat-research.md](heat-research.md)); the 3 stock heat meshes are still skipped with a warning (`scene_models.cpp`). |
 | Shadows | Cascaded shadow maps for the key light, not shadow volumes; `shadow` family submeshes are excluded. |
-| Cube reflection (no stock material uses the reflective profiles), fog of war, grass distance fade, `UVOffset` | Not yet. |
+| Cube reflection (no stock material uses the reflective profiles), fog of war, `UVOffset` | Not yet. |

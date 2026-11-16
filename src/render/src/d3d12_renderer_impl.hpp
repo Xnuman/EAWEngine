@@ -150,6 +150,8 @@ struct D3d12Renderer::Impl
         // steepness; then x calm depth, y full depth, z crest foam start.
         std::array<float, 4> ocean_shape{};
         std::array<float, 4> ocean_shore{};
+        // Distance fade (VisualMaterial::distance_fade): x the start, y one over the fade's length.
+        std::array<float, 4> distance_fade{};
     };
     // Layout of TerrainDecal in terrain.hlsl (64 bytes).
     struct GpuDecal
@@ -202,6 +204,7 @@ struct D3d12Renderer::Impl
     static constexpr std::uint32_t material_cloud_shadow = 1U << 7U;
     // Bits 8-9 hold the gloss source (material_gloss_shift).
     static constexpr std::uint32_t material_water = 1U << 10U;
+    static constexpr std::uint32_t material_distance_fade = 1U << 11U;
     static constexpr std::uint32_t material_alpha_test = 1U << 0U;
     static constexpr std::uint32_t material_alpha_blend = 1U << 1U;
     static constexpr std::uint32_t material_additive = 1U << 2U;

@@ -371,6 +371,13 @@ PixelInput vs_main(VertexInput input)
         vertex_scale = pow(facing, 8.0f) * 2.0f + 0.1f;
     }
     output.vertex_color = float4(input.color.rgb * grass_tint * vertex_scale, (vertex_material.flags & MATERIAL_WATER) != 0u && water_parameters.x != 0u ? ocean_crest : input.color.a);
+    if ((vertex_material.flags & MATERIAL_DISTANCE_FADE) != 0u)
+    {
+        // Linear with distance from the camera: blended surfaces take it as opacity, opaque ones as
+        // the share of pixels kept (ps_main).
+        const float fade = saturate(1.0f - (distance(output.world_position, camera_position_time.xyz) - distance_fade.x) * distance_fade.y);
+        output.vertex_color.a = (vertex_material.flags & MATERIAL_ALPHA_BLEND) != 0u ? output.vertex_color.a * fade : fade;
+    }
     output.pick_id = instance.pick_id;
     output.instance_flags = instance.flags;
     output.fade = instance.fade;
@@ -563,19 +570,30 @@ float4 shade(PixelInput input)
 // The ordered (Bayer) 4x4 dither matrix: every threshold once, neighbours far apart.
 static const uint dither_4x4[16] = {0u, 8u, 2u, 10u, 12u, 4u, 14u, 6u, 3u, 11u, 1u, 9u, 15u, 7u, 13u, 5u};
 
+// The pixel's dither threshold in (0, 1).
+float dither_threshold(const float2 pixel)
+{
+    const uint2 cell = uint2(pixel) & 3u;
+    return (dither_4x4[cell.y * 4u + cell.x] + 0.5f) / 16.0f;
+}
+
 [RootSignature(SANDBOX_ROOT_SIGNATURE)]
 PixelOutput ps_main(PixelInput input)
 {
     // A detail level cross-fading in keeps the pixels whose dither threshold lies below its share;
     // the level fading out keeps exactly the others, so each pixel shows one of the two.
+    const float threshold = dither_threshold(input.position.xy);
     if (input.fade != 0.0f)
     {
-        const uint2 cell = uint2(input.position.xy) & 3u;
-        const float threshold = (dither_4x4[cell.y * 4u + cell.x] + 0.5f) / 16.0f;
         if ((input.fade > 0.0f) ? (threshold >= input.fade) : (threshold < -input.fade))
         {
             discard;
         }
+    }
+    // An opaque distance-faded surface keeps the share of its pixels its fade leaves.
+    if ((materials[material_index].flags & (MATERIAL_DISTANCE_FADE | MATERIAL_ALPHA_BLEND)) == MATERIAL_DISTANCE_FADE && threshold >= input.vertex_color.a)
+    {
+        discard;
     }
     // Blended pipelines mask the pick target, so only opaque and alpha-tested surfaces are pickable.
     PixelOutput output;

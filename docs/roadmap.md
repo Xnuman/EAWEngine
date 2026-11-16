@@ -167,7 +167,8 @@ honor are worked through tag by tag from [xml-tag-status.md](xml-tag-status.md) 
      values in the map editor); live tuning of the enhanced water's constants (clarity, shore fade,
      foam depth and strength, refraction and reflection distortion, glint) as sliders in the
      Graphics panel, so the owner can tune them by eye and the chosen values become the defaults;
-   - grass's distance fade;
+   - the distance fade's defaults (5,000 to 7,000 units, guesses), for the owner to tune with the
+     Graphics panel's sliders;
    - heat distortion on the 3 `MeshHeat` meshes (heat particles are done); shockwave rings as an
      enhanced option;
    - shields: the FoC stealth meshes' visibility (when the original shows them), and reading

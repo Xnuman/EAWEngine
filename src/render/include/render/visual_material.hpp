@@ -167,6 +167,10 @@ struct VisualMaterial
     // swings between `diffuse` and `grass_diffuse_alt` with the wave.
     bool grass{};
     Color grass_diffuse_alt{white};
+    // Fades out with distance from the camera (the legacy Grass, BatchMeshAlpha, and BatchMeshGloss
+    // materials): blended ones by their opacity, opaque ones by a screen-space dither; the distances
+    // are D3d12GraphicsSettings::distance_fade_start and _end.
+    bool distance_fade{};
     // Takes the environment's cloud shadows (VisualCloudShadow), as the legacy terrain meshes do.
     bool cloud_shadow{};
     // A billboard: the draw's vertices are relative to its bone (authored facing -Y), and the

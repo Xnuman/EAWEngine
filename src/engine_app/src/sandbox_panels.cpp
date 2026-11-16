@@ -276,6 +276,9 @@ bool draw_graphics_panel(SandboxPanels& panels, const GraphicsPanelView& view)
         changed |= ImGui::RadioButton("Enhanced##heat", &heat, static_cast<int>(eaw::VisualHeatMode::enhanced));
         graphics.heat = static_cast<eaw::VisualHeatMode>(heat);
         changed |= ImGui::Checkbox("Terrain decals", view.decals);
+        // Grass and batched props fade out with distance (D3d12GraphicsSettings::distance_fade_*).
+        changed |= ImGui::SliderFloat("Grass and props fade from", &graphics.distance_fade_start, 0.0F, 20000.0F, "%.0f");
+        changed |= ImGui::SliderFloat("Grass and props gone at", &graphics.distance_fade_end, 0.0F, 20000.0F, "%.0f");
         changed |= ImGui::Checkbox("Cloud shadows", &graphics.cloud_shadows);
         changed |= ImGui::Checkbox("Occlusion silhouettes", &graphics.occlusion_silhouettes);
         changed |= ImGui::Checkbox("Soft particles (enhanced)", &graphics.soft_particles);

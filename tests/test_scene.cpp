@@ -440,6 +440,9 @@ void test_visual_material_uv_scroll()
     builder.textures = false;
     const auto visual = eaw::scene_build::make_visual_material(builder, material);
     require(visual.uv_scroll == std::array<float, 2>{0.1F, 0.2F} && visual.uv_scale == 1.0F, "UVScrollRate must fill the two scroll components only");
+    require(!visual.distance_fade, "a material without the feature must not fade with distance");
+    material.features.distance_fade = true;
+    require(eaw::scene_build::make_visual_material(builder, material).distance_fade, "the distance fade feature (Grass, BatchMesh*) must reach the visual material");
 }
 
 // A planet material keeps its layers: the atmosphere, city color, power, and cloud scroll as authored,
