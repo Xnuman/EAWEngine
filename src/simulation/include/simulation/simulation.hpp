@@ -2260,11 +2260,12 @@ private:
         // turned toward before while still within it, else on the retarget beat the nearest hostile
         // within it; back to rest without one (holding between beats).
         void aim_hardpoint_turrets(const View& view, std::size_t index, float dt, std::vector<std::uint32_t>& query);
-        // Whether `victim` is within the arc `weapon`'s turret hardpoint can bring its cone to bear on
-        // (the cone widened by the turret's limit, about the rest direction, from the pivot).
+        // Whether `victim` is within the arc `weapon`'s turret hardpoint can point at (its limit plus
+        // turret_aim_tolerance, never wider than its cone turned to the limit; about the rest direction,
+        // from the pivot).
         [[nodiscard]] bool turret_arc_covers(const View& view, std::size_t index, const WeaponProfile& weapon, const TurretProfile& turret, std::size_t victim) const noexcept;
-        // Whether `weapon`'s turret hardpoint holds `victim` in its turned cone (within
-        // turret_aim_tolerance of its direction for a weapon without a cone); true without one.
+        // Whether `weapon`'s turret hardpoint points at `victim` (within turret_aim_tolerance, or its
+        // cone when narrower); true without one.
         [[nodiscard]] bool hardpoint_turret_aimed(const View& view, std::size_t index, const WeaponProfile& weapon, std::size_t victim) const noexcept;
         // Whether `victim` is within `weapon`'s range, beyond its minimum, and of a category it fires at.
         [[nodiscard]] bool in_reach(const View& view, std::size_t index, const WeaponProfile& weapon, std::size_t victim) const noexcept;

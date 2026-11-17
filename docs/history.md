@@ -964,3 +964,16 @@ rewritten to describe the current state; the source document is noted in bracket
   nodes rose from 34,244 to 131,625 (its collision rectangle is narrower than its drawn one, 33
   against 44 wide, so it fits more ground); its tick 3 takes 19-21 ms, as it did before this change
   (measured on both builds), now on the roadmap.
+- Turret hardpoints fixed after the owner's sandbox report (slow, freezing turrets that did not
+  shoot at AT-ATs in their cone and fired without aiming). Three causes, found with probes: the
+  Gargantuan has no TURRET behavior, so it counted as a body-aimer and its turret hardpoints held
+  fire while it moved and off its heading (they now aim themselves); between retarget beats a turret
+  whose victim left its arc dropped it and froze (it now keeps turning toward it); and the small
+  turrets' 220-degree data cone on an 80-degree turret let them fire pointing up to 70 degrees away
+  (a turret hardpoint now fires only while pointing at its victim, within 5 degrees, and chooses
+  victims it can point at; an engine choice). The Gargantuan-AT-AT battle's shots fell from 176 to
+  104; reference hashes unchanged.
+- The owner's stuck AT-AT (no move from the start, animation frozen) is not a regression: a probe on
+  the build before the oriented footprints shows the same walker turning in place for 2.3 s and its
+  auto-move ending at tick 150 with the Gargantuan in range, so it never walks; what looks frozen is
+  the in-place turn's presentation, left to look into.

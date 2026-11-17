@@ -834,7 +834,7 @@ void test_target_validity()
         // degrees either way at 90 degrees per second. A target to the left waits for the cone to
         // turn onto it; one behind, beyond turret and cone, is never fired at.
         {
-            const auto engage_hardpoint = [&](const eaw::Vector3& at, const std::optional<eaw::Vector3> decoy = std::nullopt)
+            const auto engage_hardpoint = [&](const eaw::Vector3& at, const std::optional<eaw::Vector3> decoy = std::nullopt, const bool body_aimer = false)
             {
                 eaw::SimulationWorld ships(0.1);
                 ships.set_hostility(hostility);
@@ -844,7 +844,7 @@ void test_target_validity()
                 ship.weapons = {eaw::WeaponProfile{.range = 200.0F, .recharge_seconds = 10.0F, .damage = 1.0F, .cone_half_angle = 0.17453292F, .hardpoint = 0}};
                 eaw::CombatProfile sturdy;
                 sturdy.health = 1000.0F;
-                (void)test_spawn(ships, {.type_name = "Ship", .owner = 1, .combat = ship});
+                (void)test_spawn(ships, {.type_name = "Ship", .owner = 1, .combat = ship, .turn_rate = body_aimer ? 0.01F : 0.0F, .aims_with_body = body_aimer});
                 (void)test_spawn(ships, {.type_name = "Target", .owner = 2, .position = at, .combat = sturdy});
                 if (decoy)
                 {
@@ -868,6 +868,11 @@ void test_target_validity()
             // turret still turns to the one on the left without stopping between retarget beats.
             const auto [past_decoy, decoy_turned] = engage_hardpoint({0.0F, 100.0F, 0.0F}, eaw::Vector3{-50.0F, 0.0F, 0.0F});
             require(past_decoy >= 8 && past_decoy <= 14 && decoy_turned > 1.3F, "a turret hardpoint must keep turning toward its own victim between retarget beats");
+            // A unit that aims with its body (the Gargantuan: no TURRET behavior) still lets its turret
+            // hardpoints aim themselves: the target to its left is shot while its hull barely turns.
+            const auto [body_left, body_turned] = engage_hardpoint({0.0F, 100.0F, 0.0F}, std::nullopt, true);
+            require(body_left >= 8 && body_left <= 11 && body_turned > 1.3F,
+                    "a turret hardpoint must fire off its body-aiming unit's heading; first shot " + std::to_string(body_left) + ", yaw " + std::to_string(body_turned));
         }
         // A turret weapon fires from its muzzle turned with the turret: 10 ahead of the pivot, the
         // target to the left, the shot leaves 10 to the left.

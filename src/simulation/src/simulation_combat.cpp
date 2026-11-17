@@ -175,20 +175,28 @@ void SimulationWorld::CombatSystem::aim_hardpoint_turrets(const View& view, cons
             victim = target;
         }
         auto& kept = state.hardpoint_turret_victim[static_cast<std::size_t>(weapon.hardpoint)];
-        if (const auto previous = victim ? std::nullopt : dense_index(view, kept); previous && covers(*previous))
+        const auto previous = victim ? std::nullopt : dense_index(view, kept);
+        if (previous && covers(*previous))
         {
             victim = previous;
         }
         if (!victim && (!state.ordered || !target) && state.stance != Stance::hold_fire)
         {
             // As run_weapon looks for a weapon's own victim: on the retarget beat only; between beats
-            // the turret holds its direction.
+            // the turret keeps turning toward the victim it had (as far as its limit lets it), or holds
+            // its direction without one.
             if (!retarget_due(view, index))
             {
-                kept = {};
-                continue;
+                if (!previous)
+                {
+                    continue;
+                }
+                victim = previous;
             }
-            victim = choose_target(view, grid_, query, index, placement.positions[index], weapon.range, covers);
+            else
+            {
+                victim = choose_target(view, grid_, query, index, placement.positions[index], weapon.range, covers);
+            }
         }
         kept = victim ? view.get<IdentityColumns>().ids[*victim] : EntityId{};
         auto& yaw = state.hardpoint_turret_yaw[static_cast<std::size_t>(weapon.hardpoint)];
@@ -206,7 +214,7 @@ void SimulationWorld::CombatSystem::aim_hardpoint_turrets(const View& view, cons
 
 bool SimulationWorld::CombatSystem::turret_arc_covers(const View& view, const std::size_t index, const WeaponProfile& weapon, const TurretProfile& turret, const std::size_t victim) const noexcept
 {
-    const auto half = weapon.cone_half_angle + turret.yaw_limit;
+    const auto half = std::min(weapon.cone_half_angle, turret_aim_tolerance) + turret.yaw_limit;
     if (half >= pi)
     {
         return true;
@@ -233,7 +241,7 @@ bool SimulationWorld::CombatSystem::hardpoint_turret_aimed(const View& view, con
     const auto pivot = world_point(view, index, turret->pivot);
     const auto& to = placement.positions[victim];
     const auto direction = placement.headings[index] + weapon.cone_direction + state.hardpoint_turret_yaw[static_cast<std::size_t>(weapon.hardpoint)];
-    const auto tolerance = weapon.cone_half_angle < pi ? weapon.cone_half_angle : turret_aim_tolerance;
+    const auto tolerance = std::min(weapon.cone_half_angle, turret_aim_tolerance);
     return std::fabs(wrap_angle(std::atan2(to.y - pivot.y, to.x - pivot.x) - direction)) <= tolerance;
 }
 
@@ -449,8 +457,11 @@ void SimulationWorld::CombatSystem::run_weapon(const View& view, const std::size
         {
             --state.pulse_timer;
         }
-        // Body-aimers hold fire while moving (a burst resumes once they stand again).
-        if (combat_state(view, index).aims_with_body && route.move_targets[index])
+        // Body-aimers hold fire while moving (a burst resumes once they stand again); a turret hardpoint
+        // aims itself.
+        const bool turret_hardpoint = weapon.hardpoint >= 0 && fighter.profile->hardpoints[static_cast<std::size_t>(weapon.hardpoint)].turret.has_value();
+        const bool body_aimed = combat_state(view, index).aims_with_body && !turret_hardpoint;
+        if (body_aimed && route.move_targets[index])
         {
             continue;
         }
@@ -468,7 +479,7 @@ void SimulationWorld::CombatSystem::run_weapon(const View& view, const std::size
                 {
                     return false;
                 }
-                if (combat_state(view, index).aims_with_body)
+                if (body_aimed)
                 {
                     const auto& to = placement.positions[victim];
                     const auto bearing = std::atan2(to.y - placement.positions[index].y, to.x - placement.positions[index].x);
@@ -530,7 +541,7 @@ void SimulationWorld::CombatSystem::run_weapon(const View& view, const std::size
             state.pulses_left = 0;
             continue;
         }
-        if (combat_state(view, index).aims_with_body)
+        if (body_aimed)
         {
             const auto& to = placement.positions[*victim];
             const auto bearing = std::atan2(to.y - placement.positions[index].y, to.x - placement.positions[index].x);

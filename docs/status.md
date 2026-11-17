@@ -1120,14 +1120,19 @@ cohesion stall (to be reworked with group movement).
   half of `Turret_Rotate_Extent_Degrees` either side of the fire bone's rest direction
   (`CombatState::hardpoint_turret_yaw`, hashed per element, so battles without turret hardpoints
   hash as before), toward its weapon's burst victim, else the entity's target within the arc it can
-  bring its cone to (cone plus turret limit), else the victim it turned toward before while still
-  within it (`hardpoint_turret_victim`, hashed), else on the retarget beat the nearest hostile within
-  it; the weapon fires once the turned cone holds the victim (within `turret_aim_tolerance` of the
-  turret's direction for a weapon without a cone), its muzzle turned with the turret. Presentation
+  point at (its limit plus `turret_aim_tolerance`, never wider than its cone turned to the limit),
+  else the victim it turned toward before (`hardpoint_turret_victim`, hashed; between retarget beats
+  it keeps turning toward it as far as its limit lets it), else on the retarget beat the nearest
+  hostile within the arc; the weapon fires only while the turret points at the victim (within
+  `turret_aim_tolerance`, or its cone when narrower: an engine choice, the owner's report that the
+  Gargantuan's small turrets, whose data cone is 220 degrees on a turret of 80, fired while pointing
+  elsewhere), its muzzle turned with the turret. Presentation
   yaws the attachment bone's subtree, the attached model with it (`SimSnapshot::hardpoint_turrets`,
   `UnitAnimator::turn_hardpoint`): the attached model's own turret and barrel bones are not in the
   ship's rig, so the barrel does not pitch, and the station cannon turns about its attachment bone a
-  few units from its turret bone (an approximation).
+  few units from its turret bone (an approximation). A unit that aims with its body (no `TURRET`
+  behavior: the Gargantuan) does not hold its turret hardpoints' fire while moving or off its
+  heading: they aim themselves.
 - **Projectiles**: shots home at their speed. A shot is lost after its XML `Projectile_Max_Lifetime`
   (14 grenades and slow blobs; `lifetime_ticks`), setting off its blast like the flight limit; a guided
   shot whose target dies takes the nearest hostile within its `Projectile_Max_Scan_Range` (19
