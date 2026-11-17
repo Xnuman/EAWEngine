@@ -1108,3 +1108,9 @@ rewritten to describe the current state; the source document is noted in bracket
   held units did worse; waiting instead of re-planning on a push did not help and is dropped. The
   T2-B's turning is local avoidance, not route churn (only its first plans change its route). Next:
   arrivals that do not cascade, then chosen velocities again.
+- Arrival experiments with change A (group-movement-research.md, Arrival experiments; not kept):
+  softening the crowd rule within one order removed the narrow-passage cascade and kept A's gains
+  (ten-T2-B reversals 351 to 178), but A then fails the search-budget test: a unit at a crowd's edge
+  plans the same detour forever, because a detour's first waypoint counts as passed at once and
+  units with waypoints never count as stalled. Three further fixes each exposed another case. The
+  arrival rules are local patches; a rework of arrivals as a whole is proposed to the owner.

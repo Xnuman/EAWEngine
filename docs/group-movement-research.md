@@ -328,6 +328,39 @@ What they showed:
   is the arrival rules'. A cannot be kept until arrivals stop cascading; the two variants that hid
   held units from their neighbours lost most of A's gain or made the T2-Bs far worse.
 
+### Arrival experiments (2026-11-17, not kept)
+
+Changes to the arrival rules, tried with change A (patches kept locally, not in the repository):
+
+1. A group-mate that stopped short of its slot counts as a crowd only once a unit has given up (3 s
+   without progress), not after the 1 s stall; allies of other orders count as before. With A, the
+   narrow-passage test passes (no cascade), and A keeps its gains: the formation passage 22.3 s, the
+   group move 14.1 s, the ten-T2-B battle 178 reversals (351 at the baseline), the large battle
+   48,199 (55,439).
+2. But A then fails the search-budget test (150 single orders to 24 shared points; this failure had
+   been hidden by the first, as a failed requirement ends the run): one unit stood for good at the
+   edge of a crowd on a detour, planning the same detour every second. Its detour's first waypoint
+   lies within a cell of it and counts as passed at once, so the rule that stops a unit held up on a
+   fresh detour never applies, and a unit with waypoints never counts as stalled for the arrival
+   rules.
+3. Stopping a unit whose goal is occupied at the crowd's edge without waiting to stall stopped 28
+   units far from their goals (crowds grew where units slid). Counting slow approach as stalled
+   changed nothing (the sliding units approached at over half their speed). Stopping a unit whose
+   detour is planned again from within a cell of the last one's start stopped two units far away and
+   left another moving.
+
+What this shows: the arrival rules (`goal_taken`, about eight conditions, and the detour guards) are
+a set of local patches, each added for one reported case, and change A shifts how units move around
+crowds enough that each fix exposes the next case. Two ways on:
+
+- **Rework arrivals as a whole** (recommended): where a unit stops decided by explicit rules that do
+  not depend on stall timers in a crowd: final slots assigned at the frame's arrival and re-assigned
+  when a slot is taken (recommendation 9); a crowd at a shared point grown ring by ring at a
+  barrier (a unit stops when it touches a unit that already stopped for the same point), not
+  inferred from stalls; detours that cannot progress detected by distance gained, not by waypoint
+  bookkeeping. Then apply A again, with these tests and the scenarios as the check.
+- **Keep the current rules** and leave A out: the turning left and right stays.
+
 The order of work changes accordingly: make arrivals robust first (no cascade along a column: a
 unit stopped short of its slot is no crowd for units whose own slots are free; final slots assigned
 at the frame's arrival, recommendation 9), then apply A again, then the local fixes against the
