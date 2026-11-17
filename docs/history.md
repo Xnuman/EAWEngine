@@ -925,5 +925,5 @@ rewritten to describe the current state; the source document is noted in bracket
   Reference battle hashes unchanged.
 - Oriented footprints proposed (pathfinding-design.md 4.7): the owner reported the Gargantuan kept
   out of passages its hull fits, and chose oriented shapes over planning with the half-width or
-  keeping circles; the proposal (capsules along the heading) awaits the owner's agreement, with the
-  turning rule an open question.
+  keeping circles; the design (capsules along the heading) is agreed, tight turns allowed to overlap
+  blocked ground (the owner's choice).
