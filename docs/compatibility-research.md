@@ -573,6 +573,34 @@ needs black-box comparison is the behavior players see (which ground a class may
 unreachable orders end, how groups move), not identical routes. Design and research:
 [pathfinding-design.md](pathfinding-design.md), [pathfinding-research.md](pathfinding-research.md).
 
+### Group moves of vehicles
+
+Observed by the owner in the retail game (screenshots, 2026-11-17), a group of T2-B tanks ordered to
+move:
+
+- Ten T2-Bs ordered as one group form two formations of five at the destination (ten destination
+  markers in two blocks).
+- A formation of five stands three in front and two behind, the two in the gaps of the three
+  (staggered).
+- Slots are not bound to tanks: the tanks nearest the destination take the front row, so the group
+  spends little time reorganizing on arrival.
+- On the way the tanks keep the formation where the ground allows. In a narrow passage the group
+  breaks it and forms again after it, the leading tanks slowing down while the last ones catch up.
+
+Inference, unverified: three and two fits a row width of the ceiling of the square root of the count
+with each row centered (a shorter row behind falls into the gaps of the one before), but hexagonal
+packing (every second row shifted half a pitch) or a fixed shape per count fit too. What splits ten
+into two formations of five is unknown; GameConstants `Max_Formation_Area` (14.0) is a candidate by
+name only. Observations that would decide: groups of 4, 6, 7, 9, and 15 T2-Bs (6 separates centered
+rows from hexagonal packing; 7 and 15 show the split), a mixed group of vehicles and infantry, and
+the order of the tanks through a narrow passage.
+
+The engine: final slots go to members by how far forward they stand, as observed
+(`take_final_slots`). It lays a group out in rows of the ceiling of the square root of twice the
+count, centered (an engine choice: five stand four and one), splits a selection into formations only
+by distance (`frame_split_distance`, 400), and keeps the formation through narrow places, sending a
+member whose slot is out of straight reach by way of the formation's center.
+
 ### Space ships avoid contact
 
 Ships do not push each other in the original, friendly or hostile; they steer to avoid contact, and

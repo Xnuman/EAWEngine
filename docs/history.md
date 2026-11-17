@@ -1082,3 +1082,8 @@ rewritten to describe the current state; the source document is noted in bracket
   that applies results and never hashed. The G overlay draws the chunk grids and the selected ground
   units' records. The debug line helpers moved into one Pen used by the route drawing too. A test
   confirms tracing leaves the state hash unchanged; battle hashes unchanged.
+- The owner's observations of group moves in the retail game recorded in compatibility-research.md
+  (Group moves of vehicles): ten T2-Bs form two formations of five, each three in front and two
+  behind in the gaps; the nearest tanks take the front row; narrow passages break the formation,
+  which forms again after with the leaders slowing. The engine differs in its row width (five stand
+  four and one) and keeps the formation through narrow places.
