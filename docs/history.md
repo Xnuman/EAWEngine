@@ -946,3 +946,10 @@ rewritten to describe the current state; the source document is noted in bracket
 - Oriented footprints, step 7 added (the owner): squads become oriented rectangles of their
   formation (width and depth, turned with the squad) for standing, planning, and arriving, the 2D
   rectangles the owner proposed earlier; infantry so far stays circles (a squad's extent).
+- Oriented footprints redesigned on rectangles (the owner): the owner pointed out that steps 2-3 had
+  in effect built the half-width option for moving units, and that a capsule's radius (half the
+  narrow side) fails for wide units. The owner's scheme: oriented rectangles; plan with half the
+  side orthogonal to the heading; both sides for placement; squads plan as before and collide and
+  place as the rectangle bounding their soldiers in the squad's frame. My suggestions added: the
+  collision mesh as the rectangle's source when present, and moving steps testing the rectangle at
+  the heading. Section 4.7 rewritten; the capsule slice will be replaced.

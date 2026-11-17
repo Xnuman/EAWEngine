@@ -354,52 +354,53 @@ Built in `simulation_avoidance.cpp` and `orca.*` (the solver alone, tested by `t
 - Weapons whose unit's target is out of range share their unit's timer instead of searching every
   tick (built). Searches read the shared index once it exists (4.5).
 
-### 4.7 Oriented footprints (agreed with the owner, 2026-11-17; steps 1 to 3 built)
+### 4.7 Oriented footprints (agreed with the owner, 2026-11-17; being rebuilt on rectangles)
 
 Why: a ground unit is a circle of radius (width + depth) / 4 (`model_footprint_radius`), so a long
 unit needs a gap as wide as its average size: the Gargantuan (hull about 72 by 150) a gap of about
 120 where its hull is 75 wide (the owner's report, 2026-11-17). The owner chose oriented shapes over
-planning with the half-width or keeping circles.
+planning with the half-width or keeping circles, and then rectangles over capsules: a capsule's
+radius, half the narrow side, is right for a long unit but wrong for a wide one, which sweeps its
+whole width moving forward.
 
-- **The shape**: a capsule along the unit's heading: a radius, half the model's narrow side, and a
-  half-length of its spine, half the long side less the radius (zero for a round unit, which stays a
-  circle). From the model bounds the radius folds today (`model_footprint_radius`; the attached
-  hardpoint models included, model forward -Y); a soft footprint radius
-  (`Custom_Soft_Footprint_Radius`) and squads (their extent) stay circles. The Gargantuan: radius
-  about 37, spine half-length about 39.
-- **Fitting the ground**: a capsule fits where every sample along its spine (at most a cell apart)
-  has clearance at least its radius (`ClearanceField`, unchanged: one field per mask, limit 68).
-  `stands_at`, spawn and destination placement (`free_ground`, `place_destination`) test the capsule
-  at the unit's heading (placement: the heading it arrives with).
-- **Planning**: routes are planned for the capsule's radius (the size bucket and the region labels
-  by it), so a long unit takes any gap it fits lengthwise; route lines and smoothing stay centerline
-  tests at that radius (plus the wall margin). Moving along a route, each step tests the capsule at
-  the new heading.
-- **Turning in tight places** (the owner's choice): a turn whose capsule does not fit at the new
-  heading is allowed, the capsule's ends overlapping blocked ground during the turn (the centerline
-  always fits), so a unit never deadlocks; refusing the turn and backing up was the alternative.
-- **Units among units**: overlap and contact use the exact capsule-to-capsule distance (segment to
-  segment, less both radii); the spatial grid's broad phase keeps one bounding radius per unit (the
-  spine half-length plus the radius) and the narrow phase tests capsules. ORCA keeps circles per
-  pair, each agent's radius its capsule's extent toward the other (the radius plus the spine's
-  projection on the line between them), a standard approximation; giving way, detours around
-  standing units, and crushing use the capsule distance.
-- **As built (steps 2 and 3)**: since a turn may overlap blocked ground, a moving unit needs only
-  its centerline to fit at the capsule's radius, so a ground unit's footing radius is its capsule's
-  radius (`GroundMoverColumns::footing_radii`: planning, buckets, region labels, steps); the whole
-  spine is tested where a unit is put down (`free_ground` at its heading, `destination_free` at the
-  heading it arrives with; `ground_stands_along`, samples at most a cell apart). Squads and soft
-  radii stay circles; space units keep their circle radius as footing (nothing reads it there).
-- **Hashes**: every battle with ground vehicles changes its hash (shorter routes through gaps that
-  fit lengthwise); declared with the change.
-- **Order of work**: (1) the shape on recipes and in `PlacementColumns`, used nowhere yet (hash
-  unchanged; built: `FootprintCapsule`, `model_footprint_capsule`, `PlacementColumns::capsules`); (2) ground fitting and placement; (3) planning by the capsule's radius, with the turn
-  rule; (4) contact, crushing, and overlap tests; (5) avoidance and giving way; (6) the path audit
-  by capsule radius, its stale header comment fixed; (7) squads as oriented rectangles (the owner,
-  2026-11-17, the 2D rectangles proposed for arrival and route planning): a squad stands, plans,
-  and arrives as a rectangle of its formation's width and depth turned with it, instead of the
-  circle of its extent. Each step with its tests (`test_navigation`'s
-  narrow-passage and footprint cases gain a long unit), the battle check, and a Gargantuan battle.
+- **The shape** (the owner's scheme): an oriented rectangle per unit, a half-length along its
+  heading and a half-width across it, about a center offset in its own frame. Taken from the
+  model's collision mesh when it has one (an inference: the mesh the original names for collision;
+  the Gargantuan's is 75 by 155), else from its drawn bounds with the attached hardpoint models
+  (model forward -Y). A soft footprint radius (`Custom_Soft_Footprint_Radius`) is a square of that
+  half-size.
+- **Planning**: a ground vehicle moves along its heading, so the width it sweeps is the rectangle's
+  side orthogonal to its heading; a unit plans and moves its centerline with half that side as its
+  footing radius (`GroundMoverColumns::footing_radii`: size buckets, region labels, route lines and
+  smoothing, plus the wall margin). The grid search knows positions, not headings, so the shape's
+  length matters only where the unit turns and stops.
+- **Moving**: each step tests the cells under the rectangle at the unit's heading (as obstacles'
+  `GroundFootprint` rectangles are stamped). A turn may overlap blocked ground (the owner's choice:
+  a unit never deadlocks; refusing the turn and backing up was the alternative).
+- **Placement** needs both sides: a unit's whole rectangle at the heading it arrives with (spawns,
+  teleports, `free_ground`, `destination_free`); a group's members each at the group's facing, its
+  slots spaced by their sides.
+- **Squads** (the owner): route planning as before, a squad passing where one soldier fits (its
+  largest soldier's width); for placement, formations, and collisions with other units, the
+  rectangle bounding its soldiers in the squad's own frame (each slot's offset plus and minus the
+  soldier's half-sizes, from the front-left corner of the front-left soldier to the back-right
+  corner of the back-right one), turned with the squad's facing.
+- **Units among units**: overlap, contact, and crushing test oriented rectangles exactly
+  (separating axes); the spatial grid's broad phase keeps one bounding radius per unit (the
+  rectangle's half-diagonal). ORCA keeps circles per pair, each agent's radius its rectangle's extent
+  toward the other (a standard approximation); giving way and detours around standing units use the
+  rectangle tests.
+- **Hashes**: every battle with ground vehicles changes its hash; declared with each change.
+- **Order of work**: (1) the rectangle on recipes and in `PlacementColumns` in place of the first
+  slice's capsule, from the collision mesh or the bounds; (2) planning by the half side orthogonal
+  to the heading, and ground fitting and placement by the rectangle; (3) contact, crushing, and
+  overlap tests; (4) avoidance and giving way; (5) squads' rectangles; (6) the path audit by footing
+  radius, its stale header comment fixed. Each step with its tests (`test_navigation`'s
+  narrow-passage and footprint cases gain a long and a wide unit), the battle check, and a
+  Gargantuan battle.
+- **As built so far** (the capsule slice, to be replaced by step 1-2): `FootprintCapsule` on
+  recipes and placements; ground units plan and step with the capsule's radius, and spawns,
+  teleports, and destinations test its spine (`ground_stands_along`).
 
 ## 5. Order of work
 
