@@ -716,6 +716,30 @@ float model_footprint_radius(const ModelBounds& bounds, const Matrix4& transform
     return std::isfinite(radius) && radius > 0.0F ? radius : 0.0F;
 }
 
+FootprintCapsule model_footprint_capsule(const ModelBounds& bounds, const Matrix4& transform)
+{
+    if (bounds.empty())
+    {
+        return {};
+    }
+    const auto scale = std::sqrt(transform.values[0] * transform.values[0] + transform.values[1] * transform.values[1] + transform.values[2] * transform.values[2]);
+    // Model space to the entity's frame: forward is model -Y, left model +X (model_forward_heading).
+    const auto across = (bounds.maximum[0] - bounds.minimum[0]) * scale;
+    const auto along = (bounds.maximum[1] - bounds.minimum[1]) * scale;
+    const LocalPoint center{-(bounds.minimum[1] + bounds.maximum[1]) * 0.5F * scale, (bounds.minimum[0] + bounds.maximum[0]) * 0.5F * scale, 0.0F};
+    if (!std::isfinite(across) || !std::isfinite(along) || across <= 0.0F || along <= 0.0F)
+    {
+        return {};
+    }
+    FootprintCapsule capsule;
+    capsule.radius = 0.5F * std::min(across, along);
+    const auto spine = 0.5F * std::max(across, along) - capsule.radius;
+    const LocalPoint half = along >= across ? LocalPoint{spine, 0.0F, 0.0F} : LocalPoint{0.0F, spine, 0.0F};
+    capsule.spine_start = {center.forward - half.forward, center.left - half.left, 0.0F};
+    capsule.spine_end = {center.forward + half.forward, center.left + half.left, 0.0F};
+    return capsule;
+}
+
 GroundFootprint model_ground_footprint(const ModelBounds& bounds, const Matrix4& transform, const std::uint32_t passability_type)
 {
     GroundFootprint footprint;

@@ -27,6 +27,7 @@ TypeRecipe build_type_recipe(const SpawnableBuild& build, const XmlDefinition& d
     if (recipe.max_speed > 0.0F)
     {
         recipe.radius = recipe.soft_radius > 0.0F ? recipe.soft_radius : model_footprint_radius(recipe.bounds, scaled_model_transform(Matrix4::identity(), recipe.scale));
+        recipe.capsule = recipe.soft_radius > 0.0F ? FootprintCapsule{.radius = recipe.soft_radius} : model_footprint_capsule(recipe.bounds, scaled_model_transform(Matrix4::identity(), recipe.scale));
         // Turn rates and acceleration take the mode's speed multiplier in space (type_movement).
         const auto motion_multiplier = build.land ? 1.0F : build.speed_multiplier;
         recipe.turn_rate = type_turn_rate(build.catalog, definition, motion_multiplier);
@@ -106,6 +107,7 @@ PreparedSpawn make_spawn(const TypeRecipe& recipe, const SpawnInstance& instance
         // A placement's matrix sizes the model (a map may scale a placement); a type without a soft
         // radius takes its radius from the bounds through it.
         entity.radius = instance.placement && recipe.soft_radius <= 0.0F ? model_footprint_radius(recipe.bounds, *instance.placement) : recipe.radius;
+        entity.capsule = instance.placement && recipe.soft_radius <= 0.0F ? model_footprint_capsule(recipe.bounds, *instance.placement) : recipe.capsule;
         entity.turn_rate = recipe.turn_rate;
         entity.min_speed = recipe.min_speed;
         entity.movement = recipe.movement;

@@ -268,6 +268,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn, const EntityId
         }
     }
     placement_.radii.push_back(recipe.radius);
+    placement_.capsules.push_back(recipe.capsule);
     locomotor_.turn_rates.push_back(recipe.turn_rate);
     locomotor_.movements.push_back(&recipe.movement);
     locomotor_.drive_speeds.push_back(0.0F);

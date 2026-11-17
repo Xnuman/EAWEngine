@@ -354,7 +354,7 @@ Built in `simulation_avoidance.cpp` and `orca.*` (the solver alone, tested by `t
 - Weapons whose unit's target is out of range share their unit's timer instead of searching every
   tick (built). Searches read the shared index once it exists (4.5).
 
-### 4.7 Oriented footprints (agreed with the owner, 2026-11-17; not built yet)
+### 4.7 Oriented footprints (agreed with the owner, 2026-11-17; step 1 built)
 
 Why: a ground unit is a circle of radius (width + depth) / 4 (`model_footprint_radius`), so a long
 unit needs a gap as wide as its average size: the Gargantuan (hull about 72 by 150) a gap of about
@@ -386,7 +386,7 @@ planning with the half-width or keeping circles.
   standing units, and crushing use the capsule distance.
 - **Hashes**: every battle with vehicles changes its hash (radii change); declared with the change.
 - **Order of work**: (1) the shape on recipes and in `PlacementColumns`, used nowhere yet (hash
-  unchanged); (2) ground fitting and placement; (3) planning by the capsule's radius, with the turn
+  unchanged; built: `FootprintCapsule`, `model_footprint_capsule`, `PlacementColumns::capsules`); (2) ground fitting and placement; (3) planning by the capsule's radius, with the turn
   rule; (4) contact, crushing, and overlap tests; (5) avoidance and giving way; (6) the path audit
   by capsule radius, its stale header comment fixed. Each step with its tests (`test_navigation`'s
   narrow-passage and footprint cases gain a long unit), the battle check, and a Gargantuan battle.

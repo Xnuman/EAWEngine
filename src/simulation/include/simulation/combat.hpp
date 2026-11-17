@@ -40,6 +40,17 @@ struct TurretProfile
     bool turns_body{true};
 };
 
+// A footprint as a capsule (pathfinding-design.md 4.7): the points within `radius` of the spine from
+// `spine_start` to `spine_end`, in the entity's local frame (equal ends: a circle). A long unit's
+// spine runs along its long side, the radius half its narrow side.
+struct FootprintCapsule
+{
+    bool operator==(const FootprintCapsule&) const = default;
+    float radius{};
+    LocalPoint spine_start;
+    LocalPoint spine_end;
+};
+
 // A part of an entity that can be targeted and destroyed on its own (ship hardpoints).
 struct HardpointProfile
 {

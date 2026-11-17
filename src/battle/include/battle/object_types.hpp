@@ -110,6 +110,9 @@ std::string attached_mesh_key(const std::string& model_path, std::span<const Mod
 // and Y extents of its drawn bounds (assets/model_geometry), scaled by the transform's horizontal
 // scale. An engine choice until collision meshes and UnitCollisionClass are interpreted.
 float model_footprint_radius(const ModelBounds& bounds, const Matrix4& transform);
+// The footprint capsule of a model through `transform` (pathfinding-design.md 4.7): its spine along
+// the bounds' long side, its radius half the narrow side, centered on the bounds.
+[[nodiscard]] FootprintCapsule model_footprint_capsule(const ModelBounds& bounds, const Matrix4& transform);
 
 // The ground rectangle of a model placed with `transform`: its drawn bounds' X/Y extent, rotated
 // and scaled with the placement, with the given passability type. An engine choice until collision

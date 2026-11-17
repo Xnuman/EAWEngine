@@ -231,6 +231,9 @@ struct EntityRecipe
     CombatProfile combat;
     // Footprint radius in world units for unit separation; zero takes no space.
     float radius{};
+    // The footprint as a capsule along the body (pathfinding-design.md 4.7); a zero radius means
+    // the circle of `radius`.
+    FootprintCapsule capsule;
     // Turn rate in radians per second; zero turns instantly.
     float turn_rate{};
     MovementProfile movement;
@@ -1109,12 +1112,15 @@ private:
         // Flyers' current pitch (0 for everything else).
         std::vector<float> pitches;
         std::vector<float> radii;
+        // Footprint capsules (EntityRecipe::capsule).
+        std::vector<FootprintCapsule> capsules;
         template <class Visit> void for_each_column(Visit&& visit)
         {
             visit(positions);
             visit(headings);
             visit(pitches);
             visit(radii);
+            visit(capsules);
         }
     };
     struct MotionColumns

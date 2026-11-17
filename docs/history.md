@@ -927,3 +927,6 @@ rewritten to describe the current state; the source document is noted in bracket
   out of passages its hull fits, and chose oriented shapes over planning with the half-width or
   keeping circles; the design (capsules along the heading) is agreed, tight turns allowed to overlap
   blocked ground (the owner's choice).
+- Oriented footprints, step 1: every unit's recipe and placement carry a FootprintCapsule from its
+  model bounds (model_footprint_capsule; a soft radius stays a circle), not read by any system yet.
+  Battle hashes unchanged.
