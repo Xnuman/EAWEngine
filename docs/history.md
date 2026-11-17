@@ -1101,3 +1101,10 @@ rewritten to describe the current state; the source document is noted in bracket
   without a game installation. Battle hashes unchanged. The baseline numbers are in
   group-movement-research.md: two groups of five crossing take 31.7 s (about 5 s alone); a T2-B
   probe showed the owner's deadlock, standing still with its heading flipping 10 degrees.
+- Step 2 of the group movement work, measured and not kept (group-movement-research.md, Step 2
+  experiments): feeding ORCA chosen velocities cut the ten-T2-B reversals from 351 to 124 and sped
+  the passages up, but broke the narrow-passage test through a cascade of the arrival rules (one
+  unit stopping short on a neighbour's slot stops a whole column behind it); two variants that hid
+  held units did worse; waiting instead of re-planning on a push did not help and is dropped. The
+  T2-B's turning is local avoidance, not route churn (only its first plans change its route). Next:
+  arrivals that do not cascade, then chosen velocities again.

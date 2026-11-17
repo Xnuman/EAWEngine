@@ -260,7 +260,9 @@ budgeted planner for everything about other units.
 1. **Measure first.** A headless count of route changes, heading reversals, and stalls per unit,
    with small scenarios (a passage, a head-on pair, three units converging) beside the existing
    battles. The numbers of the baseline below are the reference every change is compared with.
-2. **Cheap fixes**: recommendations 1, 2, and 5 together; then 6.
+2. **Cheap fixes**: recommendations 1, 2, and 5 together; then 6. (Measured: see the step 2
+   experiments below. Recommendation 1 alone did not help and is dropped; 5 needs robust arrivals
+   first, so arrivals come next.)
 3. **The formation layer**: 7 and 8, then 9 and 10.
 4. **Recommendation 4** only if churn remains.
 
@@ -297,3 +299,36 @@ What the numbers show:
   deadlock: from its 137th tick it stood at speed 0 while its heading flipped 10 degrees back and
   forth every few ticks; before that, moving, its heading also jumped 10 degrees back and forth.
 - The symmetric cases (head-on, three converging) resolve in this engine; the losses are in groups.
+
+## Step 2 experiments (2026-11-17, not kept)
+
+Each change was measured alone against the baseline; none is in the code.
+
+| Change | Passage, formation | Passage, group move | Crossing | Ten T2-Bs (reversals) | Large battle | Tests |
+| --- | --- | --- | --- | --- | --- | --- |
+| Baseline | 33.8 s, 649 rev. | 18.9 s, 243 | 31.7 s, 537 | 351 | 3.93 ms, 1,371 blocked | pass |
+| A: ORCA fed chosen velocities | 22.3 s, 356 | 14.1 s, 222 | 33.0 s, 362 | 124 | 4.67 ms, 1,609 blocked | narrow passage fails |
+| A with the chosen direction at the speed made along it | 60.0 s, 486 | 45.8 s, 549 | 33.1 s, 435 | 243 | 4.32 ms | narrow passage fails |
+| A with the made velocity for units held under half their choice | 17.3 s, 250 | 30.3 s, 260 | 33.8 s, 543 | 3,844 | 4.56 ms | narrow passage fails |
+| B: wait, re-plan only after 1 s without progress | 39.9 s, 785 | 17.8 s, 239 | 31.7 s, 537 | 351 | 4.50 ms, 1,693 repairs | pass |
+
+What they showed:
+
+- **The T2-B's turning left and right is local, not route churn.** In the ten-T2-B battle the only
+  route changes are the ten first plans; the reversals come from avoidance and steering. Change A
+  (the inconsistent view the ORCA chapter describes) cut them by two thirds; change B, aimed at
+  re-plans, did nothing there and made the formation passage worse. B is dropped.
+- **Change A exposes a weakness of the arrival rules.** In the narrow-passage test (six units through
+  a one-unit gap as a formation) the front unit stalled 11 units short of its corner slot, which
+  counts as arrived (within its diameter), but stood partly on its neighbour's slot. That neighbour
+  found its slot taken and stopped by the crowd rule, and each unit behind stalled for a second and
+  stopped on the one ahead: four units ended in a line back to the gap, the last blocking it. One
+  early stop cascades through a column. A makes the first stall happen (moving neighbours aim at
+  their slots more directly, and a unit held by keep_apart is still believed to move); the cascade
+  is the arrival rules'. A cannot be kept until arrivals stop cascading; the two variants that hid
+  held units from their neighbours lost most of A's gain or made the T2-Bs far worse.
+
+The order of work changes accordingly: make arrivals robust first (no cascade along a column: a
+unit stopped short of its slot is no crowd for units whose own slots are free; final slots assigned
+at the frame's arrival, recommendation 9), then apply A again, then the local fixes against the
+remaining flicker (6, the RORCAL symmetry breaker, and sidedness memory).
