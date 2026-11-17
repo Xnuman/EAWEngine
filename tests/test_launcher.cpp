@@ -16,7 +16,7 @@ void test_scenario_arguments()
     scenario.mods = {"D:\\Mods\\First", "D:\\Mods\\Second"};
     scenario.map = "DATA/ART/MAPS/_LAND_PLANET_BESPIN_01.TED";
     scenario.spawns = {{"T2B_Tank", 6, 1U}, {"AT_ST_Walker", 4, std::nullopt}};
-    scenario.show_passability = true;
+    scenario.show_navigation = true;
     scenario.vsync = false;
     scenario.frame_limit = 300;
     scenario.upload_budget = 0U;
@@ -37,7 +37,7 @@ void test_scenario_arguments()
                                             "T2B_Tank:6@1",
                                             "--spawn",
                                             "AT_ST_Walker:4",
-                                            "--show-passability",
+                                            "--show-navigation",
                                             "--vsync",
                                             "off",
                                             "--frame-limit",

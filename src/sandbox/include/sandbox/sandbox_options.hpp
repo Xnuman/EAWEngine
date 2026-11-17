@@ -107,8 +107,8 @@ struct SandboxOptions
     std::optional<std::array<std::uint32_t, 2>> pick;
     // Start with every instance's bounds drawn (B toggles at runtime).
     bool show_bounds{};
-    // Start with the passability overlay drawn (G toggles at runtime).
-    bool show_passability{};
+    // Start with the navigation overlay drawn: footprints, routes, passability (G toggles at runtime).
+    bool show_navigation{};
     // The statistics panel starts hidden; the F1 menu shows it.
     bool overlay{};
     // --panel menu|statistics|spawn|sound|camera|graphics|controls (repeatable): dev panels open at start.

@@ -179,7 +179,7 @@ struct SandboxSession
     float axis_length = 1.0F;
     bool show_all_bounds = options.show_bounds;
     // G: passability classes drawn around the camera focus (land maps).
-    bool show_passability = options.show_passability;
+    bool show_navigation = options.show_navigation;
     // Text shown on the statistics overlay; updated where the console reports the same events.
     std::string scene_status = options.validation_triangle ? "validation triangle" : "building in the background...";
     std::string animation_status;
@@ -325,7 +325,7 @@ struct SandboxSession
     void handle_command_keys(const eaw::InputState& input, const bool scene_mouse, const Vector2& mouse);
     // Completed GPU picks: selections, or attack targets for right-clicks.
     void process_picks();
-    // P pauses the animation (models) or the world (maps), B and G toggle bounds and passability,
+    // P pauses the animation (models) or the world (maps), B and G toggle bounds and navigation,
     // Left/Right step animations (models).
     void handle_view_keys(const eaw::InputState& input);
 

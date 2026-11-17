@@ -28,7 +28,7 @@ constexpr std::array<eaw::InputAction, static_cast<std::size_t>(SandboxAction::c
     {"spawn_type_ten", "Spawn: next type steps ten while held", {Key::control, std::nullopt}},
     {"pause", "Pause the world (models: the animation)", {Key::p, std::nullopt}},
     {"bounds", "Show bounds", {Key::b, std::nullopt}},
-    {"passability", "Show passability", {Key::g, std::nullopt}},
+    {"navigation", "Show navigation: footprints, routes, passability", {Key::g, std::nullopt}},
     {"animation_next", "Model viewer: next animation", {Key::right, std::nullopt}},
     {"animation_previous", "Model viewer: previous animation", {Key::left, std::nullopt}},
 }};

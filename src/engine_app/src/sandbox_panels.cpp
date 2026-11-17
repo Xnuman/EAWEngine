@@ -107,7 +107,7 @@ std::string_view spawn_category(const std::string_view kind) noexcept
     return categories[7];
 }
 
-void draw_sandbox_bar(SandboxPanels& panels, bool& show_bounds, bool& show_passability)
+void draw_sandbox_bar(SandboxPanels& panels, bool& show_bounds, bool& show_navigation)
 {
     if (!panels.bar || !ImGui::BeginMainMenuBar())
     {
@@ -126,7 +126,7 @@ void draw_sandbox_bar(SandboxPanels& panels, bool& show_bounds, bool& show_passa
     if (ImGui::BeginMenu("View"))
     {
         ImGui::MenuItem("Bounds", "B", &show_bounds);
-        ImGui::MenuItem("Passability", "G", &show_passability);
+        ImGui::MenuItem("Navigation", "G", &show_navigation);
         ImGui::EndMenu();
     }
     ImGui::TextDisabled("F1 hides this bar");

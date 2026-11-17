@@ -1018,3 +1018,11 @@ rewritten to describe the current state; the source document is noted in bracket
   dropped; accepted. A navigation test covers crushing by rectangle and side-by-side placement.
   Hashes: reference 0xa6e9ed5caaf4c217, large Utapau 0xc4de3053589e738b, AT-ATs 0x8d8b36566a141c37;
   space unchanged.
+- The sandbox's navigation overlay (the owner's request): one switch, G (the action `navigation`,
+  `--show-navigation`, the scenario option `show-navigation`), draws every ground unit's footprint
+  as the simulation measures it, every moving unit's route, and the whole map's passability; it
+  replaces the passability switch, which drew crosses within 40 cells of the camera's focus. The
+  passability is drawn as outlines between cells of different classes, so a whole map fits the
+  renderer's 32,768 debug lines (Utapau 13,757, Kamino 4,651, Bespin 5,143); a cross on every cell
+  would not. The snapshot carries each entity's footprint rectangle (not hashed). Saved scenarios
+  with show-passability now warn about an unknown option.

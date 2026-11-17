@@ -610,7 +610,7 @@ void DevLauncherApp::render(HWND window)
             option("V-sync", scenario.vsync);
             option("Hot reload", scenario.hot_reload);
             option("Show bounds", scenario.show_bounds);
-            option("Show passability", scenario.show_passability);
+            option("Show navigation", scenario.show_navigation);
             option("Auto move", scenario.auto_move);
             option("Statistics panel", scenario.overlay);
             option("No raw input", scenario.no_raw_input);

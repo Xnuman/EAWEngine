@@ -111,7 +111,7 @@ void print_sandbox_usage()
               << "  --hot-reload       Rebuild the scene when its loose files or MEG archives change\n"
               << "  --pick <x> <y>     Select whatever is at this client pixel once the scene is shown\n"
               << "  --show-bounds      Start with every object's bounds drawn (B toggles)\n"
-              << "  --show-passability Start with the map's passability classes drawn (G toggles)\n"
+              << "  --show-navigation  Start with footprints, routes, and passability drawn (G toggles)\n"
               << "  --overlay          Start with the on-screen statistics panel shown (hidden by default; the F1 menu toggles it)\n"
               << "  --panel <menu|statistics|spawn|sound|camera|graphics|controls>  Open a dev panel at start (repeatable; F1 hides the bar)\n"
               << "  --no-raw-input     Read mouse movement and keys from window messages instead of raw input\n"
@@ -276,9 +276,9 @@ Result<SandboxOptions> parse_sandbox_options(const int argc, const char* const* 
         {
             options.show_bounds = true;
         }
-        else if (argument == "--show-passability")
+        else if (argument == "--show-navigation")
         {
-            options.show_passability = true;
+            options.show_navigation = true;
         }
         else if (argument == "--overlay")
         {

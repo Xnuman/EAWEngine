@@ -76,7 +76,7 @@ Map owner slot 3 is neutral and every other slot hostile, for now (`neutral_map_
 | `--no-raw-input` | Read mouse and keys from window messages instead of raw input. |
 | `--overlay` | Open the statistics panel at start (hidden by default; `--no-overlay` is still accepted). |
 | `--panel statistics\|spawn\|sound\|camera\|graphics\|controls` | Open a dev panel at start (repeatable; `menu` is still accepted, the bar starts shown). |
-| `--show-bounds`, `--show-passability` | Start with bounds or passability drawn. |
+| `--show-bounds`, `--show-navigation` | Start with bounds, or the navigation overlay, drawn. |
 | `--free-camera <ex> <ey> <ez> <tx> <ty> <tz>` | Start in the free camera at that eye, looking at that target. |
 
 ### Automation and diagnostics
@@ -134,7 +134,7 @@ Key actions (`engine_app/sandbox_actions.cpp`), with their default keys:
 | `spawn_type_back`, `spawn_type_ten` | Shift, Ctrl | While held, the next type goes back, or steps by ten. |
 | `pause` | P | Pause or resume the world (simulation, animation, particles; models: the animation); cameras keep working. |
 | `bounds` | B | Bounds of every object and the world axes. |
-| `passability` | G | Passability around the camera focus: red steep, blue water, orange impassable, green infantry only, magenta obstacle. |
+| `navigation` | G | Navigation: every ground unit's footprint as the simulation measures it (its rectangle with a line to its front, or its circle), every moving unit's route, and the whole map's passability as outlines between cells of different classes (red steep, blue water, orange impassable, green infantry only, magenta obstacle). Selected units' routes show without it. |
 | `animation_next`, `animation_previous` | Right, Left | Model view: step through the bind pose and every `<MODEL>_*.ALA` beside the model. |
 
 Escape quits and F1 shows or hides the bar at the top; these two are fixed. Every other action is
@@ -196,7 +196,7 @@ game=foc
 map=DATA/ART/MAPS/_LAND_PLANET_BESPIN_01.TED
 spawn=T2B_Tank:6@1
 spawn=AT_ST_Walker:6@2
-option=show-passability
+option=show-navigation
 vsync=on
 ```
 

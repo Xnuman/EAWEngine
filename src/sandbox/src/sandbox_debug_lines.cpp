@@ -4,6 +4,7 @@
 #include "presentation/debug_draw.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <unordered_map>
 
@@ -114,11 +115,11 @@ std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& v
     }
     if (view.world != nullptr && !ground.valid())
     {
-        // Space: the remaining route of every selected moving unit in 3D, through its avoidance
-        // detour when it steers around a unit in its way.
+        // Space: the remaining route of every selected moving unit (every one while navigation is
+        // shown) in 3D, through its avoidance detour when it steers around a unit in its way.
         for (const auto& entity : view.world->snapshot().entities)
         {
-            if (!entity.moving || !view.selection->contains(entity_key(entity.id)))
+            if (!entity.moving || (!view.show_navigation && !view.selection->contains(entity_key(entity.id))))
             {
                 continue;
             }
@@ -132,10 +133,11 @@ std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& v
     }
     if (view.world != nullptr && ground.valid())
     {
-        // The remaining route of every selected moving unit, draped just above the surface.
+        // The remaining route of every selected moving unit (every one while navigation is shown),
+        // draped just above the surface.
         for (const auto& entity : view.world->snapshot().entities)
         {
-            if (!entity.moving || !view.selection->contains(entity_key(entity.id)))
+            if (!entity.moving || (!view.show_navigation && !view.selection->contains(entity_key(entity.id))))
             {
                 continue;
             }
@@ -160,40 +162,97 @@ std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& v
             }
         }
     }
-    if (view.show_passability && view.focus && ground.valid() && ground.passability.size() == ground.heights.size())
+    if (view.show_navigation && view.world != nullptr && ground.valid())
     {
-        // Every non-ground cell within 40 cells of the focus gets an X just above the surface,
-        // colored by type (red Steep, blue Water, orange Impassable, green InfantryOnly,
-        // magenta Obstacle, white anything else).
-        const auto focus = *view.focus;
-        const auto spacing = ground.spacing;
-        const auto center_x = static_cast<long>(std::lround(focus[0] / spacing));
-        const auto center_y = static_cast<long>(std::lround(focus[1] / spacing));
-        constexpr long radius = 40;
-        for (auto row = std::max(0L, center_y - radius); row <= std::min(static_cast<long>(ground.height) - 1, center_y + radius); ++row)
+        // Every ground unit's footprint as the simulation measures it: its rectangle at its heading, or
+        // its circle, just above the surface.
+        const auto lifted = [&](const float x, const float y)
         {
-            for (auto column = std::max(0L, center_x - radius); column <= std::min(static_cast<long>(ground.width) - 1, center_x + radius); ++column)
+            return Vector3{x, y, ground.surface_height(x, y) + 1.0F};
+        };
+        for (const auto& entity : view.world->snapshot().entities)
+        {
+            if (!entity.follows_ground || entity.radius <= 0.0F)
             {
-                const auto value = ground.passability[static_cast<std::size_t>(row) * ground.width + static_cast<std::size_t>(column)];
-                if (value == passability::clear)
+                continue;
+            }
+            const Color color{0.4F, 0.9F, 1.0F, 0.9F};
+            if (entity.body.half_width > 0.0F)
+            {
+                const auto center = footprint_center_at(entity.body, entity.position, entity.heading);
+                const auto c = std::cos(entity.heading);
+                const auto s = std::sin(entity.heading);
+                const auto corner = [&](const float along, const float across)
                 {
-                    continue;
-                }
-                const Color color = value == passability::steep           ? Color{1.0F, 0.25F, 0.2F, 0.85F}
-                                    : value == passability::water         ? Color{0.25F, 0.55F, 1.0F, 0.85F}
-                                    : value == passability::impassable    ? Color{1.0F, 0.6F, 0.1F, 0.85F}
-                                    : value == passability::infantry_only ? Color{0.3F, 1.0F, 0.35F, 0.85F}
-                                    : value == passability::obstacle      ? Color{1.0F, 0.3F, 1.0F, 0.85F}
-                                                                          : Color{1.0F, 1.0F, 1.0F, 0.85F};
-                const auto x = static_cast<float>(column) * spacing;
-                const auto y = static_cast<float>(row) * spacing;
-                const auto half = spacing * 0.4F;
-                const auto z = [&](const float px, const float py)
-                {
-                    return ground.surface_height(px, py) + 1.5F;
+                    return lifted(center.x + along * c - across * s, center.y + along * s + across * c);
                 };
-                lines.push_back({{x - half, y - half, z(x - half, y - half)}, {x + half, y + half, z(x + half, y + half)}, color});
-                lines.push_back({{x - half, y + half, z(x - half, y + half)}, {x + half, y - half, z(x + half, y - half)}, color});
+                const auto l = entity.body.half_length;
+                const auto w = entity.body.half_width;
+                const std::array corners{corner(l, w), corner(-l, w), corner(-l, -w), corner(l, -w)};
+                for (std::size_t side = 0; side < corners.size(); ++side)
+                {
+                    lines.push_back({corners[side], corners[(side + 1U) % corners.size()], color});
+                }
+                // Its front, so the heading reads.
+                lines.push_back({lifted(center.x, center.y), corner(l, 0.0F), color});
+                continue;
+            }
+            constexpr int segments = 16;
+            for (int segment = 0; segment < segments; ++segment)
+            {
+                const auto at = [&](const int step)
+                {
+                    const auto angle = two_pi * static_cast<float>(step) / static_cast<float>(segments);
+                    return lifted(entity.position.x + std::cos(angle) * entity.radius, entity.position.y + std::sin(angle) * entity.radius);
+                };
+                lines.push_back({at(segment), at(segment + 1), color});
+            }
+        }
+    }
+    if (view.show_navigation && ground.valid() && ground.passability.size() == ground.heights.size())
+    {
+        // The whole map's passability as outlines: each border between two cells of different classes,
+        // one of them not plain ground, draped just above the surface and colored by that class (red
+        // Steep, blue Water, orange Impassable, green InfantryOnly, magenta Obstacle, white anything
+        // else). Outlines rather than a mark on every cell keep a whole map within the renderer's debug
+        // line capacity.
+        const auto spacing = ground.spacing;
+        const auto color_of = [](const std::uint32_t value)
+        {
+            return value == passability::steep           ? Color{1.0F, 0.25F, 0.2F, 0.85F}
+                   : value == passability::water         ? Color{0.25F, 0.55F, 1.0F, 0.85F}
+                   : value == passability::impassable    ? Color{1.0F, 0.6F, 0.1F, 0.85F}
+                   : value == passability::infantry_only ? Color{0.3F, 1.0F, 0.35F, 0.85F}
+                   : value == passability::obstacle      ? Color{1.0F, 0.3F, 1.0F, 0.85F}
+                                                         : Color{1.0F, 1.0F, 1.0F, 0.85F};
+        };
+        const auto lifted = [&](const float x, const float y)
+        {
+            return Vector3{x, y, ground.surface_height(x, y) + 1.5F};
+        };
+        const auto border = [&](const std::uint32_t a, const std::uint32_t b, const Vector3& from, const Vector3& to)
+        {
+            if (a != b)
+            {
+                lines.push_back({from, to, color_of(a != passability::clear ? a : b)});
+            }
+        };
+        for (std::uint32_t row = 0; row < ground.height; ++row)
+        {
+            for (std::uint32_t column = 0; column < ground.width; ++column)
+            {
+                const auto value = ground.passability[static_cast<std::size_t>(row) * ground.width + column];
+                // Cell (column, row) covers half a spacing around its sample point.
+                const auto x = (static_cast<float>(column) + 0.5F) * spacing;
+                const auto y = (static_cast<float>(row) + 0.5F) * spacing;
+                if (column + 1U < ground.width)
+                {
+                    border(value, ground.passability[static_cast<std::size_t>(row) * ground.width + column + 1U], lifted(x, y - spacing), lifted(x, y));
+                }
+                if (row + 1U < ground.height)
+                {
+                    border(value, ground.passability[static_cast<std::size_t>(row + 1U) * ground.width + column], lifted(x - spacing, y), lifted(x, y));
+                }
             }
         }
     }

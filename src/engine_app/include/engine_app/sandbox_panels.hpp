@@ -115,7 +115,7 @@ struct ControlsPanelView
 [[nodiscard]] std::string_view spawn_category(std::string_view kind) noexcept;
 
 // The bar: panel visibility and the view toggles it is handed (bounds, passability).
-void draw_sandbox_bar(SandboxPanels& panels, bool& show_bounds, bool& show_passability);
+void draw_sandbox_bar(SandboxPanels& panels, bool& show_bounds, bool& show_navigation);
 void draw_statistics_panel(SandboxPanels& panels, std::span<const std::string> lines);
 [[nodiscard]] SpawnPanelActions draw_spawn_panel(SandboxPanels& panels, const SpawnPanelView& view);
 // True when a volume changed.

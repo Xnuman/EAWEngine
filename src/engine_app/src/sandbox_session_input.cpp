@@ -457,10 +457,10 @@ void SandboxSession::handle_view_keys(const eaw::InputState& input)
         show_all_bounds = !show_all_bounds;
         std::cout << "Bounds overlay " << (show_all_bounds ? "on" : "off") << '\n';
     }
-    if (action_pressed(SandboxAction::passability, input))
+    if (action_pressed(SandboxAction::navigation, input))
     {
-        show_passability = !show_passability;
-        std::cout << "Passability overlay " << (show_passability ? "on" : "off") << '\n';
+        show_navigation = !show_navigation;
+        std::cout << "Navigation overlay " << (show_navigation ? "on" : "off") << '\n';
     }
     const int animation_step = (action_pressed(SandboxAction::animation_next, input) ? 1 : 0) - (action_pressed(SandboxAction::animation_previous, input) ? 1 : 0);
     if (visual_model && !tactical_camera && animation_step != 0 && !animation_paths.empty())

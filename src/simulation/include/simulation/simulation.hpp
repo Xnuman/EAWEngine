@@ -470,6 +470,9 @@ struct EntitySnapshot
     float turn_progress{};
     // Its turns in place are played as clips at all (presentation leaves its turns to turn_clip).
     bool turns_as_clips{};
+    // Its footprint rectangle (pathfinding-design.md 4.7; none: the circle of `radius`), for debug
+    // drawing; not part of the state hash.
+    FootprintRect body;
     // A walk played as clips: the clip, the MOVE_END clip a stop plays (0 for MOVE_ENDONE), and how far
     // into the clip it is (0..1; the stride phase while moving).
     WalkClip walk_clip{WalkClip::unplanned};

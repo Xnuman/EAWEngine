@@ -31,7 +31,7 @@ constexpr std::array<BoolOption, 8> bool_options{{
     {"gpu-validation", &SandboxScenario::gpu_validation},
     {"hot-reload", &SandboxScenario::hot_reload},
     {"show-bounds", &SandboxScenario::show_bounds},
-    {"show-passability", &SandboxScenario::show_passability},
+    {"show-navigation", &SandboxScenario::show_navigation},
     {"auto-move", &SandboxScenario::auto_move},
     {"overlay", &SandboxScenario::overlay},
     {"no-raw-input", &SandboxScenario::no_raw_input},

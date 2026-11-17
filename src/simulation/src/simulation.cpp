@@ -1402,6 +1402,7 @@ void SimulationWorld::PublishSystem::publish(const View& view)
                                      orders.command_serials[index],
                                      orders.standing[index].kind,
                                      locomotor.arriving[index] != 0});
+        snapshot.entities.back().body = placement.bodies[index];
         snapshot.entities.back().turns_as_clips = locomotor.movements[index]->turn_begin_seconds[0] > 0.0F && locomotor.movements[index]->stopped_turn_rate > 0.0F;
         if (turning_as_clips(view, index))
         {

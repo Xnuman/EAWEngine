@@ -29,10 +29,10 @@ struct SandboxDebugView
     const std::unordered_set<std::uint64_t>* selection{};
     // The map's ground (invalid on space maps and models).
     const GroundMap* ground{};
-    // Center of the passability overlay (the tactical camera's focus); none without one.
-    std::optional<Vector3> focus;
     bool show_bounds{};
-    bool show_passability{};
+    // Navigation: every ground unit's footprint (its rectangle, or its circle), every moving unit's
+    // route, and the outlines of the whole map's passability classes.
+    bool show_navigation{};
     float axis_length{1.0F};
     // Shots of this owner are drawn green, the rest red; shots whose projectile has a visual here
     // are drawn as bolts instead (no streak).

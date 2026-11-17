@@ -35,7 +35,7 @@ enum class SandboxAction : std::uint8_t
     spawn_type_ten,
     pause,
     bounds,
-    passability,
+    navigation,
     animation_next,
     animation_previous,
     count,

@@ -10,7 +10,7 @@ namespace eaw::engine_app {
 
 void SandboxSession::draw_panels()
 {
-    draw_sandbox_bar(panels, show_all_bounds, show_passability);
+    draw_sandbox_bar(panels, show_all_bounds, show_navigation);
     draw_statistics_panel(panels, statistics_lines);
     auto mode = camera_mode;
     CameraPanelView camera_view{&mode, tactical_camera.has_value(), &fly_speed};
@@ -102,12 +102,8 @@ void SandboxSession::update_debug_lines()
     view.selection = &selection;
     // The simulation's ground shows structure footprints stamped into its passability.
     view.ground = world ? &world->ground() : &terrain_heights;
-    if (tactical_camera)
-    {
-        view.focus = tactical_camera->focus();
-    }
     view.show_bounds = show_all_bounds;
-    view.show_passability = show_passability;
+    view.show_navigation = show_navigation;
     view.axis_length = axis_length;
     view.friendly_owner = spawn_owner;
     view.projectile_visuals = effects.bolts();

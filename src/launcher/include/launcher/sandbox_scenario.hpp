@@ -9,7 +9,7 @@
 //   game=foc
 //   map=DATA/ART/MAPS/_LAND_PLANET_BESPIN_01.TED
 //   spawn=T2B_Tank:6@1
-//   option=show-passability
+//   option=show-navigation
 //
 // Unknown keys and options are kept as warnings, not errors, so presets written by a newer build
 // still load.
@@ -61,7 +61,7 @@ struct SandboxScenario
     bool vsync{true};
     bool hot_reload{};
     bool show_bounds{};
-    bool show_passability{};
+    bool show_navigation{};
     bool auto_move{};
     // Start with the statistics panel shown (the engine hides it by default).
     bool overlay{};
