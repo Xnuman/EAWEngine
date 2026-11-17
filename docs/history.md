@@ -923,3 +923,7 @@ rewritten to describe the current state; the source document is noted in bracket
   victim it turns toward (hardpoint_turret_victim) and its weapon fires at it once the cone holds
   it. A probe of a Gargantuan battle showed the small turrets reaching their 40-degree limits.
   Reference battle hashes unchanged.
+- Oriented footprints proposed (pathfinding-design.md 4.7): the owner reported the Gargantuan kept
+  out of passages its hull fits, and chose oriented shapes over planning with the half-width or
+  keeping circles; the proposal (capsules along the heading) awaits the owner's agreement, with the
+  turning rule an open question.
