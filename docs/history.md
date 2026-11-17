@@ -943,3 +943,6 @@ rewritten to describe the current state; the source document is noted in bracket
   battles' hashes change, as the owner expected (more direct routes): reference 0x6c4a94478db18f43,
   large Utapau 0x2241c93bca2fd517, AT-ATs 0x9b0c6e57b7f4bef7; space battles unchanged (space units
   keep their circle footing). A Gargantuan battle now ends with 43 kills, against 4 before.
+- Oriented footprints, step 7 added (the owner): squads become oriented rectangles of their
+  formation (width and depth, turned with the squad) for standing, planning, and arriving, the 2D
+  rectangles the owner proposed earlier; infantry so far stays circles (a squad's extent).

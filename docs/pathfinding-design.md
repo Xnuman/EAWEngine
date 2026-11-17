@@ -395,7 +395,10 @@ planning with the half-width or keeping circles.
 - **Order of work**: (1) the shape on recipes and in `PlacementColumns`, used nowhere yet (hash
   unchanged; built: `FootprintCapsule`, `model_footprint_capsule`, `PlacementColumns::capsules`); (2) ground fitting and placement; (3) planning by the capsule's radius, with the turn
   rule; (4) contact, crushing, and overlap tests; (5) avoidance and giving way; (6) the path audit
-  by capsule radius, its stale header comment fixed. Each step with its tests (`test_navigation`'s
+  by capsule radius, its stale header comment fixed; (7) squads as oriented rectangles (the owner,
+  2026-11-17, the 2D rectangles proposed for arrival and route planning): a squad stands, plans,
+  and arrives as a rectangle of its formation's width and depth turned with it, instead of the
+  circle of its extent. Each step with its tests (`test_navigation`'s
   narrow-passage and footprint cases gain a long unit), the battle check, and a Gargantuan battle.
 
 ## 5. Order of work
