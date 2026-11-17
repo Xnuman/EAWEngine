@@ -264,6 +264,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn, const EntityId
                                 }))
         {
             state.hardpoint_turret_yaw.resize(profile.hardpoints.size());
+            state.hardpoint_turret_victim.resize(profile.hardpoints.size());
         }
     }
     placement_.radii.push_back(recipe.radius);
@@ -619,6 +620,10 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
         for (const auto yaw : combat.hardpoint_turret_yaw)
         {
             hasher.add(yaw);
+        }
+        for (const auto victim : combat.hardpoint_turret_victim)
+        {
+            hasher.add(victim);
         }
         hasher.add(combat.chase_timer);
         hasher.add(combat.invulnerable);

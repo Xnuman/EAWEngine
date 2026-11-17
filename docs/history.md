@@ -917,3 +917,9 @@ rewritten to describe the current state; the source document is noted in bracket
   there, the turret turns within its extent, the weapon fires once its turned cone holds the victim,
   and presentation yaws the attachment bone. Battle hashes unchanged (no reference battle has turret
   hardpoints). The duplicated profile_of lambda went onto the Code health list.
+- Turret hardpoints kept turning (the owner's report: the Gargantuan's turrets turned about a degree
+  and stopped). A turret whose victim was not the unit's own target found it only on the retarget
+  beat and held still between beats, so it advanced one tick's turn per beat; it now remembers the
+  victim it turns toward (hardpoint_turret_victim) and its weapon fires at it once the cone holds
+  it. A probe of a Gargantuan battle showed the small turrets reaching their 40-degree limits.
+  Reference battle hashes unchanged.

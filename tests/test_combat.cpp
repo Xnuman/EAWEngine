@@ -834,7 +834,7 @@ void test_target_validity()
         // degrees either way at 90 degrees per second. A target to the left waits for the cone to
         // turn onto it; one behind, beyond turret and cone, is never fired at.
         {
-            const auto engage_hardpoint = [&](const eaw::Vector3& at)
+            const auto engage_hardpoint = [&](const eaw::Vector3& at, const std::optional<eaw::Vector3> decoy = std::nullopt)
             {
                 eaw::SimulationWorld ships(0.1);
                 ships.set_hostility(hostility);
@@ -846,6 +846,10 @@ void test_target_validity()
                 sturdy.health = 1000.0F;
                 (void)test_spawn(ships, {.type_name = "Ship", .owner = 1, .combat = ship});
                 (void)test_spawn(ships, {.type_name = "Target", .owner = 2, .position = at, .combat = sturdy});
+                if (decoy)
+                {
+                    (void)test_spawn(ships, {.type_name = "Decoy", .owner = 2, .position = *decoy, .combat = sturdy});
+                }
                 int first_shot = -1;
                 float yaw = 0.0F;
                 for (int tick = 1; tick <= 40 && first_shot < 0; ++tick)
@@ -860,6 +864,10 @@ void test_target_validity()
             const auto [beyond, rest] = engage_hardpoint({-100.0F, 0.0F, 0.0F});
             require(left >= 8 && left <= 11 && cone_turned > 1.3F && cone_turned < 1.58F, "a turret hardpoint must turn its cone onto its victim before it fires, and report its direction");
             require(beyond < 0, "a turret hardpoint must not fire beyond its turret's arc and cone");
+            // A nearer hostile behind, out of the turret's arc, may be the ship's own target: the
+            // turret still turns to the one on the left without stopping between retarget beats.
+            const auto [past_decoy, decoy_turned] = engage_hardpoint({0.0F, 100.0F, 0.0F}, eaw::Vector3{-50.0F, 0.0F, 0.0F});
+            require(past_decoy >= 8 && past_decoy <= 14 && decoy_turned > 1.3F, "a turret hardpoint must keep turning toward its own victim between retarget beats");
         }
         // A turret weapon fires from its muzzle turned with the turret: 10 ahead of the pivot, the
         // target to the left, the shot leaves 10 to the left.

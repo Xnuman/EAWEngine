@@ -174,16 +174,23 @@ void SimulationWorld::CombatSystem::aim_hardpoint_turrets(const View& view, cons
         {
             victim = target;
         }
+        auto& kept = state.hardpoint_turret_victim[static_cast<std::size_t>(weapon.hardpoint)];
+        if (const auto previous = victim ? std::nullopt : dense_index(view, kept); previous && covers(*previous))
+        {
+            victim = previous;
+        }
         if (!victim && (!state.ordered || !target) && state.stance != Stance::hold_fire)
         {
             // As run_weapon looks for a weapon's own victim: on the retarget beat only; between beats
             // the turret holds its direction.
             if (!retarget_due(view, index))
             {
+                kept = {};
                 continue;
             }
             victim = choose_target(view, grid_, query, index, placement.positions[index], weapon.range, covers);
         }
+        kept = victim ? view.get<IdentityColumns>().ids[*victim] : EntityId{};
         auto& yaw = state.hardpoint_turret_yaw[static_cast<std::size_t>(weapon.hardpoint)];
         float wanted = 0.0F;
         if (victim)
@@ -484,9 +491,16 @@ void SimulationWorld::CombatSystem::run_weapon(const View& view, const std::size
                 return std::fabs(wrap_angle(bearing - (placement.headings[index] + cone_direction))) <= weapon.cone_half_angle;
             };
             std::optional<std::size_t> victim;
+            // A turret hardpoint fires at what it turned toward (aim_hardpoint_turrets).
+            const auto turned_to =
+                weapon.hardpoint >= 0 && !fighter.hardpoint_turret_victim.empty() ? dense_index(view, fighter.hardpoint_turret_victim[static_cast<std::size_t>(weapon.hardpoint)]) : std::nullopt;
             if (entity_target && covers(*entity_target))
             {
                 victim = entity_target;
+            }
+            else if (turned_to && covers(*turned_to))
+            {
+                victim = turned_to;
             }
             else if ((!fighter.ordered || !entity_target) && combat_state(view, index).stance != Stance::hold_fire && retarget_due(view, index))
             {

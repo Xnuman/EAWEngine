@@ -1120,7 +1120,8 @@ cohesion stall (to be reworked with group movement).
   half of `Turret_Rotate_Extent_Degrees` either side of the fire bone's rest direction
   (`CombatState::hardpoint_turret_yaw`, hashed per element, so battles without turret hardpoints
   hash as before), toward its weapon's burst victim, else the entity's target within the arc it can
-  bring its cone to (cone plus turret limit), else on the retarget beat the nearest hostile within
+  bring its cone to (cone plus turret limit), else the victim it turned toward before while still
+  within it (`hardpoint_turret_victim`, hashed), else on the retarget beat the nearest hostile within
   it; the weapon fires once the turned cone holds the victim (within `turret_aim_tolerance` of the
   turret's direction for a weapon without a cone), its muzzle turned with the turret. Presentation
   yaws the attachment bone's subtree, the attached model with it (`SimSnapshot::hardpoint_turrets`,
