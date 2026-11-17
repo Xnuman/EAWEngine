@@ -1087,3 +1087,10 @@ rewritten to describe the current state; the source document is noted in bracket
   behind in the gaps; the nearest tanks take the front row; narrow passages break the formation,
   which forms again after with the leaders slowing. The engine differs in its row width (five stand
   four and one) and keeps the formation through narrow places.
+- Group movement research (the owner's sources: three papers kept locally and a set of web pages)
+  written up as docs/group-movement-research.md: the problems (contention at shared points, route
+  churn and oscillation, differences from the original), each source's findings, the
+  recommendations, and the order of work agreed with the owner (measure first; then no re-plans for
+  ally pushes, side commitment, chosen velocities into ORCA; then the RORCAL symmetry breaker; then
+  the formation layer). Found while reading: ORCA is fed realized, clipped velocities instead of
+  chosen ones. The state before this work is tagged baseline-2026-11-17.

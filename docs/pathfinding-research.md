@@ -4,7 +4,8 @@ Published techniques, and what shipped real-time strategy games are reported to 
 planning, group movement, and local avoidance. The goal is movement at least as good as the
 original's that stays cheap in large battles while the simulation stays deterministic. The design
 chosen from this research is [pathfinding-design.md](pathfinding-design.md); what is built is in
-[status.md](status.md).
+[status.md](status.md). Research into the queues, deadlocks, and oscillation of group moves (2026-11), with
+its sources and recommendations, is [group-movement-research.md](group-movement-research.md).
 
 Confidence varies by source. Peer-reviewed papers and developer-written articles are strong
 evidence. Forum posts and second-hand summaries of talks are marked as such. Nothing here is
