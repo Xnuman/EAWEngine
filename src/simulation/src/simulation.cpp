@@ -1064,9 +1064,10 @@ bool SimulationWorld::destination_free(const float x, const float y, const std::
     const auto radius = unit_radius(*this, index);
     const auto mask = ground_mover_.passable_types[index];
     // A unit with a footprint rectangle needs room for it, turned the way it arrives (from where it
-    // stands), besides its footing; a squad its whole circle.
-    const auto& body = placement_.bodies[index];
-    const bool shaped = body.half_width > 0.0F && radius == placement_.radii[index];
+    // stands), besides its footing; a squad the rectangle bounding its soldiers (without one, its circle).
+    const auto* squad = squads_.find(slot_of(*this, index), &SquadColumns::states);
+    const auto& body = squad != nullptr ? squad->body : placement_.bodies[index];
+    const bool shaped = body.half_width > 0.0F && (squad != nullptr || radius == placement_.radii[index]);
     if (mask != 0 && !ground_stands(ground_.map, {x, y}, Footing(mask, clearance_of(mask), shaped ? ground_mover_.footing_radii[index] : radius)))
     {
         return false;

@@ -374,7 +374,7 @@ Built in `simulation_avoidance.cpp` and `orca.*` (the solver alone, tested by `t
 - Weapons whose unit's target is out of range share their unit's timer instead of searching every
   tick (built). Searches read the shared index once it exists (4.5).
 
-### 4.7 Oriented footprints (agreed with the owner, 2026-11-17; steps 1 to 4 built)
+### 4.7 Oriented footprints (agreed with the owner, 2026-11-17; steps 1 to 5 built)
 
 Why: a ground unit is a circle of radius (width + depth) / 4 (`model_footprint_radius`), so a long
 unit needs a gap as wide as its average size: the Gargantuan (hull about 72 by 150) a gap of about
@@ -406,7 +406,12 @@ whole width moving forward.
   largest soldier's width); for placement, formations, and collisions with other units, the
   rectangle bounding its soldiers in the squad's own frame (each slot's offset plus and minus the
   soldier's half-sizes, from the front-left corner of the front-left soldier to the back-right
-  corner of the back-right one), turned with the squad's facing.
+  corner of the back-right one), turned with the squad's facing. As built: `team_footprint` (each
+  soldier the square of his radius about his slot) in `SquadState::body`, refreshed whenever the
+  squad's shape changes; avoidance measures a squad's room by it (ORCA, `keep_apart`, giving way,
+  detours, arrival), and a squad's destination must hold it at the heading it arrives with. Its
+  soldiers keep their circles among themselves. A group's slots are not yet spaced by their members'
+  sides (formation slots still use radii).
 - **Units among units** (as built): one measure for every spacing test, so placement and avoidance
   agree: two units keep between their positions each one's extent toward the other (the rectangle's
   support distance along the line between them, or the circle's radius; `footprint.hpp`:
@@ -417,7 +422,8 @@ whole width moving forward.
   way, detours around standing units, and the arrival rules all use it (`agent_room`,
   `agent_extent`, with `Avoidance::bodies`, `reaches`, `facings`); broad phases use each unit's reach
   (the rectangle's half-diagonal plus its centre offset). Crushing is exact: what lies within the
-  crusher's rectangle (`footprint_contains`). A squad's soldiers keep their circles until step 5.
+  crusher's rectangle (`footprint_contains`). A squad's soldiers keep their circles; the squad is its
+  bounding rectangle (step 5).
 - **Hashes**: every battle with ground vehicles changes its hash; declared with each change.
 - **Order of work**: (1) the rectangle on recipes and in `PlacementColumns` in place of the first
   slice's capsule, from the collision mesh or the bounds; (2) planning by the half side orthogonal
@@ -439,7 +445,8 @@ whole width moving forward.
   before. The same code with every avoidance agent forced to a circle runs at 4.2 ms, so the cost is
   the battle the rectangles make (vehicles pass and pack closer, more of them slide along each other),
   not the measure's arithmetic; profiling found the same neighbour candidates and the time in
-  `keep_apart` per call. Accepted (well within the frame budget).
+  `keep_apart` per call. Accepted (well within the frame budget). With squads as rectangles (step 5)
+  the same battle runs at 3.8 ms: a squad's rectangle is tighter than its circle.
 
 ## 5. Order of work
 

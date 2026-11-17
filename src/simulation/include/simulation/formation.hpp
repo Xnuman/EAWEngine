@@ -3,6 +3,7 @@
 // Formation layout for group move orders: ranked rows of slots facing the direction of travel,
 // centered on the ordered point. Deterministic: the same members and target give the same slots.
 
+#include "simulation/footprint.hpp"
 #include "simulation/simulation_types.hpp"
 
 #include <cstdint>
@@ -57,6 +58,11 @@ struct TeamShape
     float extent{};
 };
 [[nodiscard]] TeamShape team_shape(std::span<const FormationMember> members, TeamArrangement arrangement);
+// The rectangle bounding a team's members in its own frame (pathfinding-design.md 4.7, the owner's
+// squads): from the front-left corner of its front-left member to the back-right corner of its
+// back-right one, each member the square of its footprint radius about its offset (`shape`, in the
+// order of `radii`). None for a team without members.
+[[nodiscard]] FootprintRect team_footprint(const TeamShape& shape, std::span<const float> radii);
 
 struct FormationSlot
 {

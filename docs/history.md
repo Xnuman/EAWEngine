@@ -1030,3 +1030,9 @@ rewritten to describe the current state; the source document is noted in bracket
   planned, the allies standing along it are found through its large chunks and asked early to step
   out of the way, wait until the unit has passed, and return to their places (pathfinding-design.md
   4.4, roadmap).
+- Oriented footprints, step 5 (the owner's squads): a squad is the rectangle bounding its soldiers
+  in its frame (team_footprint, SquadState::body, refreshed with its shape), for keeping apart from
+  other units and for where it may stop; it still plans where its largest soldier fits, and its
+  soldiers keep their circles. The 260-unit battle averages 3.8 ms (5.5 with squads as circles).
+  Group slots are not yet spaced by their members' sides. Hashes: reference 0x609e1d978e37739c,
+  large Utapau 0xfd5d3ff726c03067, AT-ATs 0xd20fddd217b5561b; space unchanged.

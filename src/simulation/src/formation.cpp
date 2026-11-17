@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <numeric>
 
 namespace eaw {
@@ -67,6 +68,28 @@ std::vector<std::pair<float, float>> team_offsets(const TeamArrangement arrangem
 }
 
 } // namespace
+
+FootprintRect team_footprint(const TeamShape& shape, const std::span<const float> radii)
+{
+    if (shape.offsets.empty() || shape.offsets.size() != radii.size())
+    {
+        return {};
+    }
+    // Offsets are (forward, right); the rectangle's center is (forward, left).
+    auto front = -std::numeric_limits<float>::max();
+    auto back = std::numeric_limits<float>::max();
+    auto right = -std::numeric_limits<float>::max();
+    auto left = std::numeric_limits<float>::max();
+    for (std::size_t member = 0; member < radii.size(); ++member)
+    {
+        const auto [forward, rightward] = shape.offsets[member];
+        front = std::max(front, forward + radii[member]);
+        back = std::min(back, forward - radii[member]);
+        right = std::max(right, rightward + radii[member]);
+        left = std::min(left, rightward - radii[member]);
+    }
+    return {0.5F * (front - back), 0.5F * (right - left), {0.5F * (front + back), -0.5F * (right + left), 0.0F}};
+}
 
 TeamShape team_shape(const std::span<const FormationMember> members, const TeamArrangement arrangement)
 {

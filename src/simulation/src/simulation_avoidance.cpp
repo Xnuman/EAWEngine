@@ -44,6 +44,8 @@ void SimulationWorld::NavigationSystem::measure_agents(const View& view)
             if (first && ground_mover.follows_ground[index] != 0 && !flies(view, index))
             {
                 avoidance.radii[index] = squad->extent;
+                // The rectangle bounding its soldiers (the owner's squads, pathfinding-design.md 4.7).
+                avoidance.bodies[index] = squad->body;
                 avoidance.crush_proxies[index] = static_cast<std::uint32_t>(*first);
             }
         }

@@ -53,6 +53,13 @@ void SimulationWorld::reshape_squad(const std::uint32_t squad_slot)
     }
     const auto shape = team_shape(shape_members, squad.arrangement);
     squad.extent = shape.extent;
+    std::vector<float> radii;
+    radii.reserve(shape_members.size());
+    for (const auto& member : shape_members)
+    {
+        radii.push_back(member.radius);
+    }
+    squad.body = team_footprint(shape, radii);
     // The team stands and plans its routes where its largest soldier fits.
     float largest = 0.0F;
     for (const auto& member : shape_members)

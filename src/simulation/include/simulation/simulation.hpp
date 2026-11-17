@@ -1603,6 +1603,9 @@ private:
         std::vector<EntityId> members;
         TeamArrangement arrangement{TeamArrangement::dartboard};
         float extent{};
+        // The rectangle bounding its soldiers in its frame (team_footprint): how it keeps apart from
+        // other units and where it may stop; it still plans where its largest soldier fits.
+        FootprintRect body;
         EntityId target;
         bool waiting{};
         std::uint32_t wait_ticks{};

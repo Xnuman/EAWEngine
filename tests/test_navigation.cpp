@@ -374,6 +374,22 @@ void test_turning_and_separation()
 
 void test_formations()
 {
+    // A team's bounding rectangle (team_footprint): members at (forward, right) offsets (10, 0) and
+    // (-10, 5) with radii 2 and 3 span forward -13..12 and right -2..8, so the rectangle is 12.5 along
+    // by 5 across (halves), centered 0.5 back and 3 to the right (left -3).
+    {
+        eaw::TeamShape shape;
+        shape.offsets = {{10.0F, 0.0F}, {-10.0F, 5.0F}};
+        const std::array radii{2.0F, 3.0F};
+        const auto body = eaw::team_footprint(shape, radii);
+        const auto near = [](const float a, const float b)
+        {
+            return std::fabs(a - b) < 1.0e-5F;
+        };
+        require(near(body.half_length, 12.5F) && near(body.half_width, 5.0F) && near(body.center.forward, -0.5F) && near(body.center.left, -3.0F) &&
+                    eaw::team_footprint(eaw::TeamShape{}, {}).half_width == 0.0F,
+                "a team's footprint must bound its members' squares in its frame");
+    }
     // Six equal members (pitch 2 x 5 x 1.5 = 15): rows of four and two facing +X.
     std::vector<eaw::FormationMember> members;
     for (std::uint32_t index = 0; index < 6; ++index)
