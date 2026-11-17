@@ -388,6 +388,43 @@ Change A (chosen velocities) on the rework was mixed again: the large battle imp
 gap slowed to 28.6 s, and the search-budget test left four units moving. A is not kept; the T2-B's
 turning remains open, for the local fixes (6, RORCAL, and sidedness memory).
 
+### The T2-B's turning: mechanism and experiments (2026-11-17, not kept)
+
+A tick-by-tick probe of the ten-T2-B battle on the reworked arrivals found the mechanism. A tank
+drives normally until its last leg; there, among tanks making for neighbouring slots, ORCA answers its
+slowing approach with velocities far from its way (60 degrees off at tick 138; backwards at full speed
+at tick 160 while it wanted 4 units a second), and it **turns to face each of them at its turn rate,
+10 degrees a tick, even for nudges of 1 to 4 units a second**, while about 4 units from its goal (its
+radius is about 20). Arrival is exact (0.01 units), and the diameter rule needs a second without
+progress, which the pushes never allow. The turning left and right is a unit dithering at its own
+destination.
+
+| Change (on the reworked arrivals) | Passage, formation | Group move | Crossing | Ten T2-Bs | Large | AT-AT |
+| --- | --- | --- | --- | --- | --- | --- |
+| Reworked arrivals (kept) | 33.4 s, 639 rev. | 20.1 s, 218 | 31.7 s, 537 | 356 | 52,752 | 482 |
+| RORCAL symmetry breaker | 60 s, 1 left moving | 25.2 s | 23.6 s, 499 | 480 | 54,679 | 305 |
+| RORCAL only against units heading at it | 38.7 s, 919 | 27.2 s | 28.1 s, 517 | 470 | 52,130 | 458 |
+| Keep-right rule off | 17.6 s, 245 | 35.0 s | 60 s, 1 left moving | 517 | 54,928 | 429 |
+| Arrived when within half its radius of its goal and pushed | 33.4 s, 639 | 23.4 s | 31.6 s, 536 | 809 | 55,515 | 403 |
+| Nudges under a quarter of its speed move it without turning | 60 s, 1 left moving | 25.9 s | 29.2 s, 181 | 217 | 39,315 | 541 |
+| The same, only near its goal | 20.4 s, 355 | 25.1 s | 33.8 s, 313 | 299 | 52,926 | 482 |
+| The same, unless held up for half a second | 60 s, 2 left moving | 31.5 s | 26.3 s, 194 | 366 | 39,458 | 722 |
+
+All but RORCAL pass the tests; RORCAL and chosen velocities fail the search-budget test. RORCAL fires
+on units held in queues and files (the slower, same-direction signature it detects is what keep_apart
+gives a unit behind another), which turns them off their way; it suits open crowds, not ours.
+
+What follows from them:
+
+- **Not turning to face small nudges** is the lever against the visible turning (reversals a quarter
+  lower in the large battle, two fifths lower for the T2-Bs), but a rectangular unit wedged at a gap
+  needs to turn to line up with it, and the tried signals for "wedged" were wrong. The rule needs a
+  signal of its own: a unit turns for a nudge only when the nudge would take its footprint somewhere
+  its current heading does not fit.
+- **Stopping close to the goal when pushed** made tanks into obstacles for their neighbours and was
+  worse; arrival among moving neighbours needs the slot assignment (recommendation 9) rather than a
+  wider tolerance.
+
 The order of work changes accordingly: make arrivals robust first (no cascade along a column: a
 unit stopped short of its slot is no crowd for units whose own slots are free; final slots assigned
 at the frame's arrival, recommendation 9), then apply A again, then the local fixes against the

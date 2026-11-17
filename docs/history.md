@@ -1122,3 +1122,9 @@ rewritten to describe the current state; the source document is noted in bracket
   52,752 reversals (55,439); the AT-AT battle's units travel on to free places (482 reversals, 328
   before). Chosen velocities on top were mixed again and are not kept. Hashes: reference
   0x49f55068cce826a9, large Utapau 0x78ad579c927f12f7, AT-ATs 0xbeaa23eaecf58278; space unchanged.
+- The T2-B's turning left and right found (group-movement-research.md): a tank dithers at its own
+  destination, about 4 units from its goal among tanks making for neighbouring slots, turning 10
+  degrees a tick to face every avoidance nudge, however small. Experiments (not kept): the RORCAL
+  symmetry breaker fires on units held in files and turns them off their way; arrival when close and
+  pushed made stopped tanks obstacles; not turning for small nudges cut reversals by a quarter to
+  two fifths but left a tank wedged at a one-tank gap, which needs to turn to fit.
