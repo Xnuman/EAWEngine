@@ -1049,6 +1049,31 @@ void test_narrow_passage()
                                                                   ", still moving:" + still_moving(world.snapshot().entities));
     }
     require(world.stats().separated_pairs == 0, "units at rest must stop pushing each other");
+
+    // A long unit (pathfinding-design.md 4.7): its circle (radius 20) does not fit the gap, its
+    // capsule (radius 8, spine 24 either way along its body) goes through lengthwise.
+    for (const bool shaped : {false, true})
+    {
+        eaw::SimulationWorld through(1.0 / 30.0);
+        through.set_ground(ground);
+        const auto id = test_spawn(through, {.type_name = "Platform",
+                                             .position = {60.0F, 140.0F, 0.0F},
+                                             .max_speed = 30.0F,
+                                             .follows_ground = true,
+                                             .passable_types = eaw::passability::clear,
+                                             .radius = 20.0F,
+                                             .capsule = shaped ? eaw::FootprintCapsule{.radius = 8.0F, .spine_start = {.forward = -24.0F}, .spine_end = {.forward = 24.0F}} : eaw::FootprintCapsule{},
+                                             .turn_rate = 8.0F});
+        require(id.ok(), "test spawn must succeed");
+        through.submit({.kind = eaw::SimCommandKind::move, .entities = {*id}, .target = {240.0F, 140.0F, 0.0F}});
+        for (int tick = 0; tick < 600; ++tick)
+        {
+            through.step();
+        }
+        const auto x = through.snapshot().entities.front().position.x;
+        require(shaped ? x > 200.0F : x < 150.0F,
+                shaped ? "a long unit must pass a gap its body fits lengthwise; it stands at x " + std::to_string(x) : "a unit whose circle does not fit a gap must stay out of it");
+    }
 }
 
 void test_group_cohesion()

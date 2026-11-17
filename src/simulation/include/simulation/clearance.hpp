@@ -109,6 +109,10 @@ inline constexpr auto footing_buckets = []
 // Whether a unit with `footing` may stand at `point` (its cell's passability and clearance); true
 // when the ground has no passability data.
 [[nodiscard]] bool ground_stands(const GroundMap& ground, Vector2 point, const Footing& footing) noexcept;
+// Whether a unit with `footing` may stand everywhere along the segment from `from` to `to` (a
+// footprint capsule's spine, pathfinding-design.md 4.7): both ends and samples at most one ground
+// cell apart between them.
+[[nodiscard]] bool ground_stands_along(const GroundMap& ground, Vector2 from, Vector2 to, const Footing& footing) noexcept;
 
 // A* over the passability cells (one node per elevation sample): 8-connected, steps cost 10
 // straight and 14 diagonal, a diagonal step needs both side cells, and ties break by lower

@@ -6,7 +6,10 @@
 // caller, with 0 meaning "none".
 
 #include "math/scalar.hpp"
+#include "math/vector.hpp"
 
+#include <array>
+#include <cmath>
 #include <cstdint>
 #include <optional>
 #include <unordered_map>
@@ -50,6 +53,19 @@ struct FootprintCapsule
     LocalPoint spine_start;
     LocalPoint spine_end;
 };
+
+// The spine's ends on the ground for an entity at `at` facing `heading` (local points turned as
+// SimulationWorld::world_point turns them).
+[[nodiscard]] inline std::array<Vector2, 2> capsule_spine_at(const FootprintCapsule& capsule, const Vector3& at, const float heading) noexcept
+{
+    const auto c = std::cos(heading);
+    const auto s = std::sin(heading);
+    const auto place = [&](const LocalPoint& point)
+    {
+        return Vector2{at.x + point.forward * c - point.left * s, at.y + point.forward * s + point.left * c};
+    };
+    return {place(capsule.spine_start), place(capsule.spine_end)};
+}
 
 // A part of an entity that can be targeted and destroyed on its own (ship hardpoints).
 struct HardpointProfile

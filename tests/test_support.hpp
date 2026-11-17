@@ -158,6 +158,7 @@ struct TestSpawn
     std::uint32_t passable_types{};
     eaw::CombatProfile combat;
     float radius{};
+    eaw::FootprintCapsule capsule;
     float turn_rate{};
     eaw::MovementProfile movement;
     std::uint32_t formation_order{2};
@@ -182,6 +183,7 @@ inline eaw::EntityRecipe recipe_of(const TestSpawn& spawn)
             .passable_types = spawn.passable_types,
             .combat = spawn.combat,
             .radius = spawn.radius,
+            .capsule = spawn.capsule,
             .turn_rate = spawn.turn_rate,
             .movement = spawn.movement,
             .formation_order = spawn.formation_order,

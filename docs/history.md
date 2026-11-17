@@ -937,3 +937,9 @@ rewritten to describe the current state; the source document is noted in bracket
   its type's size now shares the recipe's capsule (same_scale_tolerance, 1e-4 relative, an engine
   choice); the transform scale became one helper (model_transform_scale) for the three footprint
   functions. Battle hashes back to their expected values.
+- Oriented footprints, steps 2 and 3: ground units stand and plan with their capsule's radius (half
+  the narrow side), and spawns, teleports, and destinations test the whole spine at the unit's
+  heading. A long unit now passes a gap its circle does not fit (a navigation test). The land
+  battles' hashes change, as the owner expected (more direct routes): reference 0x6c4a94478db18f43,
+  large Utapau 0x2241c93bca2fd517, AT-ATs 0x9b0c6e57b7f4bef7; space battles unchanged (space units
+  keep their circle footing). A Gargantuan battle now ends with 43 kills, against 4 before.

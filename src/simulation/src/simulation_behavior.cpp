@@ -354,7 +354,7 @@ void SimulationWorld::teleport(const std::size_t index, const Vector3& point, co
     if (ground_mover_.follows_ground[index] != 0 && ground_.map.valid())
     {
         // Onto free ground, as a spawn.
-        position = free_ground(position, placement_.radii[index], ground_mover_.passable_types[index], index);
+        position = free_ground(position, placement_.headings[index], placement_.radii[index], placement_.capsules[index], ground_mover_.passable_types[index], index);
         position.z = ground_.map.surface_height(position.x, position.y);
     }
     // The occupancy holds where the unit stood; drop it rather than keep a stale place.

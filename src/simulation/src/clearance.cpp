@@ -113,4 +113,19 @@ bool ground_stands(const GroundMap& ground, const Vector2 point, const Footing& 
     return !cell || footing_fits(ground, *cell, footing);
 }
 
+bool ground_stands_along(const GroundMap& ground, const Vector2 from, const Vector2 to, const Footing& footing) noexcept
+{
+    const auto length = std::hypot(to.x - from.x, to.y - from.y);
+    const auto steps = ground.spacing > 0.0F && std::isfinite(length) ? static_cast<std::uint32_t>(std::ceil(length / ground.spacing)) : 0U;
+    for (std::uint32_t step = 0; step <= steps; ++step)
+    {
+        const auto share = steps == 0U ? 0.0F : static_cast<float>(step) / static_cast<float>(steps);
+        if (!ground_stands(ground, {from.x + (to.x - from.x) * share, from.y + (to.y - from.y) * share}, footing))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 } // namespace eaw

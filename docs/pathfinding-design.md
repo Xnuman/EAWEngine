@@ -354,7 +354,7 @@ Built in `simulation_avoidance.cpp` and `orca.*` (the solver alone, tested by `t
 - Weapons whose unit's target is out of range share their unit's timer instead of searching every
   tick (built). Searches read the shared index once it exists (4.5).
 
-### 4.7 Oriented footprints (agreed with the owner, 2026-11-17; step 1 built)
+### 4.7 Oriented footprints (agreed with the owner, 2026-11-17; steps 1 to 3 built)
 
 Why: a ground unit is a circle of radius (width + depth) / 4 (`model_footprint_radius`), so a long
 unit needs a gap as wide as its average size: the Gargantuan (hull about 72 by 150) a gap of about
@@ -384,7 +384,14 @@ planning with the half-width or keeping circles.
   pair, each agent's radius its capsule's extent toward the other (the radius plus the spine's
   projection on the line between them), a standard approximation; giving way, detours around
   standing units, and crushing use the capsule distance.
-- **Hashes**: every battle with vehicles changes its hash (radii change); declared with the change.
+- **As built (steps 2 and 3)**: since a turn may overlap blocked ground, a moving unit needs only
+  its centerline to fit at the capsule's radius, so a ground unit's footing radius is its capsule's
+  radius (`GroundMoverColumns::footing_radii`: planning, buckets, region labels, steps); the whole
+  spine is tested where a unit is put down (`free_ground` at its heading, `destination_free` at the
+  heading it arrives with; `ground_stands_along`, samples at most a cell apart). Squads and soft
+  radii stay circles; space units keep their circle radius as footing (nothing reads it there).
+- **Hashes**: every battle with ground vehicles changes its hash (shorter routes through gaps that
+  fit lengthwise); declared with the change.
 - **Order of work**: (1) the shape on recipes and in `PlacementColumns`, used nowhere yet (hash
   unchanged; built: `FootprintCapsule`, `model_footprint_capsule`, `PlacementColumns::capsules`); (2) ground fitting and placement; (3) planning by the capsule's radius, with the turn
   rule; (4) contact, crushing, and overlap tests; (5) avoidance and giving way; (6) the path audit

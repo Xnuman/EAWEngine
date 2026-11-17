@@ -231,7 +231,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn, const EntityId
     }
     // On free ground: ground units never stand on each other or where their footprint does not fit
     // (found before any column grows, while every column still lists the same entities).
-    const auto start = recipe.follows_ground && ground_.map.valid() ? free_ground(spawn.position, recipe.radius, recipe.passable_types, std::nullopt) : spawn.position;
+    const auto start = recipe.follows_ground && ground_.map.valid() ? free_ground(spawn.position, spawn.heading, recipe.radius, recipe.capsule, recipe.passable_types, std::nullopt) : spawn.position;
     identity_.ids.push_back(id);
     placement_.positions.push_back(start);
     placement_.headings.push_back(wrap_angle(spawn.heading));
@@ -243,7 +243,9 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn, const EntityId
     identity_.recipes.push_back(spawn.recipe);
     ground_mover_.follows_ground.push_back(recipe.follows_ground ? 1U : 0U);
     ground_mover_.passable_types.push_back(recipe.passable_types);
-    ground_mover_.footing_radii.push_back(recipe.radius);
+    // A unit stands and plans with its capsule's radius (pathfinding-design.md 4.7), so it takes gaps
+    // it fits lengthwise.
+    ground_mover_.footing_radii.push_back(recipe.follows_ground && recipe.capsule.radius > 0.0F ? recipe.capsule.radius : recipe.radius);
     route_.paths.emplace_back();
     if (const auto& profile = recipe.combat; profile.health > 0.0F || profile.shield > 0.0F || !profile.weapons.empty() || !profile.hardpoints.empty())
     {
@@ -1039,20 +1041,31 @@ const ClearanceField* SimulationWorld::clearance_of(const std::uint32_t passable
     return found != ground_.clearance.end() ? &*found : nullptr;
 }
 
-Vector3 SimulationWorld::free_ground(const Vector3& at, const float radius, const std::uint32_t passable_types, const std::optional<std::size_t> except)
+Vector3 SimulationWorld::free_ground(const Vector3& at, const float heading, const float radius, const FootprintCapsule& capsule, const std::uint32_t passable_types,
+                                     const std::optional<std::size_t> except)
 {
     if (!(radius > 0.0F) || !ground_.map.valid())
     {
         return at;
     }
-    const Footing footing(passable_types, clearance_of(passable_types), radius);
+    const bool shaped = capsule.radius > 0.0F;
+    const Footing footing(passable_types, clearance_of(passable_types), shaped ? capsule.radius : radius);
+    const auto stands = [&](const float x, const float y)
+    {
+        if (!shaped)
+        {
+            return ground_stands(ground_.map, {x, y}, footing);
+        }
+        const auto [from, to] = capsule_spine_at(capsule, {x, y, 0.0F}, heading);
+        return ground_stands_along(ground_.map, from, to, footing);
+    };
     const auto free = [&](const float x, const float y)
     {
-        return (passable_types == 0 || ground_stands(ground_.map, {x, y}, footing)) && !overlaps_unit(x, y, radius,
-                                                                                                      [&](const std::uint32_t other)
-                                                                                                      {
-                                                                                                          return other != except;
-                                                                                                      });
+        return (passable_types == 0 || stands(x, y)) && !overlaps_unit(x, y, radius,
+                                                                       [&](const std::uint32_t other)
+                                                                       {
+                                                                           return other != except;
+                                                                       });
     };
     const auto found = nearest_free_point(at, 2.0F * radius, free_ground_rings, free);
     return found ? Vector3{found->x, found->y, at.z} : at;
@@ -1062,9 +1075,23 @@ bool SimulationWorld::destination_free(const float x, const float y, const std::
 {
     const auto radius = unit_radius(*this, index);
     const auto mask = ground_mover_.passable_types[index];
-    if (mask != 0 && !ground_stands(ground_.map, {x, y}, Footing(mask, clearance_of(mask), radius)))
+    // A unit with a footprint capsule needs room for it along its spine, turned the way it arrives
+    // (from where it stands); a squad its whole circle.
+    const auto& capsule = placement_.capsules[index];
+    const bool shaped = capsule.radius > 0.0F && radius == placement_.radii[index];
+    if (mask != 0 && !shaped && !ground_stands(ground_.map, {x, y}, Footing(mask, clearance_of(mask), radius)))
     {
         return false;
+    }
+    if (mask != 0 && shaped)
+    {
+        const auto& from = placement_.positions[index];
+        const auto arriving = std::hypot(x - from.x, y - from.y) > 1.0e-3F ? std::atan2(y - from.y, x - from.x) : placement_.headings[index];
+        const auto [start, end] = capsule_spine_at(capsule, {x, y, 0.0F}, arriving);
+        if (!ground_stands_along(ground_.map, start, end, Footing(mask, clearance_of(mask), capsule.radius)))
+        {
+            return false;
+        }
     }
     if (std::ranges::any_of(reserved,
                             [&](const ReservedGround& taken)

@@ -915,7 +915,9 @@ private:
     // (docs/pathfinding-design.md, 4.4: units never overlap): ground with room for its footprint,
     // off every other ground unit's (`except`, the unit itself, aside). `at` itself when it is free,
     // or when no free point lies within free_ground_rings rings around it.
-    [[nodiscard]] Vector3 free_ground(const Vector3& at, float radius, std::uint32_t passable_types, std::optional<std::size_t> except);
+    // A unit with a footprint capsule (`capsule`, its radius above zero) needs room for it along its
+    // spine at `heading`; units keep `radius` apart.
+    [[nodiscard]] Vector3 free_ground(const Vector3& at, float heading, float radius, const FootprintCapsule& capsule, std::uint32_t passable_types, std::optional<std::size_t> except);
     // A destination's ground taken already: a slot an earlier member of the same order was placed in.
     struct ReservedGround
     {
