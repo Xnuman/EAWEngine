@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <utility>
 #include <vector>
 
 namespace eaw {
@@ -69,6 +70,29 @@ template <typename Visit> void for_each_side_neighbor(const std::uint32_t cell, 
     }
 }
 
+// Calls visit(neighbour) for each side neighbour of `cell` inside `bounds` (as for_each_side_neighbor),
+// then for each diagonal neighbour inside them whose two side cells pass side_fits(column, row), in
+// the order up-left, up-right, down-left, down-right.
+template <typename SideFits, typename Visit> void for_each_step_neighbor(const std::uint32_t cell, const std::uint32_t width, const CellRect& bounds, SideFits&& side_fits, Visit&& visit)
+{
+    for_each_side_neighbor(cell, width, bounds, visit);
+    const auto x = cell % width;
+    const auto y = cell / width;
+    for (const auto [dx, dy] : {std::pair{-1, -1}, std::pair{1, -1}, std::pair{-1, 1}, std::pair{1, 1}})
+    {
+        const auto nx = static_cast<long>(x) + dx;
+        const auto ny = static_cast<long>(y) + dy;
+        if (nx < static_cast<long>(bounds.first_column) || nx > static_cast<long>(bounds.last_column) || ny < static_cast<long>(bounds.first_row) || ny > static_cast<long>(bounds.last_row))
+        {
+            continue;
+        }
+        if (side_fits(static_cast<std::uint32_t>(nx), y) && side_fits(x, static_cast<std::uint32_t>(ny)))
+        {
+            visit(static_cast<std::uint32_t>(ny) * width + static_cast<std::uint32_t>(nx));
+        }
+    }
+}
+
 // The field of `passable_types` up to `limit` over the whole ground.
 [[nodiscard]] ClearanceField clearance_field(const GroundMap& ground, std::uint32_t passable_types, float limit);
 // Recomputes the cells whose clearance a change of passability within `changed` can affect.
@@ -86,6 +110,18 @@ struct Footing
     const ClearanceField* clearance{};
     float radius{};
 };
+
+// A diagonal step's side cells need half a cell less clearance than the cells it joins: clearance is
+// known only at cell centres, the step passes 14 units from each side cell's centre, and demanding
+// the full radius there closed diagonal gaps whose centre line has room (the owner's report,
+// 2026-11-17: Utapau's gate, a 42-clearance centre line between side cells of 32, kept the
+// Gargantuan, footing 37.3, out). An engine choice; a hull may graze a wall corner by up to half a
+// cell on such a step. Passability itself is not relaxed: a side cell the class may not enter at all
+// still closes the step.
+inline constexpr float diagonal_side_allowance = 0.5F; // of a cell's spacing
+// The footing a diagonal step's side cells must fit: `footing` with its radius less the allowance
+// (no less than zero); a footing without a clearance field is unchanged.
+[[nodiscard]] Footing diagonal_side_footing(const GroundMap& ground, const Footing& footing) noexcept;
 
 // The footprint sizes connectivity is kept for (docs/pathfinding-design.md, 4.1; the owner,
 // 2026-11-15, after 7, 20, 35, and 65 kept units out of gaps they fit): radius every 2 units, 2 to 68
@@ -109,8 +145,9 @@ inline constexpr auto footing_buckets = []
 // its radius).
 [[nodiscard]] bool footing_fits(const GroundMap& ground, std::uint32_t cell, const Footing& footing) noexcept;
 
-// Whether a unit with `footing` may stand at `point` (its cell's passability and clearance); true
-// when the ground has no passability data.
+// Whether a unit with `footing` may stand at `point` (its cell's passability and clearance, or half a
+// cell less room beside a cell with the full room, where a diagonal step passes:
+// diagonal_side_allowance); true when the ground has no passability data.
 [[nodiscard]] bool ground_stands(const GroundMap& ground, Vector2 point, const Footing& footing) noexcept;
 // Calls visit(cell) for each cell whose sample point (column x spacing, row x spacing) lies in the
 // rectangle of `half_length` along `heading` and `half_width` across it about `center`, and returns

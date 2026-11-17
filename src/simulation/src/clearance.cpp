@@ -106,11 +106,44 @@ float footing_bucket(const float radius) noexcept
     return std::ceil(radius);
 }
 
+Footing diagonal_side_footing(const GroundMap& ground, const Footing& footing) noexcept
+{
+    if (footing.clearance == nullptr)
+    {
+        return footing;
+    }
+    return Footing(footing.passable_types, footing.clearance, std::max(0.0F, footing.radius - diagonal_side_allowance * ground.spacing));
+}
+
 bool ground_stands(const GroundMap& ground, const Vector2 point, const Footing& footing) noexcept
 {
     // Off the grid, or without passability data, nothing constrains a unit.
     const auto cell = ground.cell_at(point.x, point.y);
-    return !cell || footing_fits(ground, *cell, footing);
+    if (!cell || footing_fits(ground, *cell, footing))
+    {
+        return true;
+    }
+    // On a cell with half a cell less room (diagonal_side_allowance) beside one with the full room:
+    // where a diagonal step passes, which the route searches allow; one of the four cells whose
+    // centres surround the point has the full room.
+    if (footing.clearance == nullptr || !footing_fits(ground, *cell, diagonal_side_footing(ground, footing)))
+    {
+        return false;
+    }
+    const auto u = static_cast<long>(std::floor(point.x / ground.spacing));
+    const auto v = static_cast<long>(std::floor(point.y / ground.spacing));
+    for (long row = v; row <= v + 1; ++row)
+    {
+        for (long column = u; column <= u + 1; ++column)
+        {
+            if (column >= 0 && row >= 0 && column < static_cast<long>(ground.width) && row < static_cast<long>(ground.height) &&
+                footing_fits(ground, static_cast<std::uint32_t>(row) * ground.width + static_cast<std::uint32_t>(column), footing))
+            {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 bool ground_rectangle_fits(const GroundMap& ground, const Vector2 center, const float heading, const float half_length, const float half_width, const std::uint32_t passable_types) noexcept

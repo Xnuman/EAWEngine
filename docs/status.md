@@ -738,7 +738,10 @@ give way); research in [pathfinding-research.md](pathfinding-research.md). This 
 navigation, not a reproduction of the original's.
 
 - `GridPathfinder` (`simulation/pathfinding.*`) runs A* over the TED passability cells
-  (8-connected, integer costs, no corner cutting, fully ordered ties, so it is deterministic), then
+  (8-connected, integer costs, fully ordered ties, so it is deterministic; a diagonal step needs
+  both side cells enterable with half a cell less room than the cells it joins,
+  `diagonal_side_allowance`, an engine choice after Utapau's gate, whose 42-clearance centre line ran
+  diagonally between side cells of 32 and kept the Gargantuan out), then
   drops waypoints a straight line can skip. Connected regions are labeled per footing, so a goal the
   unit cannot reach moves to the nearest cell of its region; a unit standing where it may not be
   first leaves for the nearest enterable cell. Plain A* stays as the reference implementation.
@@ -749,9 +752,13 @@ navigation, not a reproduction of the original's.
   field, radius) is what searches, straight-line checks, and nearest-cell searches take; size
   buckets run every 2 units from 2 to 68 (`footing_buckets`). The world keeps a field per movement
   class its ground units use (`refresh_clearance` at the start barrier; a footprint stamp recomputes
-  only the cells it can affect), and a battle builds its spawnable types' fields while the map loads
-  (`reserve_clearance`). Movement, walk clips, and pushes never step onto ground a unit does not fit
-  (`stands_at`). Route searches add a cost to cells within 5 units beyond the unit's radius of a wall,
+  only the cells it can affect). A battle reserves its spawnable types' footings while the map loads
+  (`reserve_clearance`: the rectangle's half-width and the circle squads plan with), their fields
+  kept while no unit of the class stands on the map, and then builds the region labels and chunk
+  graphs of every reserved footing and placed ground unit (`prepare_navigation`), so the first ticks
+  build nothing (the AT-AT reference battle's slowest tick fell from 17 ms to 2.5 ms). Movement, walk
+  clips, and pushes never step onto ground a unit does not fit (`stands_at`; a point on a cell with
+  half a cell less room beside one with the full room stands, where a diagonal step passes). Route searches add a cost to cells within 5 units beyond the unit's radius of a wall,
   and smoothing keeps that margin where it can.
 - Chunks (`ChunkGraph`, `simulation/chunk_graph.*`): the ground in squares of cells, per square the
   connected parts a footing fits and which neighbouring parts touch. The battles' layout is

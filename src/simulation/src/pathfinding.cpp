@@ -153,10 +153,15 @@ bool ground_line_passable(const GroundMap& ground, const PathPoint from, const P
     auto y = static_cast<long>(std::floor(v0));
     const auto end_x = static_cast<long>(std::floor(u1));
     const auto end_y = static_cast<long>(std::floor(v1));
-    const auto passable = [&](const long cx, const long cy)
+    const auto side = diagonal_side_footing(ground, footing);
+    const auto passable_for = [&](const long cx, const long cy, const Footing& with)
     {
         return cx >= 0 && cy >= 0 && cx < static_cast<long>(ground.width) && cy < static_cast<long>(ground.height) &&
-               enterable(ground, static_cast<std::uint32_t>(cy) * ground.width + static_cast<std::uint32_t>(cx), footing);
+               enterable(ground, static_cast<std::uint32_t>(cy) * ground.width + static_cast<std::uint32_t>(cx), with);
+    };
+    const auto passable = [&](const long cx, const long cy)
+    {
+        return passable_for(cx, cy, footing);
     };
     const auto du = u1 - u0;
     const auto dv = v1 - v0;
@@ -183,8 +188,9 @@ bool ground_line_passable(const GroundMap& ground, const PathPoint from, const P
         }
         else
         {
-            // Through a corner: the segment touches both side cells.
-            if (!passable(x + step_x, y) || !passable(x, y + step_y))
+            // Through a corner: the segment touches both side cells (which need half a cell less room,
+            // as a diagonal step's).
+            if (!passable_for(x + step_x, y, side) || !passable_for(x, y + step_y, side))
             {
                 return false;
             }
@@ -243,6 +249,7 @@ void NavigationData::reset() noexcept
 GridPathfinder::CellSearch GridPathfinder::search_cells(const GroundMap& ground, const Footing& footing, const std::uint32_t start_cell, const std::uint32_t goal_cell, const ChunkGraph* graph,
                                                         const std::vector<std::uint8_t>* parts, const std::size_t budget, std::uint32_t& expanded)
 {
+    const auto side_footing = diagonal_side_footing(ground, footing);
     const auto cells = ground.passability.size();
     if (seen_.size() != cells)
     {
@@ -319,14 +326,21 @@ GridPathfinder::CellSearch GridPathfinder::search_cells(const GroundMap& ground,
         }
         const auto x = static_cast<long>(node.cell % ground.width);
         const auto y = static_cast<long>(node.cell / ground.width);
-        const auto open_cell = [&](const long cx, const long cy)
+        // A cell the search may enter (`held`: within the chunk corridor), or one beside a diagonal step,
+        // which is never entered and so may lie outside the corridor (the step joins diagonally linked
+        // parts), with half a cell less room (diagonal_side_allowance).
+        const auto open_cell_for = [&](const long cx, const long cy, const Footing& with, const bool entered)
         {
             if (cx < 0 || cy < 0 || cx >= static_cast<long>(ground.width) || cy >= static_cast<long>(ground.height))
             {
                 return false;
             }
             const auto cell = static_cast<std::uint32_t>(cy) * ground.width + static_cast<std::uint32_t>(cx);
-            return enterable(ground, cell, footing) && held(cell) && (cell == start_cell || !obstacle(cell));
+            return enterable(ground, cell, with) && (!entered || held(cell)) && (cell == start_cell || !obstacle(cell));
+        };
+        const auto open_cell = [&](const long cx, const long cy)
+        {
+            return open_cell_for(cx, cy, footing, true);
         };
         for (const auto& [dx, dy] : directions)
         {
@@ -337,7 +351,7 @@ GridPathfinder::CellSearch GridPathfinder::search_cells(const GroundMap& ground,
                 continue;
             }
             const bool diagonal = dx != 0 && dy != 0;
-            if (diagonal && (!open_cell(x + dx, y) || !open_cell(x, y + dy)))
+            if (diagonal && (!open_cell_for(x + dx, y, side_footing, false) || !open_cell_for(x, y + dy, side_footing, false)))
             {
                 continue;
             }
@@ -405,8 +419,13 @@ const std::vector<std::uint32_t>& NavigationData::regions(const GroundMap& groun
         }
     }
     EAW_ASSERT_MSG(!frozen_, "region labels were missing while searches ran in parallel (GridPathfinder::prepare builds them before)");
-    // 4-connected flood fill in cell order: a diagonal step needs both side cells, so diagonal
-    // neighbors that are connected at all are connected through a side cell. Labels start at 1.
+    // Flood fill in cell order over side neighbours and the diagonal ones whose side cells fit with half
+    // a cell less room (as a diagonal step's, diagonal_side_allowance). Labels start at 1.
+    const auto side = diagonal_side_footing(ground, footing);
+    const auto side_fits = [&](const std::uint32_t column, const std::uint32_t row)
+    {
+        return enterable(ground, row * ground.width + column, side);
+    };
     auto& entry = regions_.emplace_back();
     entry.passable_types = passable_types;
     entry.radius = radius;
@@ -426,7 +445,7 @@ const std::vector<std::uint32_t>& NavigationData::regions(const GroundMap& groun
         {
             const auto cell = pending.back();
             pending.pop_back();
-            for_each_side_neighbor(cell, ground.width, whole_ground(ground),
+            for_each_step_neighbor(cell, ground.width, whole_ground(ground), side_fits,
                                    [&](const std::uint32_t neighbor)
                                    {
                                        if (entry.labels[neighbor] == 0 && enterable(ground, neighbor, footing))
@@ -539,7 +558,13 @@ PathResult GridPathfinder::find(NavigationData& navigation, const GroundMap& gro
             if (!route.empty() && layout_ == ChunkLayout::refined)
             {
                 // Part by part: from where the route enters the part to its best crossing into the next
-                // (least cost so far plus estimate on), held to the part.
+                // (least cost so far plus estimate on), held to the part. A crossing may be a diagonal
+                // step, as the parts are linked (diagonal_side_allowance).
+                const auto side = diagonal_side_footing(ground, bucket_footing);
+                const auto side_fits = [&](const std::uint32_t column, const std::uint32_t row)
+                {
+                    return footing_fits(ground, row * ground.width + column, side);
+                };
                 std::vector<std::uint8_t> only(fine.parts(), 0);
                 auto current = start_cell;
                 way.push_back(start_cell);
@@ -565,7 +590,7 @@ PathResult GridPathfinder::find(NavigationData& navigation, const GroundMap& gro
                                 {
                                     continue;
                                 }
-                                for_each_side_neighbor(cell, ground.width, whole_ground(ground),
+                                for_each_step_neighbor(cell, ground.width, whole_ground(ground), side_fits,
                                                        [&](const std::uint32_t other)
                                                        {
                                                            if (fine.part_of[other] != next)

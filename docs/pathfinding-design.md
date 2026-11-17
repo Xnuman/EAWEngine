@@ -130,9 +130,21 @@ Numbers named below are engine choices (named constants in `simulation_internal.
   navigation runs. As built, the clearance is updated within the stamp's reach at the start barrier
   (`refresh_clearance`), but a change drops the navigation data (region labels and chunk graphs,
   `NavigationSystem::ground_changed`) and they are rebuilt whole; rebuilding only the changed squares
-  is open. A battle builds the clearance fields and chunk graphs of its spawnable types while the map
-  loads (`reserve_clearance`, `GridPathfinder::prepare`; about 4 ms a graph on Utapau's 97,000
-  cells), so no tick builds a whole field.
+  is open (for death clones and buildable objects, which stamp during a battle). A battle reserves
+  its spawnable types' footings while the map loads and then builds every reserved footing's clearance
+  field, region labels, and chunk graphs (`reserve_clearance`, `prepare_navigation`; about 4 ms a
+  graph on Utapau's 97,000 cells), so no tick builds them whole. Before, each new movement class's
+  field reset the navigation data prepared for the classes before it, the reserved size was the old
+  circle rather than the footing, and the first tick erased fields no placed unit used, so the data
+  was built again in the first ticks.
+- **Diagonal steps** (the owner's report, 2026-11-17): a diagonal step's side cells need half a cell
+  less room than the cells it joins (`diagonal_side_allowance`, `diagonal_side_footing`), in the cell
+  search, the line checks' corner crossings, the region labels' and chunk parts' floods
+  (`for_each_step_neighbor`), the chunk graph's links between squares that touch at a corner, the
+  refined search's crossings, and `ground_stands`. Utapau's gate has a 42-clearance centre line running
+  diagonally between side cells of 32; demanding the full 38 of the Gargantuan's footing at the sides
+  closed it, and the route went 5,300 units around (1,430 through it now). A hull may graze a wall
+  corner by up to half a cell on such a step. Passability is not relaxed.
 
 ### 4.2 Route planning
 

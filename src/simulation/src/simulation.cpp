@@ -1203,19 +1203,34 @@ void SimulationWorld::reserve_clearance(const std::uint32_t passable_types, cons
     {
         return;
     }
-    refresh_clearance();
-    auto field = std::ranges::find(ground_.clearance, passable_types, &ClearanceField::passable_types);
-    if (field == ground_.clearance.end() || field->limit < radius)
+    if (std::ranges::find(ground_.reserved, std::pair{passable_types, radius}) == ground_.reserved.end())
     {
-        if (field != ground_.clearance.end())
-        {
-            ground_.clearance.erase(field);
-        }
-        ground_.clearance.push_back(clearance_field(ground_.map, passable_types, std::max(clearance_minimum_limit, radius)));
-        navigation_.ground_changed();
+        ground_.reserved.emplace_back(passable_types, radius);
     }
-    const auto found = std::ranges::find(ground_.clearance, passable_types, &ClearanceField::passable_types);
-    navigation_.prepare(ground_.map, Footing(passable_types, &*found, radius));
+    refresh_clearance();
+}
+
+void SimulationWorld::prepare_navigation()
+{
+    refresh_clearance();
+    const auto prepare = [&](const std::uint32_t mask, const float radius)
+    {
+        if (const auto* field = clearance_of(mask); field != nullptr && mask != 0 && radius > 0.0F)
+        {
+            navigation_.prepare(ground_.map, Footing(mask, field, radius));
+        }
+    };
+    for (const auto& [mask, radius] : ground_.reserved)
+    {
+        prepare(mask, radius);
+    }
+    for (std::size_t index = 0; index < identity_.ids.size(); ++index)
+    {
+        if (ground_mover_.follows_ground[index] != 0)
+        {
+            prepare(ground_mover_.passable_types[index], ground_mover_.footing_radii[index]);
+        }
+    }
 }
 
 void SimulationWorld::refresh_clearance()
@@ -1224,8 +1239,20 @@ void SimulationWorld::refresh_clearance()
     {
         return;
     }
-    // The movement classes ground units use, each with the largest footprint among them.
+    // The movement classes ground units use, each with the largest footprint among them, and those
+    // reserved for units that may come.
     std::vector<std::pair<std::uint32_t, float>> needs;
+    for (const auto& [mask, radius] : ground_.reserved)
+    {
+        if (const auto found = std::ranges::find(needs, mask, &std::pair<std::uint32_t, float>::first); found == needs.end())
+        {
+            needs.emplace_back(mask, radius);
+        }
+        else
+        {
+            found->second = std::max(found->second, radius);
+        }
+    }
     for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
         const auto mask = ground_mover_.passable_types[index];

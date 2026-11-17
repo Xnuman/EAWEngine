@@ -696,10 +696,14 @@ public:
     [[nodiscard]] Result<RecipeId> add_recipe(EntityRecipe recipe);
     [[nodiscard]] const EntityRecipe& recipe(RecipeId id) const;
     [[nodiscard]] std::size_t recipe_count() const noexcept;
-    // Builds the clearance of a movement class for footprints up to `radius`, and the chunk graph of its
-    // size bucket, now (a battle does it as its map loads for every type it can spawn), so no later
-    // tick builds them whole.
+    // Reserves a footing a unit may plan with (a battle does it as its map loads for every type it can
+    // spawn): its movement class's clearance is built now, up to `radius`, and kept while no unit of
+    // the class stands on the map; prepare_navigation then builds its region labels and chunk graphs.
     void reserve_clearance(std::uint32_t passable_types, float radius);
+    // Builds the route searches' data (region labels, chunk graphs) for every reserved footing and every
+    // ground unit's, now, after the map's footprints are stamped (a battle's map load), so the first
+    // ticks do not build them.
+    void prepare_navigation();
     // `squad`: the team a squad member joins (the id spawn.squad's list index resolved to).
     [[nodiscard]] Result<EntityId> spawn(const EntitySpawn& spawn, EntityId squad = {});
     // Ground for entities that follow it; entity footprints are stamped into a copy of its
@@ -1696,6 +1700,8 @@ private:
         // (refresh_clearance); the cells footprint stamps changed since, as one rectangle.
         std::vector<ClearanceField> clearance;
         std::optional<CellRect> changed;
+        // Footings reserved for units that may come (reserve_clearance): movement class and radius.
+        std::vector<std::pair<std::uint32_t, float>> reserved;
     };
     struct PathQueue
     {

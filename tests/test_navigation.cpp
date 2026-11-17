@@ -909,15 +909,20 @@ void test_chunks()
     require(graph.parts() == 10 && graph.part_of[0] != 0 && graph.part_of[20] == 0 && graph.part_of[17] != graph.part_of[22], "a wall must split a square's cells into two parts");
     std::uint32_t expanded = 0;
     const auto route = eaw::chunk_route(ground, graph, graph.part_of[5 * 40 + 5], graph.part_of[5 * 40 + 35], {}, expanded);
-    require(route.size() >= 4 && route.front() == graph.part_of[5 * 40 + 5] && route.back() == graph.part_of[5 * 40 + 35] && expanded > 0, "a part route must lead around the wall");
+    // Around the wall through the middle row: squares touching only at a corner link diagonally where
+    // the cells beside that corner are open (a diagonal step), so the route is top-left, middle, top-right.
+    require(route.size() == 3 && route.front() == graph.part_of[5 * 40 + 5] && route[1] == graph.part_of[31 * 40 + 20] && route.back() == graph.part_of[5 * 40 + 35] && expanded > 0,
+            "a part route must lead around the wall");
     for (const auto layout : {eaw::ChunkLayout::one_level, eaw::ChunkLayout::two_level, eaw::ChunkLayout::refined})
     {
         eaw::GridPathfinder plain;
         eaw::GridPathfinder chunked(0, layout);
         const auto direct = plain.find(ground, {50.0F, 50.0F}, {350.0F, 50.0F}, eaw::passability::clear);
         const auto held = chunked.find(ground, {50.0F, 50.0F}, {350.0F, 50.0F}, eaw::passability::clear);
-        require(held.status == eaw::PathStatus::reached && direct.status == eaw::PathStatus::reached && held.expanded < direct.expanded && held.waypoints.back() == direct.waypoints.back(),
-                "a search held to the chunk corridor must reach the goal, expanding less");
+        const bool expands_less = held.expanded < direct.expanded;
+        require(held.status == eaw::PathStatus::reached && direct.status == eaw::PathStatus::reached && expands_less && held.waypoints.back() == direct.waypoints.back(),
+                "a search held to the chunk corridor must reach the goal, expanding less (layout " + std::to_string(static_cast<int>(layout)) + ": status " +
+                    std::to_string(static_cast<int>(held.status)) + ", expanded " + std::to_string(held.expanded) + " against " + std::to_string(direct.expanded) + ")");
     }
 }
 

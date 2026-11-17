@@ -107,10 +107,15 @@ Battle::Battle(const BattleMap& map, std::string map_name, const double tick_sec
     }
     for (const auto& type : spawnable_)
     {
-        // Their footing's clearance while the map loads, not in the tick a spawn order lands.
+        // Their footings while the map loads, not in the tick a spawn order lands: the rectangle's
+        // half-width a unit plans with, and its circle, which a squad plans with for its largest soldier.
         if (type.follows_ground)
         {
             world_.reserve_clearance(type.passable_types, type.radius);
+            if (type.body.half_width > 0.0F)
+            {
+                world_.reserve_clearance(type.passable_types, type.body.half_width);
+            }
         }
         type_info_.try_emplace(ascii_lower(type.type_name), type.script);
         if (!type.survivors.types.empty())
@@ -118,6 +123,7 @@ Battle::Battle(const BattleMap& map, std::string map_name, const double tick_sec
             survivors_.try_emplace(game_object_name_crc(type.type_name), type.survivors);
         }
     }
+    world_.prepare_navigation();
     world_.step();
 }
 

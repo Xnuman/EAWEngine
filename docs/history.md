@@ -991,3 +991,17 @@ rewritten to describe the current state; the source document is noted in bracket
   the same 5,300-unit route, because the gate beside its start reads 30-32 clearance against its
   37.3 footing, though about 90-100 units of clear cells wide: the 20-unit grid's squares understate
   diagonal gaps. Now on the roadmap for the owner's decision.
+- Diagonal steps and navigation built at load (the owner: optimize, and build the grid on map load).
+  The Gargantuan's detour on Utapau came from the corner rule: the gate's 42-clearance centre line
+  runs diagonally between side cells of 32, under its 38, and a diagonal step needed both side cells
+  at the full radius. Side cells now need half a cell less (diagonal_side_allowance, an engine
+  choice) everywhere the rule lives: the cell search, the line checks, the region and chunk floods,
+  chunk links at corners, the refined search's crossings, and ground_stands. Two faults found on the
+  way: movement still demanded the full room where routes passed diagonally (1,925 routes and 882
+  blocked moves in the AT-AT battle until ground_stands agreed), and the refined search crossed
+  between parts only side by side, falling back to whole searches. Navigation data now builds at
+  load: each new class's field had reset the data prepared before it, the reserved size was the old
+  circle, and the first tick erased reserved fields. Measured against the last commit: the AT-AT
+  battle's slowest tick 17 ms to 2.5 ms; the large battle's average 4.90 to 4.82 ms and 99th
+  percentile 8.39 to 8.2 ms, nodes 445k to 519k; the Gargantuan's route 5,324 to 1,430 units.
+  Hashes: large Utapau 0x862a172bd0c6c388, AT-ATs 0xabcafa1f187abf70; reference and space unchanged.

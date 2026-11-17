@@ -37,6 +37,13 @@ ChunkGraph build_chunk_graph(const GroundMap& ground, const Footing& footing, co
     {
         return footing_fits(ground, cell, footing);
     };
+    // A diagonal step's side cells need half a cell less room (diagonal_side_allowance), as in the
+    // cell search, so parts and links agree with it.
+    const auto side = diagonal_side_footing(ground, footing);
+    const auto side_fits = [&](const std::uint32_t column, const std::uint32_t row)
+    {
+        return footing_fits(ground, row * ground.width + column, side);
+    };
     const auto size = graph.chunk_cells;
     std::vector<std::uint32_t> pending;
     std::vector<std::uint32_t> members;
@@ -74,7 +81,7 @@ ChunkGraph build_chunk_graph(const GroundMap& ground, const Footing& footing, co
                         const auto cy = cell / ground.width;
                         sum_x += cx;
                         sum_y += cy;
-                        for_each_side_neighbor(cell, ground.width, square,
+                        for_each_step_neighbor(cell, ground.width, square, side_fits,
                                                [&](const std::uint32_t neighbor)
                                                {
                                                    if (graph.part_of[neighbor] == 0 && fits(neighbor))
@@ -104,8 +111,8 @@ ChunkGraph build_chunk_graph(const GroundMap& ground, const Footing& footing, co
             }
         }
     }
-    // Neighbours: parts of adjacent cells across a square's border (inside a square, adjacent
-    // fitting cells are one part).
+    // Neighbours: parts of adjacent cells across a square's border, side by side or diagonally where a
+    // diagonal step may be taken (inside a square, such cells are one part).
     std::vector<std::pair<std::uint32_t, std::uint32_t>> links;
     for (std::uint32_t cell = 0; cell < cells; ++cell)
     {
@@ -116,7 +123,7 @@ ChunkGraph build_chunk_graph(const GroundMap& ground, const Footing& footing, co
         }
         const auto x = cell % ground.width;
         const auto y = cell / ground.width;
-        for (const auto neighbor : {x + 1U < ground.width ? cell + 1U : cell, y + 1U < ground.height ? cell + ground.width : cell})
+        const auto link = [&](const std::uint32_t neighbor)
         {
             const auto other = graph.part_of[neighbor];
             if (neighbor != cell && other != 0 && other != part)
@@ -124,6 +131,17 @@ ChunkGraph build_chunk_graph(const GroundMap& ground, const Footing& footing, co
                 links.emplace_back(part, other);
                 links.emplace_back(other, part);
             }
+        };
+        link(x + 1U < ground.width ? cell + 1U : cell);
+        link(y + 1U < ground.height ? cell + ground.width : cell);
+        // Down-right and down-left: each diagonal pair once.
+        if (y + 1U < ground.height && x + 1U < ground.width && side_fits(x + 1U, y) && side_fits(x, y + 1U))
+        {
+            link(cell + ground.width + 1U);
+        }
+        if (y + 1U < ground.height && x > 0U && side_fits(x - 1U, y) && side_fits(x, y + 1U))
+        {
+            link(cell + ground.width - 1U);
         }
     }
     std::ranges::sort(links);
