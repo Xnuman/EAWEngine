@@ -40,6 +40,7 @@ set(EAW_SIMULATION_SOURCES
     ${SOURCES_DIR}/simulation_internal.hpp
     ${SOURCES_DIR}/simulation_locomotion.cpp
     ${SOURCES_DIR}/simulation_navigation.cpp
+    ${SOURCES_DIR}/simulation_route_trace.cpp
     ${SOURCES_DIR}/simulation_schedule.cpp
     ${SOURCES_DIR}/simulation_squads.cpp
     ${SOURCES_DIR}/simulation_walk.cpp

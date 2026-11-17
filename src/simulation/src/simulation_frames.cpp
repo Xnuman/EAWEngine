@@ -195,6 +195,7 @@ void SimulationWorld::NavigationSystem::plan_frame_route(const View& view, const
     {
         frame->route.push_back(frame->target);
         frame->forming = std::min(frame_forming_distance, distance_xy(frame->position, frame->target));
+        record_frame(view, *frame, found.trace);
         return;
     }
     ++shared_routes;
@@ -213,6 +214,7 @@ void SimulationWorld::NavigationSystem::plan_frame_route(const View& view, const
     {
         frame->route.push_back({waypoint->x, waypoint->y, frame->target.z});
     }
+    record_frame(view, *frame, found.trace);
 }
 
 void SimulationWorld::BehaviorSystem::take_final_slots(const View& view, const FormationFrame& frame, const std::span<const std::pair<std::size_t, std::size_t>> members)

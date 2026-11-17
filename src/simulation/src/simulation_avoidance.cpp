@@ -602,6 +602,7 @@ void SimulationWorld::NavigationSystem::plan_detours(const View& view)
             path.push_back({waypoint->x, waypoint->y, 0.0F});
         }
         route.detoured[index] = path.empty() ? detour_none : detour_fresh;
+        record_route(view, index, RouteTraceKind::detour, found.trace);
     }
 }
 

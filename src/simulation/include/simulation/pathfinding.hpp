@@ -30,6 +30,16 @@ enum class PathStatus : std::uint8_t
     unavailable,
 };
 
+// A search's stages, for debug drawing (filled only while NavigationData traces): the 32-cell and
+// 16-cell chunk routes as their parts' representative cells, and the cell path before smoothing.
+struct PathTrace
+{
+    bool operator==(const PathTrace&) const = default;
+    std::vector<PathPoint> coarse;
+    std::vector<PathPoint> fine;
+    std::vector<PathPoint> raw;
+};
+
 struct PathResult
 {
     PathStatus status{PathStatus::unavailable};
@@ -40,6 +50,7 @@ struct PathResult
     // ChunkLayout::refined; every node otherwise).
     std::uint32_t expanded{};
     std::uint32_t first_stretch_expanded{};
+    PathTrace trace;
 };
 
 // Whether the straight segment crosses only cells whose type is in `passable_types`. Cells are the
@@ -91,6 +102,15 @@ public:
     {
         frozen_ = frozen;
     }
+    // Whether searches fill PathResult::trace (debug drawing; off by default, it costs copies).
+    void set_tracing(bool tracing) noexcept
+    {
+        tracing_ = tracing;
+    }
+    [[nodiscard]] bool tracing() const noexcept
+    {
+        return tracing_;
+    }
 
 private:
     struct RegionLabels
@@ -103,6 +123,7 @@ private:
     std::deque<RegionLabels> regions_;
     std::deque<ChunkGraph> chunk_graphs_;
     bool frozen_{};
+    bool tracing_{};
 };
 
 class GridPathfinder final

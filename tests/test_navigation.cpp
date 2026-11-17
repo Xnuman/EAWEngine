@@ -216,6 +216,28 @@ void test_pathfinding()
     const auto& arrived = world.snapshot().entities[0];
     require(!arrived.moving && arrived.position.x == 110.0F && arrived.position.y == 12.0F && world.stats().blocked_moves == 0 && world.route(*walker).empty(),
             "a ground unit must follow its path around the wall");
+
+    // Route tracing records the plan with its search's stages, and never changes the simulation.
+    {
+        eaw::SimulationWorld traced(0.1);
+        traced.set_ground(ground);
+        traced.set_route_tracing(true);
+        const auto unit = test_spawn(traced, {.type_name = "Walker", .position = {10.0F, 10.0F, 0.0F}, .max_speed = 100.0F, .follows_ground = true, .passable_types = clear});
+        require(unit.ok(), "test spawn must succeed");
+        traced.submit({eaw::SimCommandKind::move, {*unit}, {110.0F, 12.0F, 0.0F}});
+        traced.step();
+        const auto records = traced.route_traces(*unit);
+        require(records.size() == 1 && records[0].kind == eaw::SimulationWorld::RouteTraceKind::plan && records[0].stages.raw.size() > 2 && records[0].route.size() >= 2 &&
+                    records[0].route.back() == eaw::PathPoint{110.0F, 12.0F},
+                "a traced plan must be recorded with its cell path and the route to the goal");
+        for (int tick = 0; tick < 40; ++tick)
+        {
+            traced.step();
+        }
+        require(traced.state_hash() == world.state_hash(), "tracing routes must not change the simulation");
+        traced.set_route_tracing(false);
+        require(traced.route_traces(*unit).empty(), "turning tracing off must forget the records");
+    }
 }
 
 void test_turning_and_separation()
@@ -689,6 +711,22 @@ void test_group_move()
             require(!ally.moving && std::hypot(ally.position.x - places[index].x, ally.position.y - places[index].y) < 1.0F,
                     "the allies that opened the lane must return to their places (one at " + std::to_string(ally.position.x) + ", " + std::to_string(ally.position.y) + ")");
         }
+    }
+    // A traced route across chunks shows the chunk routes it was planned over (40 cells: three
+    // 16-cell squares across, two 32-cell ones).
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_ground(ground);
+        world.set_route_tracing(true);
+        const auto walker =
+            test_spawn(world, {.type_name = "Walker", .position = {20.0F, 200.0F, 0.0F}, .max_speed = 20.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 12.0F});
+        require(walker.ok(), "test spawn must succeed");
+        world.submit({.kind = eaw::SimCommandKind::move, .entities = {*walker}, .target = {370.0F, 200.0F, 0.0F}});
+        world.step();
+        const auto records = world.route_traces(*walker);
+        require(!records.empty() && records.back().stages.fine.size() >= 3 && records.back().stages.coarse.size() >= 2,
+                "a traced route across chunks must show its 16-cell and 32-cell chunk routes (" + std::to_string(records.empty() ? 0U : records.back().stages.fine.size()) + " fine, " +
+                    std::to_string(records.empty() ? 0U : records.back().stages.coarse.size()) + " coarse)");
     }
     // Giving way ahead (the owner, 2026-11-17): an idle ally standing on a unit's route is found when
     // the route is planned and steps aside before the unit reaches it, not once it is held up there;

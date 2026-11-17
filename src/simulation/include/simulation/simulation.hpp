@@ -27,6 +27,7 @@
 #include <cstdint>
 #include <deque>
 #include <initializer_list>
+#include <map>
 #include <optional>
 #include <span>
 #include <string>
@@ -758,6 +759,30 @@ public:
     };
     // route's points with what each is, for debug drawing.
     [[nodiscard]] std::vector<RoutePoint> route_points(EntityId id) const;
+    // Route tracing (debug drawing; off by default): while on, every change to a ground unit's route
+    // is recorded with the stages of the search behind it (PathTrace) and the whole route after it:
+    // a plan of its own, its part of a group's shared route, a repair leg back to its way, a detour
+    // around units, and its formation frame's route. Not part of the state hash; never read by the
+    // simulation. Turning it off forgets the records.
+    enum class RouteTraceKind : std::uint8_t
+    {
+        plan,
+        shared,
+        repair,
+        detour,
+        frame,
+    };
+    struct RouteTrace
+    {
+        std::uint64_t tick{};
+        RouteTraceKind kind{};
+        PathTrace stages;
+        // From where the unit (or frame) stood to its destination.
+        std::vector<PathPoint> route;
+    };
+    void set_route_tracing(bool tracing);
+    // The entity's records and its formation frame's, oldest first.
+    [[nodiscard]] std::vector<RouteTrace> route_traces(EntityId id) const;
     [[nodiscard]] const SimSnapshot& snapshot() const noexcept;
     [[nodiscard]] Stats stats() const noexcept;
     // FNV-1a over every gameplay component, in storage order: equal hashes mean identical simulation
@@ -1723,6 +1748,8 @@ private:
         // and the next member to plan (a request can span several ticks).
         bool shared_ready{};
         std::vector<PathPoint> shared_waypoints;
+        // The shared search's stages, while routes are traced (debug only).
+        PathTrace shared_trace;
         PathPoint shared_start;
         std::uint32_t mask{};
         std::size_t next_member{};
@@ -2110,6 +2137,9 @@ private:
         struct PlannedRoute
         {
             bool unavailable{};
+            // Its part of a group's shared route; and the search's stages while routes are traced.
+            bool shared{};
+            PathTrace trace;
             std::vector<PathPoint> waypoints;
             std::uint64_t searches{};
             std::uint64_t partials{};
@@ -2204,6 +2234,19 @@ private:
         // its corridor (2026-11-15).
         // The regions and chunk graphs of the ground, which the pathfinders below search with.
         NavigationData navigation_data_;
+        // Route tracing (SimulationWorld::RouteTrace, simulation_route_trace.cpp): records per entity
+        // (index, generation) and per formation frame (group), at most route_trace_depth each.
+        std::map<std::pair<std::uint32_t, std::uint32_t>, std::deque<RouteTrace>> unit_traces_;
+        std::map<std::uint32_t, std::deque<RouteTrace>> frame_traces_;
+        void record_route(const View& view, std::size_t index, RouteTraceKind kind, const PathTrace& stages);
+        void record_frame(const View& view, const FormationFrame& frame, const PathTrace& stages);
+
+    public:
+        void set_tracing(bool tracing);
+        [[nodiscard]] const std::deque<RouteTrace>* unit_traces(EntityId id) const;
+        [[nodiscard]] const std::deque<RouteTrace>* frame_traces(std::uint32_t group) const;
+
+    private:
         GridPathfinder pathfinder_{0, ChunkLayout::refined};
 
     public:

@@ -134,7 +134,7 @@ Key actions (`engine_app/sandbox_actions.cpp`), with their default keys:
 | `spawn_type_back`, `spawn_type_ten` | Shift, Ctrl | While held, the next type goes back, or steps by ten. |
 | `pause` | P | Pause or resume the world (simulation, animation, particles; models: the animation); cameras keep working. |
 | `bounds` | B | Bounds of every object and the world axes. |
-| `navigation` | G | Navigation: every ground unit's footprint as the simulation measures it (its rectangle with a line to its front, or its circle), every unit's route, and the whole map's passability as outlines between cells of different classes (red steep, blue water, orange impassable, green infantry only, magenta obstacle). Selected units' routes show without it. |
+| `navigation` | G | Navigation: every ground unit's footprint as the simulation measures it (its rectangle with a line to its front, or its circle), every unit's route, the route planner's chunk grids (16-cell squares faint, 32-cell squares bright), the recorded route changes of the selected ground units (below), and the whole map's passability as outlines between cells of different classes (red steep, blue water, orange impassable, green infantry only, magenta obstacle). Selected units' routes show without it. |
 | `animation_next`, `animation_previous` | Right, Left | Model view: step through the bind pose and every `<MODEL>_*.ALA` beside the model. |
 
 Escape quits and F1 shows or hides the bar at the top; these two are fixed. Every other action is
@@ -158,6 +158,18 @@ point marked by what it is (`SimulationWorld::route_points`):
 - the move target (a formation member's slot now) a yellow square;
 - a formation frame's way on in dim blue, its waypoints crosses, and the member's slot at the end a
   larger blue square.
+
+While the navigation overlay is on, the simulation records every change to a ground unit's route
+(`SimulationWorld::set_route_tracing`, `route_traces`; up to 8 per unit and per formation frame, not
+part of the state hash), and the overlay draws those of the selected ground units:
+- each recorded route, oldest faint and newest bright, colored by what changed it: a plan of its own
+  cyan, its share of a group's shared route teal, a repair leg back to its way yellow, a detour around
+  units orange, its formation frame's route blue;
+- for the newest record of the unit and of its frame, the stages of the search behind it: the 32-cell
+  chunk route (violet, large squares at its parts' representative cells), the 16-cell chunk route
+  (pink, small squares), and the cell path before smoothing (grey, crosses).
+
+Records start when the overlay is turned on and are forgotten when it is turned off.
 
 Damaged or selected units show health (green) and shield (blue) bars.
 

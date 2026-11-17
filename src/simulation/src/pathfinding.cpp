@@ -536,6 +536,13 @@ PathResult GridPathfinder::find(NavigationData& navigation, const GroundMap& gro
                 // The 32-cell route first; a 16-cell part lies inside one 32-cell part.
                 const auto& coarse = navigation.chunks(ground, bucket_footing, coarse_chunk_cells);
                 const auto coarse_route = chunk_route(ground, coarse, coarse.part_of[start_cell], coarse.part_of[goal_cell], {}, result.expanded);
+                if (navigation.tracing())
+                {
+                    for (const auto part : coarse_route)
+                    {
+                        result.trace.coarse.push_back(cell_center(ground, coarse.center_of_part[part - 1U]));
+                    }
+                }
                 if (!coarse_route.empty())
                 {
                     std::vector<std::uint8_t> in_route(coarse.parts(), 0);
@@ -554,6 +561,13 @@ PathResult GridPathfinder::find(NavigationData& navigation, const GroundMap& gro
             if (route.empty() && !allowed.empty())
             {
                 route = chunk_route(ground, fine, start_part, goal_part, {}, result.expanded);
+            }
+            if (navigation.tracing())
+            {
+                for (const auto part : route)
+                {
+                    result.trace.fine.push_back(cell_center(ground, fine.center_of_part[part - 1U]));
+                }
             }
             if (!route.empty() && layout_ == ChunkLayout::refined)
             {
@@ -721,6 +735,10 @@ PathResult GridPathfinder::find(NavigationData& navigation, const GroundMap& gro
         }
         return next;
     };
+    if (navigation.tracing())
+    {
+        result.trace.raw = points;
+    }
     std::size_t anchor = 0;
     while (anchor + 1 < points.size())
     {

@@ -1074,3 +1074,11 @@ rewritten to describe the current state; the source document is noted in bracket
   members (assign_teams read the missing size as no teams); it is now one team throughout
   (TeamLayout::container; an engine guess, the original's default unobserved). Battle hashes
   unchanged.
+- Detailed route overlay (the owner's request; the owner chose the 16- and 32-cell chunk grids and
+  every stage and change): searches fill a PathTrace (the 32-cell and 16-cell chunk routes, the cell
+  path before smoothing) while NavigationData traces, and the simulation records every change to a
+  ground unit's route (plan, share of a group route, repair leg, detour, formation frame) with its
+  stages and the whole route after it, up to 8 per unit and frame, recorded only in the serial code
+  that applies results and never hashed. The G overlay draws the chunk grids and the selected ground
+  units' records. The debug line helpers moved into one Pen used by the route drawing too. A test
+  confirms tracing leaves the state hash unchanged; battle hashes unchanged.

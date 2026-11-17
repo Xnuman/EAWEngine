@@ -50,6 +50,7 @@ SimulationWorld::NavigationSystem::PlannedRoute SimulationWorld::NavigationSyste
     planned.expansions = found.expanded;
     planned.partials = found.status == PathStatus::partial ? 1U : 0U;
     planned.waypoints = std::move(found.waypoints);
+    planned.trace = std::move(found.trace);
     return planned;
 }
 
@@ -66,6 +67,7 @@ void SimulationWorld::NavigationSystem::give_route(const View& view, const std::
         return;
     }
     set_route(view, index, planned.waypoints, goal.z);
+    record_route(view, index, planned.shared ? RouteTraceKind::shared : RouteTraceKind::plan, planned.trace);
 }
 
 std::size_t SimulationWorld::NavigationSystem::batch_limit() const noexcept
@@ -144,6 +146,7 @@ void SimulationWorld::NavigationSystem::repair_routes(const View& view)
         {
             path.push_back({waypoint->x, waypoint->y, 0.0F});
         }
+        record_route(view, index, RouteTraceKind::repair, leg.trace);
     }
 }
 
@@ -324,6 +327,7 @@ bool SimulationWorld::NavigationSystem::plan_shared_route(const View& view, Path
             ++partial_paths;
         }
         request.shared_waypoints = shared.waypoints;
+        request.shared_trace = shared.trace;
         if (!request.shared_waypoints.empty())
         {
             ++shared_routes;
@@ -422,6 +426,12 @@ SimulationWorld::NavigationSystem::PlannedRoute SimulationWorld::NavigationSyste
     // ground members head straight for their slots instead of converging on the shared path.
     PlannedRoute planned;
     planned.expansions = leg_expansions;
+    planned.shared = true;
+    if (navigation_data_.tracing())
+    {
+        planned.trace = request.shared_trace;
+        planned.trace.raw = path_points;
+    }
     auto anchor = position;
     for (std::size_t next = 0; next < path_points.size();)
     {

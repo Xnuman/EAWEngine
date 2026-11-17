@@ -85,6 +85,8 @@ inline constexpr float give_way_seconds = 4.0F;
 // (engine choices).
 inline constexpr float give_way_ahead_seconds = 3.0F;
 inline constexpr std::uint32_t ahead_scans_per_tick = 8;
+// Route tracing keeps this many records per unit and per formation frame (debug drawing).
+inline constexpr std::size_t route_trace_depth = 8;
 inline constexpr float give_way_slower_fraction = 0.9F;
 inline constexpr float give_way_held_fraction = 0.5F;
 // Where a unit steps to give way: the shortest step out of the mover's corridor in this many

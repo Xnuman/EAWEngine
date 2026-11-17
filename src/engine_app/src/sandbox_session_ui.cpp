@@ -94,6 +94,11 @@ void SandboxSession::apply_panel_actions()
 
 void SandboxSession::update_debug_lines()
 {
+    // The simulation records route changes only while the navigation overlay shows them.
+    if (world != nullptr)
+    {
+        world->set_route_tracing(show_navigation);
+    }
     eaw::SandboxDebugView view;
     view.presentation = presentation ? &*presentation : nullptr;
     view.world = world;

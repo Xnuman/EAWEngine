@@ -1,6 +1,7 @@
 #include "sandbox/sandbox_debug_lines.hpp"
 
 #include "math/scalar.hpp"
+#include "simulation/pathfinding.hpp"
 #include "presentation/debug_draw.hpp"
 
 #include <algorithm>
@@ -9,6 +10,77 @@
 #include <unordered_map>
 
 namespace eaw {
+
+namespace {
+
+// Debug lines draped over the ground `lift` above its surface (in pieces of `piece_cells` cells), or
+// straight in 3D without ground.
+struct Pen
+{
+    std::vector<VisualDebugLine>& lines;
+    const GroundMap* ground{};
+    float lift{};
+    float piece_cells{1.0F};
+
+    [[nodiscard]] Vector3 at(const float x, const float y, const float z) const
+    {
+        return {x, y, ground != nullptr ? ground->surface_height(x, y) + lift : z};
+    }
+    void line(const Vector3& from, const Vector3& to, const Color& color) const
+    {
+        const auto pieces = ground != nullptr ? std::clamp(static_cast<int>(std::hypot(to.x - from.x, to.y - from.y) / (ground->spacing * piece_cells)), 1, 256) : 1;
+        for (int piece = 0; piece < pieces; ++piece)
+        {
+            const auto point = [&](const int step)
+            {
+                const auto t = static_cast<float>(step) / static_cast<float>(pieces);
+                return at(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t, from.z + (to.z - from.z) * t);
+            };
+            lines.push_back({point(piece), point(piece + 1), color});
+        }
+    }
+    // A cross (+), or a diagonal one (x), around a point.
+    void cross(const Vector3& center, const float size, const bool diagonal, const Color& color) const
+    {
+        const auto tilt = diagonal ? size : 0.0F;
+        lines.push_back({at(center.x - size, center.y - tilt, center.z), at(center.x + size, center.y + tilt, center.z), color});
+        lines.push_back({at(center.x - tilt, center.y + size, center.z), at(center.x + tilt, center.y - size, center.z), color});
+    }
+    void square(const Vector3& center, const float size, const Color& color) const
+    {
+        const std::array<Vector3, 4> corners{at(center.x - size, center.y - size, center.z), at(center.x + size, center.y - size, center.z), at(center.x + size, center.y + size, center.z),
+                                             at(center.x - size, center.y + size, center.z)};
+        for (std::size_t corner = 0; corner < corners.size(); ++corner)
+        {
+            lines.push_back({corners[corner], corners[(corner + 1) % corners.size()], color});
+        }
+    }
+    // A polyline through 2D points, each marked by `mark` (none when its size is 0).
+    void path(const std::vector<PathPoint>& points, const Color& color, const float mark, const bool squares) const
+    {
+        for (std::size_t index = 0; index < points.size(); ++index)
+        {
+            const Vector3 point{points[index].x, points[index].y, 0.0F};
+            if (index > 0)
+            {
+                line({points[index - 1].x, points[index - 1].y, 0.0F}, point, color);
+            }
+            if (mark > 0.0F)
+            {
+                if (squares)
+                {
+                    square(point, mark, color);
+                }
+                else
+                {
+                    cross(point, mark, false, color);
+                }
+            }
+        }
+    }
+};
+
+} // namespace
 
 std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& view)
 {
@@ -135,65 +207,90 @@ std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& v
             {
                 continue;
             }
-            const bool draped = ground.valid() && entity.follows_ground;
-            const auto lift = [&](const float x, const float y, const float z)
-            {
-                return Vector3{x, y, draped ? ground.surface_height(x, y) + 2.0F : z};
-            };
-            const auto leg = [&](const Vector3& from, const Vector3& to, const Color& color)
-            {
-                const auto pieces = draped ? std::clamp(static_cast<int>(std::hypot(to.x - from.x, to.y - from.y) / ground.spacing), 1, 256) : 1;
-                for (int piece = 0; piece < pieces; ++piece)
-                {
-                    const auto at = [&](const int step)
-                    {
-                        const auto t = static_cast<float>(step) / static_cast<float>(pieces);
-                        return lift(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t, from.z + (to.z - from.z) * t);
-                    };
-                    lines.push_back({at(piece), at(piece + 1), color});
-                }
-            };
-            // A cross (+), a diagonal cross (x), or a square around a point.
-            const auto cross_at = [&](const Vector3& at, const float size, const bool diagonal, const Color& color)
-            {
-                const auto tilt = diagonal ? size : 0.0F;
-                lines.push_back({lift(at.x - size, at.y - tilt, at.z), lift(at.x + size, at.y + tilt, at.z), color});
-                lines.push_back({lift(at.x - tilt, at.y + size, at.z), lift(at.x + tilt, at.y - size, at.z), color});
-            };
-            const auto square_at = [&](const Vector3& at, const float size, const Color& color)
-            {
-                const std::array<Vector3, 4> corners{lift(at.x - size, at.y - size, at.z), lift(at.x + size, at.y - size, at.z), lift(at.x + size, at.y + size, at.z),
-                                                     lift(at.x - size, at.y + size, at.z)};
-                for (std::size_t corner = 0; corner < corners.size(); ++corner)
-                {
-                    lines.push_back({corners[corner], corners[(corner + 1) % corners.size()], color});
-                }
-            };
+            const Pen pen{lines, ground.valid() && entity.follows_ground ? &ground : nullptr, 2.0F};
             auto from = entity.position;
             bool past_target = false;
             for (const auto& point : points)
             {
-                leg(from, point.at, past_target ? frame_leg : own_leg);
+                pen.line(from, point.at, past_target ? frame_leg : own_leg);
                 switch (point.kind)
                 {
                 case Kind::detour:
-                    cross_at(point.at, point_size, true, {1.0F, 0.55F, 0.15F, 1.0F});
+                    pen.cross(point.at, point_size, true, {1.0F, 0.55F, 0.15F, 1.0F});
                     break;
                 case Kind::waypoint:
-                    cross_at(point.at, point_size, false, own_leg);
+                    pen.cross(point.at, point_size, false, own_leg);
                     break;
                 case Kind::target:
-                    square_at(point.at, point_size, {1.0F, 0.9F, 0.3F, 1.0F});
+                    pen.square(point.at, point_size, {1.0F, 0.9F, 0.3F, 1.0F});
                     past_target = true;
                     break;
                 case Kind::frame_waypoint:
-                    cross_at(point.at, point_size, false, frame_leg);
+                    pen.cross(point.at, point_size, false, frame_leg);
                     break;
                 case Kind::final_slot:
-                    square_at(point.at, end_size, frame_leg);
+                    pen.square(point.at, end_size, frame_leg);
                     break;
                 }
                 from = point.at;
+            }
+        }
+    }
+    if (view.show_navigation && view.world != nullptr && ground.valid())
+    {
+        // Every recorded change of the selected ground units' routes (route_traces, oldest faint,
+        // newest bright), colored by what changed it: a plan cyan, a share of a group route teal, a
+        // repair leg yellow, a detour orange, the formation frame's route blue. The newest record of
+        // the unit and of its frame also show the stages of the search behind them: the 32-cell
+        // chunk route (violet, large squares at its parts), the 16-cell one (pink, small squares),
+        // and the cell path before smoothing (grey, crosses). Layers sit at different heights over
+        // the surface so they stay apart.
+        using TraceKind = SimulationWorld::RouteTraceKind;
+        constexpr float coarse_mark = 8.0F;
+        constexpr float fine_mark = 4.0F;
+        constexpr float raw_mark = 1.5F;
+        const auto color_of = [](const TraceKind kind, const float alpha)
+        {
+            return kind == TraceKind::plan     ? Color{0.35F, 1.0F, 0.9F, alpha}
+                   : kind == TraceKind::shared ? Color{0.3F, 0.8F, 0.55F, alpha}
+                   : kind == TraceKind::repair ? Color{1.0F, 0.9F, 0.3F, alpha}
+                   : kind == TraceKind::detour ? Color{1.0F, 0.55F, 0.15F, alpha}
+                                               : Color{0.35F, 0.55F, 1.0F, alpha};
+        };
+        for (const auto& entity : view.world->snapshot().entities)
+        {
+            if (!entity.follows_ground || !view.selection->contains(entity_key(entity.id)))
+            {
+                continue;
+            }
+            const auto records = view.world->route_traces(entity.id);
+            const auto newest = [&](const bool frame)
+            {
+                const SimulationWorld::RouteTrace* found = nullptr;
+                for (const auto& record : records)
+                {
+                    if ((record.kind == TraceKind::frame) == frame)
+                    {
+                        found = &record;
+                    }
+                }
+                return found;
+            };
+            for (std::size_t index = 0; index < records.size(); ++index)
+            {
+                const auto& record = records[index];
+                const auto age = static_cast<float>(records.size() - 1U - index) / static_cast<float>(records.size());
+                Pen{lines, &ground, 2.5F}.path(record.route, color_of(record.kind, 1.0F - 0.75F * age), 2.0F, false);
+            }
+            for (const auto* record : {newest(false), newest(true)})
+            {
+                if (record == nullptr)
+                {
+                    continue;
+                }
+                Pen{lines, &ground, 3.0F}.path(record->stages.raw, {0.75F, 0.75F, 0.75F, 0.7F}, raw_mark, false);
+                Pen{lines, &ground, 3.5F}.path(record->stages.fine, {1.0F, 0.45F, 0.8F, 0.9F}, fine_mark, true);
+                Pen{lines, &ground, 4.0F}.path(record->stages.coarse, {0.7F, 0.4F, 1.0F, 0.95F}, coarse_mark, true);
             }
         }
     }
@@ -242,6 +339,32 @@ std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& v
                 };
                 lines.push_back({at(segment), at(segment + 1), color});
             }
+        }
+    }
+    if (view.show_navigation && ground.valid() && ground.width > 0 && ground.height > 0)
+    {
+        // The route planner's chunk grids (pathfinding.hpp): 16-cell squares faint, 32-cell squares
+        // bright, on the cell edges (a cell covers half a spacing around its sample point), draped in
+        // pieces of 4 cells to stay within the renderer's line capacity.
+        constexpr float grid_piece_cells = 4.0F;
+        const Pen pen{lines, &ground, 1.5F, grid_piece_cells};
+        const auto spacing = ground.spacing;
+        const auto low = -0.5F * spacing;
+        const auto right = (static_cast<float>(ground.width) - 0.5F) * spacing;
+        const auto top = (static_cast<float>(ground.height) - 0.5F) * spacing;
+        const auto color_of = [](const std::uint32_t cell)
+        {
+            return cell % coarse_chunk_cells == 0 ? Color{1.0F, 1.0F, 1.0F, 0.55F} : Color{0.7F, 0.7F, 0.7F, 0.25F};
+        };
+        for (std::uint32_t column = fine_chunk_cells; column < ground.width; column += fine_chunk_cells)
+        {
+            const auto x = (static_cast<float>(column) - 0.5F) * spacing;
+            pen.line({x, low, 0.0F}, {x, top, 0.0F}, color_of(column));
+        }
+        for (std::uint32_t row = fine_chunk_cells; row < ground.height; row += fine_chunk_cells)
+        {
+            const auto y = (static_cast<float>(row) - 0.5F) * spacing;
+            pen.line({low, y, 0.0F}, {right, y, 0.0F}, color_of(row));
         }
     }
     if (view.show_navigation && ground.valid() && ground.passability.size() == ground.heights.size())
