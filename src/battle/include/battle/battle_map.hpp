@@ -40,26 +40,32 @@ struct MapEntity
 
 // How a company splits into teams (XML Max_Squad_Size; teams of 1 or less are no teams) and how
 // a team stands (its Create_Team_Type container's ContainerArrangement and FormationSpacing).
+// `container`: the company names a team container; without a Max_Squad_Size (13 stock companies,
+// the Survivors sets among them) its whole company is one team, as its one team entity is (an
+// engine guess: the original's default is unobserved).
 struct TeamLayout
 {
     std::uint32_t size{};
     TeamArrangement arrangement{TeamArrangement::dartboard};
     float spacing{0.5F};
+    bool container{};
 };
 
 // Gives `members` (a company's, in member order) their team ids, from `next_team` on, `layout.size`
-// per team, with each member's raggedness; advances `next_team` past them.
+// per team (all of them with a container and no size), with each member's raggedness; advances
+// `next_team` past them.
 inline void assign_teams(std::span<FormationMember> members, std::span<const float> raggedness, const TeamLayout& layout, std::uint32_t& next_team) noexcept
 {
-    if (layout.size <= 1U)
+    const auto size = layout.size > 0U ? static_cast<std::size_t>(layout.size) : layout.container ? members.size() : 0U;
+    if (size <= 1U)
     {
         return;
     }
     for (std::size_t index = 0; index < members.size(); ++index)
     {
-        members[index].team = {next_team + static_cast<std::uint32_t>(index / layout.size), layout.arrangement, layout.spacing, index < raggedness.size() ? raggedness[index] : 0.0F};
+        members[index].team = {next_team + static_cast<std::uint32_t>(index / size), layout.arrangement, layout.spacing, index < raggedness.size() ? raggedness[index] : 0.0F};
     }
-    next_team += static_cast<std::uint32_t>((members.size() + layout.size - 1U) / layout.size);
+    next_team += static_cast<std::uint32_t>((members.size() + size - 1U) / size);
 }
 
 // An XML object type that can be spawned at runtime: its recipe (type_recipe.hpp) and, for a

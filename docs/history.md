@@ -1065,3 +1065,12 @@ rewritten to describe the current state; the source document is noted in bracket
   (before, a held unit's route vanished), with every point marked by its kind from the new
   SimulationWorld::route_points (waypoints, avoidance detour point, move target, formation frame
   waypoints, final slot); route() is built on it. Battle hashes unchanged.
+- Research of the stock XML for formation, navigation, and movement (the owner's request), recorded
+  in xml-object-tags.md: the movement block of GameConstants.xml (about 75 constants, meanings
+  inferred from names), the Formation_Priority ladder by role, the faction look of squads in their
+  members' formation tags, and the team containers' bodiless movement profiles; three stale passages
+  saying the engine skips the team step are corrected. A company that names a Create_Team_Type
+  without a Max_Squad_Size (13 stock companies) got one team entity but no team slots for its
+  members (assign_teams read the missing size as no teams); it is now one team throughout
+  (TeamLayout::container; an engine guess, the original's default unobserved). Battle hashes
+  unchanged.

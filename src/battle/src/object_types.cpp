@@ -190,6 +190,7 @@ TeamLayout type_team_layout(const GameObjectCatalog& catalog, const XmlDefinitio
         return layout;
     }
     const auto& container = *found;
+    layout.container = true;
     if (const auto* arrangement = catalog.field(container, "ContainerArrangement").field)
     {
         layout.arrangement = ascii_equal_ignoring_case(ascii_trim(arrangement->text), "Rows") ? TeamArrangement::rows : TeamArrangement::dartboard;

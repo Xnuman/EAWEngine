@@ -489,7 +489,7 @@ These tags set how an object moves (speed, turning, acceleration, flight attitud
 | `FormationSpacing` | units 105, containers 41, props 2 (148; 2 repeats) | .3..2.75; .5 typical | Spacing between formation members (name). Engine: accepted 0..100, default 0.5. |
 | `FormationGrouping` | units 77, prop 1 (78; 2 repeats) | Standard 67, Solo 13 | Whether the unit forms up with others (name). |
 | `FormationRaggedness` | units 40 (41; 1 repeat) | 0..2.5 | Random offset of positions in a formation (name). |
-| `Formation_Priority` | ground companies 91, space 38, squadrons 26, others 34 (189; 3 repeats) | int 0..6; 1 typical | Precedence when formations are combined (name). |
+| `Formation_Priority` | ground companies 91, space 38, squadrons 26, others 34 (189; 3 repeats) | int 0..6; 1 typical | Precedence when formations are combined (name). The values form a ladder by role (data): on land companies 1 infantry, 2 light vehicles and anti-infantry, 3 tanks, 4 heavy assault, 5 anti-air, 6 artillery, Dark Troopers, and Lancets; in space 1 fighters, 2 bombers, 3 corvettes and frigates, 5 cruisers, 6 the Death Star. A company-level rank, as `FormationOrder` is a member-level one (1 scouts to 8 artillery); whether a low value stands at the front is unobserved (inference). |
 | `FormationPriority` | space corvettes 5, unique 1 (6) | 3 | Alternate spelling of Formation_Priority (data). |
 | `Formation_Prority` | ground company 1 (Rebel_Speeder_Wing) | 1 | Misspelling of Formation_Priority; probably ignored (name). |
 | `Formation_Formup_Wait_Style` | infantry 2 (Plex soldiers) | WaitNone | How the unit waits for formation formup (name). |
@@ -521,8 +521,65 @@ These tags set how an object moves (speed, turning, acceleration, flight attitud
 | `Particle_Attach_To_Collision` | particles 3 (shield absorb) | 1 | Particle attaches to the collision surface (name). |
 | `Secondary_Objective` | secondary structures 9 | TEXT_* ids | Objective text of a secondary structure (data). |
 
+#### GameConstants.xml: the movement block
+
+`GameConstants.xml` holds the global movement values, in a block headed "Pathfinding and Movement" and a later one headed "Land mode space-style pathfinding" (land units that plan the way space units do, probably snowspeeders). About 75 constants bear on movement; the tables list those that bear on formations, spacing, collision, arrival, and route planning, with the installed values. `HyperGameConstants.xml` and `AITestGameConstants.xml` override none of them, and the `Speed_Modifier`s of `WeatherModifiers.xml` are 1.0 in every stock scenario. Unless marked otherwise, **every meaning is inferred from the name**: no comment, document, or observation backs it, and the units (frames, seconds, or game units) are unconfirmed. Constants whose names describe the old engine's cadence (`FramesPerCollisionCheck` 4, whose comment says objects check for collisions every n frames; `MovementReevaluationFrameCount` 10; `FramesPerPositionApproximationRebuild` 8; `LandObjectTrackingInterval` 20; `Land_Collidable_Grid_Cull_Size` 64) are implementation artifacts the engine need not follow.
+
+Formations and squads:
+
+| Constant | Value | Likely meaning (name) |
+|---|---|---|
+| `BetweenFormationSpacing` | 5.0 | Gap between formations (companies or teams) in a group move. |
+| `Max_Formation_Area` | 14.0 | A limit on a formation's area or width (unit unclear). |
+| `Spread_Out_Spacing_Coefficient` | 1.8 | Spacing multiplier under the Spread Out ability. |
+| `Short_Range_Attack_Formation_Coefficient` | 1.6 | Formation widening, or a range factor, in short-range attacks. |
+| `Solo_Attack_Range` | 60.0 | Range at which units grouped `Solo` engage on their own. |
+| `ShouldInfantryTeamsSplitAcrossFormations` | true | A company's teams may stand in different group formations. |
+| `InfantryFormationRecruitmentDistance` / `VehicleFormationRecruitmentDistance` | 60 / 100 | Distance within which infantry and vehicles join a formation. |
+| `ShouldSkipLandFormup` / `MaxLandFormationFormupFrames` | true / 240.0 | No gathering step before a land group move; its timeout, unused while skipped. |
+| `FormationMinimumSideError` / `FormationMaximumSideError` | .1 / 30.0 | How far a member may drift sideways from its slot before correcting. |
+| `Rotate_Formation_Facing_Moves` | true | A formation turns to face its direction of travel. |
+| `FinalFormationFacingMinimumAngle` / `FinalFormationFacingDeltaCoefficient` | 10.0 / .5 | Below this angle the final facing is kept; how much of a larger change is applied. |
+| `FinalFacing180Penalty` | 1.5 | Planning cost of arriving facing backwards. |
+| `DoubleClickMoveMaxSpeedRatio` | 1.25 | A double-click move lets members go up to 25% above the group's speed. |
+| `Fleeing_Infantry_Speed_Bonus` | 2 | Speed bonus of fleeing infantry. |
+
+Collision, pushing, and giving way:
+
+| Constant | Value | Likely meaning (name) |
+|---|---|---|
+| `RepushDistance` | 6.0 | How far a pushed unit moves, or the distance after which it may be pushed again. |
+| `MinimumStoppedVsStoppedOverlapCoefficient` | .15 | Fraction of overlap tolerated between two stopped units. |
+| `MovingVsMovingLookAheadTime` | 1.5 | Look-ahead of collision prediction between moving units. |
+| `LandPredictionTimeInterval` / `MinLandPredictionDistance` | 2.0 / 60.0 | Land prediction horizon, and its least distance. |
+| `DynamicObstacleOverlapPenalty` | 15.0 | Planning cost of overlapping a moving obstacle. |
+| `DynamicAvoidanceRectangleBound` | 3 | Limit on the avoidance rectangles considered. |
+| `Destination_Collision_Query_Extension` | 60 | Extra radius when checking a destination for blockers. |
+| `UseLinearCollisionChecks` | true | Swept (linear) collision tests. |
+| `ApproximationSmoothCosAngle` / `ApproximationForwardDistance` | .9962 (cos 5 degrees) / 2.0 | Path smoothing tolerance and look-ahead. |
+
+Arrival and route planning on land:
+
+| Constant | Value | Likely meaning (name) |
+|---|---|---|
+| `LandDestinationProximity` | 60.0 | How close counts as arrived, or the search radius for a free spot. |
+| `LandTemporaryDestinationProximity` | 20.0 | The same for intermediate waypoints. |
+| `LandWaitOperatorSpeedCoefficient` | .65 | Cost of the planner's "wait" step on land. |
+| `WaitOperatorCostCoefficient` / `WaitOperatorBaseFrameTime` / `WaitOperatorSpeedCoefficient` | .8 / 100 / .2 | The planner's wait step: a search over space and time, which lets a route wait for a unit to pass. |
+| `SpecialAlignedOperatorBonus` | .6 | Cost bonus for a step along an axis. |
+| `ThreatExpansionDistance` | 600.0 | Radius of threat costs in planning. |
+| `OffMapCostPenalty` | 20.0 | Cost of leaving the playable area. |
+| `MinObstacleCostLand` / `MaxObstacleCostLand` / `XYExpansionDistanceLand` | 3.0 / 3.0 / 60.0 | Obstacle costs and node step of land space-style planning. |
+| `MaxWaypointsPerPath` | 6 | The player's waypoint limit for one order. |
+| `CloseEnoughAngleForMoveStart` | 180 | Global default of the per-type `Close_Enough_Angle_For_Move_Start` (the engine's 45 is its own). |
+| `Land_Guard_Range` / `Space_Guard_Range` | 150.0 / 750.0 | Default guard radii. |
+| `Melee_Cutoff_Range` | 51.0 | Range below which an attack counts as melee. |
+
+Space: `SpacePathfindMaxExpansions` 3500, `XYExpansionDistanceSpace` 300, `MaxRotationsSpace` 24, `MatchFacingDeltaSpace` 10, `OccupationRadiusCoefficientSpace` 1.2 (the one most likely to matter for ship spacing), `DestinationSearchRadiusIncrementSpace` 50, `Min/MaxObstacleCostSpace` 15/15, and the turn-in-place slowdowns `TurnInPlaceSlowdownCorvette/Frigate/Capital` 2/3/4. The engine reads the speed multipliers (Findings) and none of the constants above, unless the findings say otherwise.
+
 #### Findings
 
+- A squad's faction look is authored in its members' formation tags (data): `Squad_Stormtrooper` sets `FormationSpacing` .3 and `FormationRaggedness` .2 (a tight block), `Squad_Rebel_Trooper` .5 and 1.6 (a loose cluster). Infantry footprints are uniform: `Custom_Soft_Footprint_Radius` 3.5 (3.0 on the `Squad_*` variants), hard extents 2 x 2, and `Scale_Factor` 1.5 on 83 of 89 infantry types; whether the original scales footprints by `Scale_Factor` is unknown. The engine's slot pitch (footprint diameter x (1 + `FormationSpacing`)) is its own reading, not calibrated against the game.
 - Alternate spellings of one setting: `OverrideAcceleration`/`OverrideDeceleration` (145 units) versus `Override_Acceleration`/`Override_Deceleration` (40 land team containers, never both on one object); `Formation_Priority` (189) versus `FormationPriority` (6 corvettes) and the misspelt `Formation_Prority` (1); `Min_Height_Above_Terrain` versus `MinHeightAboveTerrain` (cameras). The engine reads only `OverrideAcceleration`, so team-container values are dropped; whether the original honors the underscore form is unverified.
 - GameConstants.xml multiplies every type's top speed per mode (`Object_Max_Speed_Multiplier_Land` 1.56, `_Space` 1.2, `_Galactic` 5.0); EAWEngine applies it to `Max_Speed`. In space it also scales acceleration, deceleration, and `Max_Rate_Of_Turn` (recorded in the FoC debug build: a corvette peaks at 3.72 = 3.1 x 1.2 after 62 frames, 0.05 x 1.2 per frame, and turns 1.506 = 1.25 x 1.2 degrees per frame; EaW-Revised S-10, S-12, S-26); the engine applies that in space (2026-11-13). On land the same is likely but not observed, so land turn rates and acceleration stay unscaled.
 - `MovementClass` values match MovementClassTypeDefs.xml. FoC adds `InfantryOnly` to Infantry/Flying/Space and `Impassable` (BombingRun), and adds Lancet, Spotter, LargeHover, BombingRun; EAW has 14 classes. Some vehicles use `Infantry` (6 of 33 GroundVehicle entries) and two use `Space`, so the class is about passability, not unit kind. Odd entries: Lancet lacks Obstacle, LargeHover lacks Steep. The 63 duplicate entries are identical copies on team containers.
@@ -1119,7 +1176,7 @@ The EAW CommandBarComponents comment also names enum values with no stock users 
 
 ### Companies, squadrons, teams, transports, garrisons, spawning, and special systems
 
-This family covers the tags that group objects into other objects, carry them, or make them appear. A selectable land unit (a `GroundCompany`, `HeroCompany`, `SlaveCompany`, or a `Props_Story` acting as one) lists its members in `Company_Units`; at runtime the members are grouped into team objects (`Container` kind, named by `Create_Team_Type`, at most `Max_Squad_Size` members each), and in galactic play the company travels in its `Company_Transport_Unit`. A space `Squadron` lists fighters in repeated `Squadron_Units` and places them with repeated `Squadron_Offsets`. Structures and carriers produce units through `Starting_/Reserve_Spawned_Units_Tech_0` pairs and indigenous spawn houses through `Spawn(ed)_Indigenous_*`; FoC adds garrisons, deployable units, and several special systems (stealth, conversion, vehicle theft, infection, gravity fields, dynamic transforms), while hero clashes, holstering, super weapons, and bombing runs exist in both games. EAWEngine reads only `Company_Units`, `Squadron_Units`, and `Squadron_Offsets`. Presence below is "both" when the tag is in the EAW source, the FoC source, and the installed patched data; "FoC only" when it is absent from the EAW source.
+This family covers the tags that group objects into other objects, carry them, or make them appear. A selectable land unit (a `GroundCompany`, `HeroCompany`, `SlaveCompany`, or a `Props_Story` acting as one) lists its members in `Company_Units`; at runtime the members are grouped into team objects (`Container` kind, named by `Create_Team_Type`, at most `Max_Squad_Size` members each), and in galactic play the company travels in its `Company_Transport_Unit`. A space `Squadron` lists fighters in repeated `Squadron_Units` and places them with repeated `Squadron_Offsets`. Structures and carriers produce units through `Starting_/Reserve_Spawned_Units_Tech_0` pairs and indigenous spawn houses through `Spawn(ed)_Indigenous_*`; FoC adds garrisons, deployable units, and several special systems (stealth, conversion, vehicle theft, infection, gravity fields, dynamic transforms), while hero clashes, holstering, super weapons, and bombing runs exist in both games. EAWEngine reads `Company_Units`, `Create_Team_Type`, `Max_Squad_Size`, the team container's movement and arrangement, `Squadron_Units`, and `Squadron_Offsets` (xml-tag-status.md). Presence below is "both" when the tag is in the EAW source, the FoC source, and the installed patched data; "FoC only" when it is absent from the EAW source.
 
 #### Companies and teams
 
@@ -1348,7 +1405,8 @@ All FoC only, on HeroUnit 3 (`Cuddles_The_Rancor` and death clones), Particle 1 
 
 - **Squadrons without their own offsets.** `Darth_Vader_TIE_Fighter_Squadron`, `TIE_Fighter_Squadron_E3`, and `TIE_Bomber_Squadron_E3` have `Squadron_Units` but no `Squadron_Offsets`. In the Vader case the offsets are on the team container (`Darth_Vader_TIE_Fighter_Container`, 6 offsets) named by `Create_Team_Type`. EAWEngine stacks these members at the origin with a diagnostic. It should fall back to the `Create_Team_Type` container's offsets; the E3 squadrons need a formation default.
 - **Offsets on containers.** `Red_Squadron_Container`, `Darth_Vader_TIE_Fighter_Container`, `Rogue_Squadron_Space_Container`, and `StarViper_Team` carry offsets without `Squadron_Units`. They are layout templates for the team, not expandable lists.
-- **Companies become teams, which the engine skips.** A company is split into teams of `Max_Squad_Size` (18 `Squad_Stormtrooper` with 9 gives two teams of nine; `Rebel_Infantry_Squad` gives 15 in teams of 5). The teams use the `Create_Team_Type` container's movement, arrangement (`ContainerArrangement` Dartboard or Rows), and garrison category. EAWEngine expands only `Company_Units`, so selection grouping and team formations are missing. `Create_Team_Type` and `Max_Squad_Size` are the next tags to read. GameConstants `ShouldInfantryTeamsSplitAcrossFormations` (true) is the related global.
+- **Companies become teams.** A company is split into teams of `Max_Squad_Size` (18 `Squad_Stormtrooper` with 9 gives two teams of nine; `Rebel_Infantry_Squad` gives 15 in teams of 5). The teams use the `Create_Team_Type` container's movement, arrangement (`ContainerArrangement` Dartboard or Rows), and garrison category. The containers carry a movement profile of their own, different from their members' (`Stormtrooper_Team`: speed .8 against 1.0, turn 12 against 16, spacing 1 against .3, `MovementPredictionInterval` 4), and none of the 41 has a footprint, hard extents, or push and jiggle tags: the team has no body of its own (data). EAWEngine builds a team entity per team, with the container's speed, turn, acceleration, movement class, arrangement, and spacing. GameConstants `ShouldInfantryTeamsSplitAcrossFormations` (true) is the related global.
+- **Companies with a team but no squad size.** 13 stock companies name a `Create_Team_Type` without a `Max_Squad_Size` (the Empire, Rebel, and Pirate Survivors sets, and `Pirate_Outpost_Survivors_01` to `03` with 18 members). The original's default is unobserved; EAWEngine makes the whole company one team (an engine guess). Counting the groups of `Pirate_Outpost_Survivors_01` in the game would settle it.
 - **Contradictory duplicates.** `Is_Stealth_Company` is Yes then No in `IG88_Team` and `Bossk_Team`, and `Stay_In_Transport_During_Ground_Battle` is Yes then No in `Mara_Jade`. Which one the original honours is unverified, presumably the last; the engine's catalog needs one stated rule for single-valued tags. `Create_Team` (Noghri) and `Garrison_Category` (2 saboteurs) repeat harmlessly.
 - **Float values with a C suffix.** `Spawn_Indigenous_Units_Chance` (`1.0f`) and `Spawn_Indigenous_Units_Radius` (`90.0f`) carry the suffix on all 53 objects. A strict `from_chars` parser rejects them, so a reader for these tags must accept a trailing `f`.
 - **Boolean spellings.** Booleans are written Yes/No/True/False in any case (`Is_Bomber` mostly lowercase `no`/`yes`). `Exit_Door_Distance` writes `00.0`.
@@ -2198,7 +2256,7 @@ cadence; second weapons wait for SWAP_WEAPONS), 3, 4, 5, and the inaccuracy and
    `Override_Deceleration`; the engine reads only `OverrideAcceleration`. Also
    `Formation_Priority` (189) beside `FormationPriority` (8) and the misspelt `Formation_Prority`.
 5. **Companies and squadrons.** A company forms teams of at most `Max_Squad_Size` members of its
-   `Create_Team_Type` container; the engine skips the team step. Three squadrons have no
+   `Create_Team_Type` container (the whole company when it gives no size: an engine guess). Three squadrons have no
    `Squadron_Offsets` of their own (Vader's takes them from its team container), so the engine
    stacks their members.
 6. **Damage states.** `Land_Damage_Thresholds` and `Land_Damage_Alternates` (219 objects) drive

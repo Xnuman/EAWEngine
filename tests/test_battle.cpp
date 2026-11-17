@@ -329,6 +329,14 @@ void test_combat_content()
         std::uint32_t next_team = 5;
         eaw::assign_teams(members, {}, rows, next_team);
         require(members[0].team.id == 5 && members[8].team.id == 5 && members[9].team.id == 6 && members[19].team.id == 7 && next_team == 8, "teams of nine must take consecutive ids");
+        // A company with a team container and no Max_Squad_Size is one team; one without a container
+        // forms no teams.
+        std::vector<eaw::FormationMember> survivors(6);
+        eaw::assign_teams(survivors, {}, none, next_team);
+        std::vector<eaw::FormationMember> tanks(3);
+        eaw::assign_teams(tanks, {}, eaw::TeamLayout{}, next_team);
+        require(none.container && !eaw::TeamLayout{}.container && survivors[0].team.id == 8 && survivors[5].team.id == 8 && next_team == 9 && tanks[0].team.id == 0,
+                "a company with a team and no squad size must be one team, and one without a team no team");
     }
     const auto paced = eaw::combat_profile(catalog, *definition("Paced"), content, warnings);
     require(paced.weapons.size() == 1 && paced.weapons[0].recharge_seconds == 6.0F && paced.weapons[0].pulse_count == 2 && tank.weapons[0].recharge_seconds == 1.5F,
