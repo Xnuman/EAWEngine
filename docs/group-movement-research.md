@@ -361,6 +361,33 @@ crowds enough that each fix exposes the next case. Two ways on:
   bookkeeping. Then apply A again, with these tests and the scenarios as the check.
 - **Keep the current rules** and leave A out: the turning left and right stays.
 
+### Arrival rework (built 2026-11-17)
+
+The owner chose the rework. Where a unit stops is now decided by its goal's occupancy instead of
+stall timers among crowds (pathfinding-design.md 4.4, "Arrival among others"): a goal a standing unit
+covers moves to the nearest free place around it, on the unit's side; a unit enclosed by standing
+units, or held against a unit stuck as long, gives up after 3 s. All tests pass, the narrow-passage
+cascade among them.
+
+| Measure | Baseline | Arrival rework |
+| --- | --- | --- |
+| Passage, formation | 33.8 s, 649 reversals | 33.4 s, 639 |
+| Passage, group move | 18.9 s, 243 | 20.1 s, 218 |
+| Crossing groups | 31.7 s, 537 | 31.7 s, 537 |
+| Ten T2-Bs | 351 reversals, 13.2 of 33.3 unit-s stalled | 356, 15.4 of 36.7 |
+| Large battle | 3.93 ms a tick, 55,439 reversals, 8,860 unit-s moving | 3.70 ms, 52,752, 7,895 |
+| AT-AT battle | 328 reversals, 37.4 of 86.9 unit-s stalled | 482, 94.7 of 144.4 |
+
+In the AT-AT battle units now go on to free places beside the crowd instead of stopping where they
+first met it (14 goal moves in the battle, at most 5 a unit: no churn); the AT-ATs turn in place
+toward their moved goals, which the meter counts as stalled. Whether it looks better is the owner's
+to judge.
+
+Change A (chosen velocities) on the rework was mixed again: the large battle improved further
+(44,666 reversals, 3.69 ms), but the ten T2-Bs got worse (485 reversals), the group move through the
+gap slowed to 28.6 s, and the search-budget test left four units moving. A is not kept; the T2-B's
+turning remains open, for the local fixes (6, RORCAL, and sidedness memory).
+
 The order of work changes accordingly: make arrivals robust first (no cascade along a column: a
 unit stopped short of its slot is no crowd for units whose own slots are free; final slots assigned
 at the frame's arrival, recommendation 9), then apply A again, then the local fixes against the

@@ -2055,11 +2055,10 @@ private:
         // Records where the unit stops at the end of a move (RouteColumns::last_goals), not at a
         // formation slot on the way.
         void record_stop(const View& view, std::size_t index);
-        // Whether the unit's destination is taken (or as good as reached: held for a while within its
-        // diameter of it): it heads for its last point and touches (within
-        // taken_goal_margin) a standing agent covering that point, or, having come no closer for
-        // arrival_stall_seconds, a standing agent of its owner nearer that point. It then stops where
-        // it is, the point closest to the goal where it overlaps no one (the owner, 2026-11-15).
+        // Arrival among others, on the last leg (docs/pathfinding-design.md 4.4): true when the unit
+        // stops where it is: held for a while within its diameter of its goal, no free place near a
+        // goal a standing unit covers, or enclosed by standing units for the give-up time. A goal a
+        // standing unit covers moves to the nearest free place around it (and the unit goes on).
         [[nodiscard]] bool goal_taken(const View& view, std::size_t index);
         // goal_taken's scratch: the agents at the goal.
         std::vector<std::uint32_t> goal_query_;

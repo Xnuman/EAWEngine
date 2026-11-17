@@ -982,86 +982,71 @@ bool SimulationWorld::MovementSystem::goal_taken(const View& view, const std::si
     {
         return false;
     }
-    const auto& goal = *route.move_targets[index];
+    auto& goal = *route.move_targets[index];
     const auto& here = placement.positions[index];
     const auto own_distance = std::hypot(goal.x - here.x, goal.y - here.y);
-    // It has come no closer for a while: a unit still working its way through a crowd is not stopped.
+    // It has come no closer for a while: a unit still working its way through others is not stopped.
     const bool stalled = route.stalled_ticks[index] >= ticks_for(view, arrival_stall_seconds);
     // Held within its footprint's diameter of its goal (by the units around it): arrived.
     if (stalled && own_distance <= radius * arrival_reach_share)
     {
         return true;
     }
-    const auto owner = view.get<IdentityColumns>().owners[index];
-    query_.clear();
-    avoidance.grid.query_overlapping(here, radius * 5.0F + avoidance.largest_radius * taken_goal_margin, query_);
-    // Standing: no move of its own, and not giving way (a unit stepping aside is no crowd).
+    // Standing: no move of its own, and not giving way (a unit stepping aside comes back).
     const auto standing_at = [&](const std::size_t other)
     {
-        return !route.move_targets[other] && !route.give_ways[other];
+        return other != index && radii[other] > 0.0F && !route.move_targets[other] && !route.give_ways[other];
     };
-    // A crowd is made of allies that stopped short of their own goals (held off by those in front):
-    // in a group move each member has a slot of its own, and group-mates that reached theirs are no
-    // crowd at its goal; a unit held behind them waits for them to give way (the owner's report:
-    // units stopped while others had not finished giving way).
-    const auto stopped_short = [&](const std::size_t other)
-    {
-        const auto& stopped_at = route.last_goals[other];
-        return stopped_at && distance_xy(placement.positions[other], *stopped_at) > radii[other];
-    };
-    // Allies that reached their own goals count too where this unit's own goal is taken (a standing
-    // unit on it): the inner ring of a crowd at shared points; or once it has come no closer for the
-    // give-up time (its goal is a hole among standing allies too narrow to reach, and no one made way):
-    // where it stands is the closest point it can reach.
     const auto& placed = placement.positions;
-    const bool given_up = route.stalled_ticks[index] >= ticks_for(view, arrival_give_up_seconds);
-    goal_query_.clear();
-    avoidance.grid.query_overlapping(goal, radius, goal_query_);
-    const bool goal_occupied =
-        std::ranges::any_of(goal_query_,
-                            [&](const std::uint32_t other)
-                            {
-                                return other != index && radii[other] > 0.0F && standing_at(other) && distance_xy(placed[other], goal) < agent_room(view, index, goal, other, placed[other]);
-                            });
+    // Whether a standing unit covers a point (their footprints would overlap there).
+    const auto covered = [&](const float x, const float y)
+    {
+        const Vector3 at{x, y, here.z};
+        goal_query_.clear();
+        avoidance.grid.query_overlapping(at, avoidance.reaches[index], goal_query_);
+        return std::ranges::any_of(goal_query_,
+                                   [&](const std::uint32_t other)
+                                   {
+                                       return standing_at(other) && distance_xy(placed[other], at) < agent_room(view, index, at, other, placed[other]);
+                                   });
+    };
+    // Its goal under a standing unit: the goal moves to the nearest free place around it, on that ring
+    // the one nearest the unit, and the unit goes on there. A crowd at one point grows ring by ring
+    // that way, each unit taking the nearest free place on its side; a group-mate's slot taken by a
+    // unit that stopped short of its own is replaced the same way, so no column stops behind it. With
+    // no free place within reach, where it stands is the closest point it can reach (the owner: the
+    // closest point to the goal where it overlaps no one; docs/group-movement-research.md).
+    if (covered(goal.x, goal.y))
+    {
+        const auto free = nearest_free_point_toward(goal, radius, arrival_search_rings, {here.x, here.y},
+                                                    [&](const float x, const float y)
+                                                    {
+                                                        return stands_at(view, index, x, y) && !covered(x, y);
+                                                    });
+        if (!free)
+        {
+            return true;
+        }
+        goal = {free->x, free->y, goal.z};
+        route.closest_approaches[index] = std::numeric_limits<float>::max();
+        route.stalled_ticks[index] = 0;
+        return false;
+    }
+    // Come no closer for the give-up time while touching a standing unit, or one stuck as long itself:
+    // enclosed (its goal a hole among them it cannot reach), or two units held against each other for
+    // good, it stops there. Units held in a queue are held by units that move on, and wait.
+    const auto give_up = ticks_for(view, arrival_give_up_seconds);
+    if (route.stalled_ticks[index] < give_up)
+    {
+        return false;
+    }
+    query_.clear();
+    avoidance.grid.query_overlapping(here, avoidance.reaches[index] * (1.0F + taken_goal_margin), query_);
     return std::ranges::any_of(query_,
                                [&](const std::uint32_t other)
                                {
-                                   if (other == index || radii[other] <= 0.0F)
-                                   {
-                                       return false;
-                                   }
-                                   // Both rules below take a standing unit: the others cost nothing more.
-                                   const bool standing = standing_at(other);
-                                   if (!standing)
-                                   {
-                                       return false;
-                                   }
-                                   const auto& there = placement.positions[other];
-                                   const auto reach = agent_room(view, index, here, other, there);
-                                   const auto from_goal = std::hypot(goal.x - there.x, goal.y - there.y);
-                                   const auto apart = std::hypot(here.x - there.x, here.y - there.y);
-                                   // Its goal under a standing unit it touches.
-                                   if (standing && from_goal < reach && apart <= reach * (1.0F + taken_goal_margin))
-                                   {
-                                       return true;
-                                   }
-                                   // Stalled at a crowd of its allies that stopped at the end of the same order, or at
-                                   // destinations near its own (within taken_goal_crowd of their summed radii: units sent
-                                   // to one point, or to neighbouring slots), between it and
-                                   // its goal, within two of its own footprints' widths of them (a crowd grows ring by ring,
-                                   // rings a little apart where avoidance kept its margins:
-                                   // each ring stops at the ring that stopped before it). An ally that stopped elsewhere is
-                                   // no crowd at this goal: a unit held behind it waits for it to give way (the owner's
-                                   // report: companies sent through a standing squad stopped at it). A jam of moving units
-                                   // is no crowd either.
-                                   const auto& stopped_at = route.last_goals[other];
-                                   const auto& serials = view.get<OrderColumns>().command_serials;
-                                   const bool same_order = serials[other] == serials[index];
-                                   // Giving up counts only beside allies that stopped near its own goal (not anywhere along a
-                                   // queue at a passage, where a long wait is normal).
-                                   const bool near_goal = stopped_at && distance_xy(*stopped_at, goal) < reach * taken_goal_crowd;
-                                   return stalled && standing && (stopped_short(other) || goal_occupied || (given_up && near_goal)) && (same_order || near_goal) &&
-                                          view.get<IdentityColumns>().owners[other] == owner && from_goal < own_distance && apart <= reach + 4.0F * radius;
+                                   const bool stuck = other != index && radii[other] > 0.0F && route.move_targets[other] && route.stalled_ticks[other] >= give_up;
+                                   return (standing_at(other) || stuck) && distance_xy(placed[other], here) <= agent_room(view, index, here, other, placed[other]) * (1.0F + taken_goal_margin);
                                });
 }
 

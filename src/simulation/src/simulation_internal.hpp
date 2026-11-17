@@ -133,20 +133,15 @@ inline constexpr float detour_beside = 1.5F;
 inline constexpr std::uint32_t detours_per_tick = 4;
 // Route repairs (repair_routes) a tick, in entity order. An engine choice.
 inline constexpr std::uint32_t route_repairs_per_tick = 8;
-// A unit heading for its destination stops where it touches (within this share of their summed radii
-// beyond contact) a standing unit that covers the destination, or, having come no closer to it by the
-// progress distance (world units) for the stall time, a standing unit of its owner nearer the
-// destination than itself: the closest point to the goal where it overlaps no one, when units
-// already stand there (the owner, 2026-11-15; goal_taken). Engine choices.
+// Arrival among others (goal_taken): a goal a standing unit covers moves to the nearest free place
+// around it, searched in rings a radius apart out to arrival_search_rings; a unit enclosed by standing
+// units (touching one, within taken_goal_margin of their summed extents beyond contact) that came no
+// closer to its goal by the progress distance (world units) for the give-up time stops there. Giving
+// way, which takes about a second, has its chance first. Engine choices.
 inline constexpr float taken_goal_margin = 0.25F;
-// Allies count as the crowd at a unit's destination when they stopped at destinations within this
-// many summed radii of it (goal_taken). An engine choice.
-inline constexpr float taken_goal_crowd = 6.0F;
+inline constexpr std::uint32_t arrival_search_rings = 24;
 inline constexpr float arrival_progress = 0.5F;
 inline constexpr float arrival_stall_seconds = 1.0F;
-// A unit that came no closer for this long beside standing allies nearer its goal stops there even
-// when its goal is free (a hole among them it cannot reach); giving way, which takes about a second,
-// had its chance first. An engine choice.
 inline constexpr float arrival_give_up_seconds = 3.0F;
 // A unit that came no closer for the stall time within this share of its radius of its goal has
 // arrived (packed neighbours held formation members a few units short of their slots, and two units

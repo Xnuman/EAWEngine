@@ -869,12 +869,12 @@ navigation, not a reproduction of the original's.
 - **Placing destinations and arrival** (the owner's model: the destination fits the unit, the route
   respects its size): a move's point moves to the nearest place the unit fits (`place_destination`,
   a squad by its extent, off standing units but those of the order); a group's block first shifts to
-  where all of it fits, then single slots move (`place_block`). A unit stops at a standing unit on its
-  destination, or, after a second without progress, at a crowd of standing allies there: allies that
-  stopped at the end of the same order or at destinations within six summed radii of its own and two
-  footprints' widths beyond contact (`RouteColumns::last_goals`); units giving way count neither as
-  standing nor as a crowd. A unit held a second within its radius of its goal has arrived; on its last
-  leg the preferred speed reaches the goal within the horizon.
+  where all of it fits, then single slots move (`place_block`). On arrival, a goal a standing unit
+  covers moves to the nearest free place around it on the unit's side, and the unit goes on there (a
+  crowd grows ring by ring); a unit enclosed by standing units, or held against one stuck as long, stops
+  after 3 s; units giving way count as no one standing. A unit held a second within its diameter of its
+  goal has arrived; on its last leg the preferred speed reaches the goal within the horizon
+  (pathfinding-design.md 4.4).
 - Known limits: companies do not queue each other at a narrow place; soldiers lagging behind their
   squad are not kept apart from units outside it; the navigation and movement cost of whole armies in
   formation is not profiled. The sandbox's `--auto-move` orders every mobile unit of an owner,

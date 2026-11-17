@@ -1114,3 +1114,11 @@ rewritten to describe the current state; the source document is noted in bracket
   plans the same detour forever, because a detour's first waypoint counts as passed at once and
   units with waypoints never count as stalled. Three further fixes each exposed another case. The
   arrival rules are local patches; a rework of arrivals as a whole is proposed to the owner.
+- Arrival rework (the owner's choice; pathfinding-design.md 4.4, group-movement-research.md): a goal
+  a standing unit covers moves to the nearest free place around it on the unit's side
+  (nearest_free_point_toward), and the unit goes on; a unit enclosed by standing units, or held
+  against one stuck as long, gives up after 3 s. The crowd chain of stalled units beside allies that
+  stopped short is gone, and with it the cascade along a column. Large battle 3.70 ms a tick (3.93),
+  52,752 reversals (55,439); the AT-AT battle's units travel on to free places (482 reversals, 328
+  before). Chosen velocities on top were mixed again and are not kept. Hashes: reference
+  0x49f55068cce826a9, large Utapau 0x78ad579c927f12f7, AT-ATs 0xbeaa23eaecf58278; space unchanged.

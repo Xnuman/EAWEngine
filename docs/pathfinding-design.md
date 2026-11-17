@@ -341,20 +341,24 @@ Built in `simulation_avoidance.cpp` and `orca.*` (the solver alone, tested by `t
   most three times a route and not into a crowd at its goal; a way closed only by held movers does
   not end the order.
 - **Arrival among others** (the owner: the closest point to the goal where it overlaps no one;
-  `goal_taken`, `RouteColumns::closest_approaches`, `stalled_ticks`, `last_goals`, hashed):
-  - A unit stops where it touches a standing unit on its destination, or, having come no closer for
-    a second, at a standing ally between it and its destination that stopped at the end of the same
-    order or at a destination within six summed radii of its own, and within two of its footprints'
-    widths beyond contact (a crowd grows ring by ring, rings a little apart where avoidance kept its
-    margins).
-  - The crowd is made of allies that stopped short of their own goals; allies that reached theirs
-    count only where the unit's own goal is occupied, or once it has come no closer for 3 s beside
-    allies that stopped near its goal (a free goal enclosed among them).
-  - In a group move each member has a slot of its own: group-mates standing in theirs, or units
-    giving way, are no crowd (the owner's report of units stopping while others gave way). An ally
-    standing in the way after a move elsewhere is no crowd either: without that condition companies
-    sent through a standing squad stopped at it (the owner's report).
+  reworked 2026-11-17, [group-movement-research.md](group-movement-research.md); `goal_taken`,
+  `RouteColumns::closest_approaches`, `stalled_ticks`, hashed). On its last leg:
+  - A goal a standing unit covers (one with no move of its own and not giving way, whose footprint
+    would overlap the unit's there) moves to the nearest free place around it: rings a radius apart,
+    on the first ring with a free place the one nearest the unit (`nearest_free_point_toward`), and
+    the unit goes on there. A crowd at one point grows ring by ring that way, each unit taking the
+    nearest free place on its side; a group-mate's slot taken by a unit that stopped short of its own
+    is replaced the same way. With no free place within 24 rings, the unit stops where it is.
   - A unit that came no closer for a second within its diameter of its goal has arrived.
+  - A unit that came no closer for 3 s while touching a standing unit, or a unit stuck as long
+    itself, stops there: enclosed by standing units, or two units held against each other for good.
+    Units in a queue are held by units that move on, and wait.
+  - Units standing anywhere but on its goal stop no one: group-mates in their own slots, units
+    giving way, and allies standing in the way after a move elsewhere (the owner's reports) are
+    passed by avoidance and detours.
+  - The rules this replaces stopped a stalled unit beside allies that had stopped short of their own
+    goals; one group-mate stopping short then stopped a whole column behind it, each unit on the one
+    before (the narrow-passage test with chosen velocities).
   - On its last leg a unit's preferred speed is what reaches its goal within the horizon: at full
     speed ORCA took a standing unit beyond the goal for a collision and held a unit still ten units
     short.
