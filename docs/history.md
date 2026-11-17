@@ -977,3 +977,17 @@ rewritten to describe the current state; the source document is noted in bracket
   the build before the oriented footprints shows the same walker turning in place for 2.3 s and its
   auto-move ending at tick 150 with the Gargantuan in range, so it never walks; what looks frozen is
   the in-place turn's presentation, left to look into.
+- The owner's stuck AT-AT on Utapau (the sandbox's --auto-move, which sends everyone toward the
+  camera's focus, Utapau's pit, so each unit goes to the nearest point it can reach): probes in the
+  sandbox showed it turning in place with its turn clips, counted as held up (its speed is zero
+  while it turns), and the detour code then stopped its move for good (stop_here) at the AT-AT in
+  front of it, itself turning in place. A walker turning in place is no longer held up, nor a held
+  mover to others. Verified in the sandbox (the AT-AT walks after its turn); a synthetic test of two
+  turning walkers did not reproduce the stop without the fix and was dropped. Hashes: large Utapau
+  0xb3175f7a915e4fe9, AT-ATs 0xeba641db42fd2ff4; the AT-AT battle's path nodes fell from 131,625 to
+  33,379. The headless battle spawns at the map's open middle, the sandbox under the screen center:
+  the owner's scenarios reproduce only in the sandbox.
+- The Gargantuan's detour on Utapau measured: both planners (refined chunks and plain cells) find
+  the same 5,300-unit route, because the gate beside its start reads 30-32 clearance against its
+  37.3 footing, though about 90-100 units of clear cells wide: the 20-unit grid's squares understate
+  diagonal gaps. Now on the roadmap for the owner's decision.

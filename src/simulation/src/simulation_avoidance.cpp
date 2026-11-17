@@ -424,8 +424,9 @@ void SimulationWorld::NavigationSystem::plan_detours(const View& view)
     for (std::size_t index = 0; index < identity.ids.size(); ++index)
     {
         // Held up: moving, slower than the held share of its speed (a formation member follows its
-        // frame instead).
-        if (!ground_steers(view, index) || in_moving_frame(view, index) || length(motion.velocities[index]) >= travel_speed(view, index) * give_way_held_fraction)
+        // frame instead; a walker turning in place with its turn clips stands by design, the owner's
+        // stuck AT-AT on Utapau).
+        if (!ground_steers(view, index) || in_moving_frame(view, index) || turning_as_clips(view, index) || length(motion.velocities[index]) >= travel_speed(view, index) * give_way_held_fraction)
         {
             route.blocked_ticks[index] = 0;
             continue;
@@ -462,7 +463,7 @@ void SimulationWorld::NavigationSystem::plan_detours(const View& view)
             Marked marked;
             for (const auto other : query_)
             {
-                const bool held_mover = held && route.move_targets[other] && length(motion.velocities[other]) < travel_speed(view, other) * give_way_held_fraction;
+                const bool held_mover = held && route.move_targets[other] && !turning_as_clips(view, other) && length(motion.velocities[other]) < travel_speed(view, other) * give_way_held_fraction;
                 if (other == index || radii[other] <= 0.0F || (route.move_targets[other] && !held_mover))
                 {
                     continue;

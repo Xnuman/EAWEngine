@@ -122,6 +122,14 @@ honor are worked through tag by tag from [xml-tag-status.md](xml-tag-status.md) 
       (status.md). Open:
       - sharing one footprint index between avoidance, contact, behavior, and combat (four grids
         are built each tick; pathfinding-design.md 4.5);
+      - clearance on the 20-unit passability grid understates gaps that run diagonally to it (each
+        sample counts as a blocked square, its corners stepping into the gap): Utapau's gate beside
+        the Gargantuan's start is about 90-100 units wide in clear cells but reads 30-32 in its middle,
+        under the Gargantuan's 37.3, so it goes around (the owner's report, 2026-11-17); a finer
+        measure (distance to blocked samples with a smaller margin, or sub-cell edges) for the owner
+        to decide;
+      - walkers' turns in place overshoot and correct (an AT-AT on Utapau turned to -1.75 for a way at
+        -1.31): the turn clips' angles are inferred, as the item above says;
       - the opening ticks' route planning: in the AT-AT reference battle tick 3 takes 19-21 ms,
         nearly all navigation (over the 16.7 ms frame budget; there before the oriented
         footprints, measured 2026-11-17);
