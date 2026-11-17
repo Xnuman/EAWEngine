@@ -305,8 +305,8 @@ Built in `simulation_avoidance.cpp` and `orca.*` (the solver alone, tested by `t
     refinement). On the large Utapau battle, 33 of 39 such searches found no way: the allies that
     cannot step aside are packed crowds that close the passage. Each failed search cost about 16,000
     expansions, and blocked moves rose from 1,371 to 1,522. Whether a group of allies closes the way
-    is what the detours on arrival already test (`plan_detours`). A detour ahead would need that test,
-    not the step-aside answer, and waits for the owner's decision.
+    is what the detours on arrival already test (`plan_detours`). The owner decided (2026-11-17) to
+    keep it that way: units detour when they find the way closed.
 - **Any direction, and lanes** (the owner: units may step diagonally and in other directions as long
   as the way is free, and go back to their place; lines open): the point aside is the shortest step
   out of the passer's corridor in any of 16 directions (sideways, diagonally, forward, or back, not

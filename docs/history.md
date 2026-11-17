@@ -1059,3 +1059,5 @@ rewritten to describe the current state; the source document is noted in bracket
   blocked moves (1,385 before), 3.97 ms a tick (3.87). Hashes: reference 0x235cc2a1e4f4ec23, large Utapau
   0x7f620bed5af59350, AT-ATs 0xb9f8985ae0fbca7a; the space battles 0x6ceb71e324afdd9d and 0xca4b22c9901874b8 change only because
   the new route state is hashed for every entity.
+- The owner decided to keep giving way ahead without a detour planned ahead: units detour when they
+  find the way closed (plan_detours). The roadmap item for a detour ahead is removed.

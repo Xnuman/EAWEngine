@@ -128,9 +128,6 @@ honor are worked through tag by tag from [xml-tag-status.md](xml-tag-status.md) 
         all navigation data and the next searches rebuild it whole;
       - refining the rest of a route as a unit advances, and rebuilding only changed chunks;
       - companies queueing at narrow places;
-      - a detour planned ahead around allies on the route that close the way (giving way ahead is
-        built; the owner's detour at once around allies that cannot step aside was measured and
-        left out, pathfinding-design.md 4.4: it needs a test of whether they close the way).
       Enemies count for planning when seen; every enemy until fog of war exists. The measurements
       behind it (separation's broad phase sized by the largest unit, 63 candidates a query against
       8 with infantry only; about 13 overlaps a unit; the opening tick's 5,062 target searches,
