@@ -8,6 +8,7 @@
 #include "battle/battle_log.hpp"
 #include "battle/battle_runtime.hpp"
 #include "battle/battle_scripts.hpp"
+#include "sandbox/movement_metrics.hpp"
 #include "sandbox/text_format.hpp"
 
 #include <algorithm>
@@ -46,6 +47,9 @@ struct BattleRun
     std::optional<BattleScriptStats> scripts;
     // With --hash-trace: the subject hashes after each tick.
     std::vector<StateHashes> trace;
+    // Turn reversals and stalls of ground units (movement_metrics.hpp).
+    MovementMetrics movement;
+    double tick_seconds{};
     bool failed{};
 };
 
@@ -94,6 +98,7 @@ BattleRun run_once(const BattleMapAsset& asset, const std::string& map_name, con
         }
         stress.emplace(center, asset.ground.valid() ? &asset.ground : nullptr, std::move(placed), runtime.tick_seconds());
     }
+    MovementMeter meter;
     const auto start = std::chrono::steady_clock::now();
     if (!replay)
     {
@@ -168,7 +173,10 @@ BattleRun run_once(const BattleMapAsset& asset, const std::string& map_name, con
         {
             run.trace.push_back(world.state_hashes());
         }
+        meter.observe(world.snapshot());
     }
+    run.movement = meter.metrics();
+    run.tick_seconds = world.tick_seconds();
     run.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     run.hash = world.state_hash();
     run.stats = world.stats();
@@ -217,7 +225,8 @@ void print_run(const BattleRun& run, const std::uint64_t ticks_run)
               << "Combat: " << stats.shots_fired << " shots, " << stats.hits << " hits, " << stats.kills << " kills, " << stats.hardpoints_destroyed << " hardpoints destroyed, " << stats.crushed
               << " crushed, " << stats.ground_hits << " misses landed, " << stats.projectiles << " in flight\n"
               << "Paths: " << stats.path_searches << " planned, " << stats.partial_paths << " partial, " << stats.shared_routes << " shared, " << stats.path_expansions << " nodes expanded, "
-              << stats.blocked_moves << " blocked moves\n";
+              << stats.blocked_moves << " blocked moves\n"
+              << "Movement: " << format_movement(run.movement, stats, run.tick_seconds) << '\n';
     // Each tick layer: average milliseconds per tick, and the slowest tick's.
     const auto per_tick = [&](const double total)
     {

@@ -3,6 +3,7 @@
 #include "vfs/game_installation.hpp"
 #include "vfs/virtual_file_system.hpp"
 #include "sandbox/battle_runner.hpp"
+#include "sandbox/movement_scenarios.hpp"
 #include "sandbox/path_audit.hpp"
 #include "sandbox/sandbox_options.hpp"
 #include "engine_app/image_compare_command.hpp"
@@ -41,6 +42,11 @@ int main(const int argc, char** argv)
     if (argc >= 2 && std::string_view(argv[1]) == "compare-images")
     {
         return eaw::engine_app::run_image_compare(argc, argv);
+    }
+    // Synthetic movement scenarios need no game installation either.
+    if (argc >= 2 && std::string_view(argv[1]) == "movement-scenarios")
+    {
+        return eaw::run_movement_scenarios();
     }
     auto parse_result = eaw::parse_sandbox_options(argc, argv);
     if (!parse_result)

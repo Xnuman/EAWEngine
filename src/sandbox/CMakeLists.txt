@@ -8,6 +8,8 @@ set(SOURCES_DIR "src")
 
 set(EAW_SANDBOX_HEADERS
     ${HEADERS_DIR}/battle_runner.hpp
+    ${HEADERS_DIR}/movement_metrics.hpp
+    ${HEADERS_DIR}/movement_scenarios.hpp
     ${HEADERS_DIR}/path_audit.hpp
     ${HEADERS_DIR}/sandbox_content.hpp
     ${HEADERS_DIR}/sandbox_debug_lines.hpp
@@ -19,6 +21,8 @@ set(EAW_SANDBOX_SOURCES
     ${SOURCES_DIR}/battle_runner.cpp
     ${SOURCES_DIR}/battle_stress.cpp
     ${SOURCES_DIR}/battle_stress.hpp
+    ${SOURCES_DIR}/movement_metrics.cpp
+    ${SOURCES_DIR}/movement_scenarios.cpp
     ${SOURCES_DIR}/path_audit.cpp
     ${SOURCES_DIR}/sandbox_content.cpp
     ${SOURCES_DIR}/sandbox_debug_lines.cpp

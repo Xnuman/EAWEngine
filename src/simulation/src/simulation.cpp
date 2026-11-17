@@ -404,6 +404,7 @@ SimulationWorld::Stats SimulationWorld::stats() const noexcept
             .path_expansions = navigation_.path_expansions,
             .queued_paths = path_queue_.requests.size(),
             .shared_routes = navigation_.shared_routes,
+            .route_changes = navigation_.route_changes,
             .shots_fired = combat_counters_.shots_fired,
             .hits = combat_counters_.hits,
             .kills = combat_counters_.kills,
@@ -888,6 +889,11 @@ void SimulationWorld::remove_entities(std::vector<std::size_t> dense)
     {
         reshape_squad(squad_slot);
     }
+}
+
+double SimulationWorld::tick_seconds() const noexcept
+{
+    return clock_.tick_seconds;
 }
 
 std::vector<Vector3> SimulationWorld::route(const EntityId id) const

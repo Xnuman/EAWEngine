@@ -268,4 +268,32 @@ budgeted planner for everything about other units.
 
 The state before this work is tagged `baseline-2026-11-17` in the repository, so it can be
 compared with and returned to. Its battle hashes are those of `scripts/check-battle.ps1` at that
-tag; its movement measurements are recorded here once the measurement of step 1 exists.
+tag. The measurements (step 1, [tools.md](tools.md#movement-measurements)) were added without
+changing movement (battle hashes unchanged), so these are the baseline's numbers:
+
+| Scenario (`movement-scenarios`) | Time | Reversals | Stalled of moving (unit-s) | Route changes (plan, repair, detour, frame) | Blocked |
+| --- | --- | --- | --- | --- | --- |
+| Ten tanks through a gap, formation | 33.8 s | 649 | 35.6 of 284.0 | 6, 46, 2, 1 | 6 |
+| Ten tanks through a gap, group move | 18.9 s | 243 | 37.8 of 121.7 | 11, 38, 1, 0 | 1 |
+| Head-on pair | 4.9 s | 4 | 0.0 of 9.2 | 2, 0, 0, 0 | 0 |
+| Three converging | 4.4 s | 12 | 0.1 of 13.2 | 3, 0, 0, 0 | 0 |
+| Two groups of five crossing | 31.7 s | 537 | 72.3 of 292.6 | 6, 0, 0, 2 | 0 |
+
+| Battle on Utapau, auto-move (`battle`) | Reversals | Stalled of moving (unit-s) | Route changes (plan, repair, detour) | Blocked |
+| --- | --- | --- | --- | --- |
+| Reference (2 squads, 3 T2-Bs; 3,000 ticks) | 141 | 3.5 of 20.6 | 12, 0, 0 | 3 |
+| Large (160 squads, 60 T2-Bs, 40 AT-STs; 1,800 ticks) | 55,439 | 3,925 of 8,860 | 1,728, 518, 94 | 1,371 |
+| AT-ATs (4 AT-ATs, 6 squads, 4 T2-Bs; 3,600 ticks) | 328 | 37.4 of 86.9 | 30, 2, 1 | 4 |
+| Ten T2-Bs (3,600 ticks) | 351 | 13.2 of 33.3 | 10, 0, 0 | 0 |
+
+No shared routes or frames appear in the battles: auto-move gives a group move.
+
+What the numbers show:
+
+- Two groups of five crossing need 31.7 s for what alone takes about 5 s, a quarter of it stalled;
+  ten tanks through a gap take 33.8 s as a formation against 18.9 s as a group move.
+- Reversals are frequent wherever units meet: about 2.3 a tank each second moving through the gap,
+  and about 10 in the ten-T2-B battle. A probe of one T2-B there (not kept) showed the owner's
+  deadlock: from its 137th tick it stood at speed 0 while its heading flipped 10 degrees back and
+  forth every few ticks; before that, moving, its heading also jumped 10 degrees back and forth.
+- The symmetric cases (head-on, three converging) resolve in this engine; the losses are in groups.

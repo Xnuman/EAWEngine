@@ -648,6 +648,18 @@ private:
 class SimulationWorld final
 {
 public:
+    // What changed a ground unit's route (route tracing, and Stats::route_changes): a plan of its own,
+    // its part of a group's shared route, a repair leg back to its way, a detour around units, and its
+    // formation frame's route.
+    enum class RouteTraceKind : std::uint8_t
+    {
+        plan,
+        shared,
+        repair,
+        detour,
+        frame,
+    };
+    static constexpr std::size_t route_trace_kind_count = 5;
     struct Stats
     {
         std::uint64_t tick{};
@@ -667,6 +679,9 @@ public:
         // shared path.
         std::size_t queued_paths{};
         std::uint64_t shared_routes{};
+        // Changes to ground units' routes by what made them (RouteTraceKind; a formation frame's route
+        // counts once per frame), the measure of route churn (docs/group-movement-research.md).
+        std::array<std::uint64_t, route_trace_kind_count> route_changes{};
         std::uint64_t shots_fired{};
         std::uint64_t hits{};
         std::uint64_t kills{};
@@ -763,15 +778,7 @@ public:
     // is recorded with the stages of the search behind it (PathTrace) and the whole route after it:
     // a plan of its own, its part of a group's shared route, a repair leg back to its way, a detour
     // around units, and its formation frame's route. Not part of the state hash; never read by the
-    // simulation. Turning it off forgets the records.
-    enum class RouteTraceKind : std::uint8_t
-    {
-        plan,
-        shared,
-        repair,
-        detour,
-        frame,
-    };
+    // simulation. Turning it off forgets the records. RouteTraceKind is declared above Stats.
     struct RouteTrace
     {
         std::uint64_t tick{};
@@ -785,6 +792,8 @@ public:
     [[nodiscard]] std::vector<RouteTrace> route_traces(EntityId id) const;
     [[nodiscard]] const SimSnapshot& snapshot() const noexcept;
     [[nodiscard]] Stats stats() const noexcept;
+    // Seconds of simulated time per tick.
+    [[nodiscard]] double tick_seconds() const noexcept;
     // FNV-1a over every gameplay component, in storage order: equal hashes mean identical simulation
     // state. Presentation keys (EntitySpawn::visual) and derived outputs (snapshot speed) are left
     // out, so how a scene was built for drawing never changes a battle's hash.
@@ -2120,6 +2129,7 @@ private:
         std::uint64_t partial_paths{};
         std::uint64_t path_expansions{};
         std::uint64_t shared_routes{};
+        std::array<std::uint64_t, route_trace_kind_count> route_changes{};
         std::size_t waiting_members{};
         std::uint64_t released_members{};
 

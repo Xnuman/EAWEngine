@@ -1094,3 +1094,10 @@ rewritten to describe the current state; the source document is noted in bracket
   ally pushes, side commitment, chosen velocities into ORCA; then the RORCAL symmetry breaker; then
   the formation layer). Found while reading: ORCA is fed realized, clipped velocities instead of
   chosen ones. The state before this work is tagged baseline-2026-11-17.
+- Movement measurements (step 1 of the group movement work): the simulation counts route changes by
+  kind (Stats::route_changes: plan, shared, repair, detour, frame; never hashed); headless battles
+  print a Movement line with reversals (a 10-degree swing undone within a second), stalled
+  unit-seconds, and the route changes; EAWEngine movement-scenarios runs five synthetic group moves
+  without a game installation. Battle hashes unchanged. The baseline numbers are in
+  group-movement-research.md: two groups of five crossing take 31.7 s (about 5 s alone); a T2-B
+  probe showed the owner's deadlock, standing still with its heading flipping 10 degrees.
