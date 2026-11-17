@@ -1036,3 +1036,8 @@ rewritten to describe the current state; the source document is noted in bracket
   soldiers keep their circles. The 260-unit battle averages 3.8 ms (5.5 with squads as circles).
   Group slots are not yet spaced by their members' sides. Hashes: reference 0x609e1d978e37739c,
   large Utapau 0xfd5d3ff726c03067, AT-ATs 0xd20fddd217b5561b; space unchanged.
+- Oriented footprints, step 6: the path audit already plans per footing size bucket (2 to 68), the
+  radius units plan with; its header comment named the old buckets (7, 20, 35, 65) and is fixed. The
+  navigation overlay draws a squad as its bounding rectangle (the snapshot carries it). All six
+  steps of pathfinding-design.md 4.7 are done; slot spacing by members' sides in group formations
+  remains.

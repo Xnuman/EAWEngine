@@ -172,7 +172,7 @@ std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& v
         };
         for (const auto& entity : view.world->snapshot().entities)
         {
-            if (!entity.follows_ground || entity.radius <= 0.0F)
+            if (!entity.follows_ground || (entity.radius <= 0.0F && entity.body.half_width <= 0.0F))
             {
                 continue;
             }
