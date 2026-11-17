@@ -128,9 +128,9 @@ honor are worked through tag by tag from [xml-tag-status.md](xml-tag-status.md) 
         all navigation data and the next searches rebuild it whole;
       - refining the rest of a route as a unit advances, and rebuilding only changed chunks;
       - companies queueing at narrow places;
-      - giving way ahead (the owner, after the oriented footprints; pathfinding-design.md 4.4):
-        allies standing along a unit's whole route, found through its large chunks, step aside early,
-        wait until it has passed, and return to their places.
+      - giving way ahead (the owner; pathfinding-design.md 4.4, being built): idle allies along a
+        unit's whole route are asked at once whether they could step aside (a detour at once around
+        those that cannot), and step aside about 3 s before it arrives.
       Enemies count for planning when seen; every enemy until fog of war exists. The measurements
       behind it (separation's broad phase sized by the largest unit, 63 candidates a query against
       8 with infantry only; about 13 overlaps a unit; the opening tick's 5,062 target searches,

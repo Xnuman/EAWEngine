@@ -1041,3 +1041,9 @@ rewritten to describe the current state; the source document is noted in bracket
   navigation overlay draws a squad as its bounding rectangle (the snapshot carries it). All six
   steps of pathfinding-design.md 4.7 are done; slot spacing by members' sides in group formations
   remains.
+- Giving way ahead designed with the owner: idle allies along a unit's whole route are asked at once
+  whether they could step aside (a dry run of make_way, with the lane chain); if any cannot, the
+  unit detours around them at once (the owner's refinement); those that can step aside about 3 s
+  before it arrives and return afterwards. Allies firing at an enemy hold their place (the owner's
+  choice). The broad phase uses the avoidance grid along the route rather than the chunk graph,
+  which knows ground, not units.
