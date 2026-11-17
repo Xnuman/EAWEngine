@@ -1005,3 +1005,5 @@ rewritten to describe the current state; the source document is noted in bracket
   battle's slowest tick 17 ms to 2.5 ms; the large battle's average 4.90 to 4.82 ms and 99th
   percentile 8.39 to 8.2 ms, nodes 445k to 519k; the Gargantuan's route 5,324 to 1,430 units.
   Hashes: large Utapau 0x862a172bd0c6c388, AT-ATs 0xabcafa1f187abf70; reference and space unchanged.
+- The owner confirmed the Gargantuan now takes Utapau's gate; its turrets and its height above the
+  ground still look wrong (left for later, on the roadmap).

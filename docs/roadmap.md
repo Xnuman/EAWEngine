@@ -208,6 +208,8 @@ honor are worked through tag by tag from [xml-tag-status.md](xml-tag-status.md) 
 1. Tactical battles. Done: the core, spawning, RTS orders, terrain and passability, pathfinding,
    group movement and formations, squads, space combat with hardpoints, flight, walker locomotion,
    headless battles and replays (status.md). Open:
+   - the Gargantuan (the owner, 2026-11-17, details to come): its turrets still look wrong, and its
+     height above the ground;
    - combat presentation and fidelity: the barrel pitch of turret hardpoints (their attached
      models' bones are not in the ship's rig); terrain surface kinds for SurfaceFX (dirt, grass, snow:
      ground hits and footprints know only liquids and default);
