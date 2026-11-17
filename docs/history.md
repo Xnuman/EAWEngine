@@ -1026,3 +1026,7 @@ rewritten to describe the current state; the source document is noted in bracket
   renderer's 32,768 debug lines (Utapau 13,757, Kamino 4,651, Bespin 5,143); a cross on every cell
   would not. The snapshot carries each entity's footprint rectangle (not hashed). Saved scenarios
   with show-passability now warn about an unknown option.
+- Planned with the owner, for after the oriented footprints: giving way ahead. When a route is
+  planned, the allies standing along it are found through its large chunks and asked early to step
+  out of the way, wait until the unit has passed, and return to their places (pathfinding-design.md
+  4.4, roadmap).

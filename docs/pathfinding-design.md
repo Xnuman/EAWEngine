@@ -286,6 +286,14 @@ Built in `simulation_avoidance.cpp` and `orca.*` (the solver alone, tested by `t
   - A unit whose ask found no place asks again after a quarter of a second
     (`RouteColumns::ask_waits`; asking every tick cost 2.5 ms a tick at 500 units, nearly every ask
     failing in the crowds).
+- **Giving way ahead** (the owner, 2026-11-17; planned, after the oriented footprints): today a unit
+  asks only once it is held up, and only the nearest ally in its corridor. Instead, when a unit's route
+  is planned, the allies standing along the whole route are found through the chunk corridor (the
+  route's large chunks, then the units within them whose footprints reach the corridor, the passing
+  unit's width) and asked early to step out of the way; each waits until the unit has passed it and
+  then returns to its original position. To settle when it is designed: how early to ask (a time or a
+  distance along the route), how wide the corridor is (the passer's half-width plus a margin), the
+  priorities among movers, and groups and formations on the way.
 - **Any direction, and lanes** (the owner: units may step diagonally and in other directions as long
   as the way is free, and go back to their place; lines open): the point aside is the shortest step
   out of the passer's corridor in any of 16 directions (sideways, diagonally, forward, or back, not
