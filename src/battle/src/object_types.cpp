@@ -703,6 +703,11 @@ std::string attached_mesh_key(const std::string& model_path, const std::span<con
 }
 
 // Expands the scene bounds by every instance's transformed mesh bounds and the terrain.
+float model_transform_scale(const Matrix4& transform) noexcept
+{
+    return std::sqrt(transform.values[0] * transform.values[0] + transform.values[1] * transform.values[1] + transform.values[2] * transform.values[2]);
+}
+
 float model_footprint_radius(const ModelBounds& bounds, const Matrix4& transform)
 {
     if (bounds.empty())
@@ -711,7 +716,7 @@ float model_footprint_radius(const ModelBounds& bounds, const Matrix4& transform
     }
     const auto width = bounds.maximum[0] - bounds.minimum[0];
     const auto depth = bounds.maximum[1] - bounds.minimum[1];
-    const auto scale = std::sqrt(transform.values[0] * transform.values[0] + transform.values[1] * transform.values[1] + transform.values[2] * transform.values[2]);
+    const auto scale = model_transform_scale(transform);
     const auto radius = 0.25F * (width + depth) * scale;
     return std::isfinite(radius) && radius > 0.0F ? radius : 0.0F;
 }
@@ -722,7 +727,7 @@ FootprintCapsule model_footprint_capsule(const ModelBounds& bounds, const Matrix
     {
         return {};
     }
-    const auto scale = std::sqrt(transform.values[0] * transform.values[0] + transform.values[1] * transform.values[1] + transform.values[2] * transform.values[2]);
+    const auto scale = model_transform_scale(transform);
     // Model space to the entity's frame: forward is model -Y, left model +X (model_forward_heading).
     const auto across = (bounds.maximum[0] - bounds.minimum[0]) * scale;
     const auto along = (bounds.maximum[1] - bounds.minimum[1]) * scale;
@@ -748,7 +753,7 @@ GroundFootprint model_ground_footprint(const ModelBounds& bounds, const Matrix4&
     {
         return footprint;
     }
-    const auto scale = std::sqrt(transform.values[0] * transform.values[0] + transform.values[1] * transform.values[1] + transform.values[2] * transform.values[2]);
+    const auto scale = model_transform_scale(transform);
     const auto local_x = (bounds.minimum[0] + bounds.maximum[0]) * 0.5F;
     const auto local_y = (bounds.minimum[1] + bounds.maximum[1]) * 0.5F;
     // Row-vector transform: world = local.x * row0 + local.y * row1 + translation.

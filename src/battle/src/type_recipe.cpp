@@ -8,6 +8,14 @@
 
 namespace eaw {
 
+namespace {
+
+// How far, relative to the type's own scale, a placement's scale may differ and still count as the
+// type's size (rounding through a turned matrix); an engine choice.
+constexpr float same_scale_tolerance = 1.0e-4F;
+
+} // namespace
+
 TypeRecipe build_type_recipe(const SpawnableBuild& build, const XmlDefinition& definition, const std::string& model_path, const Model& host_model, const std::span<const ModelAttachment> attachments)
 {
     TypeRecipe recipe;
@@ -107,7 +115,10 @@ PreparedSpawn make_spawn(const TypeRecipe& recipe, const SpawnInstance& instance
         // A placement's matrix sizes the model (a map may scale a placement); a type without a soft
         // radius takes its radius from the bounds through it.
         entity.radius = instance.placement && recipe.soft_radius <= 0.0F ? model_footprint_radius(recipe.bounds, *instance.placement) : recipe.radius;
-        entity.capsule = instance.placement && recipe.soft_radius <= 0.0F ? model_footprint_capsule(recipe.bounds, *instance.placement) : recipe.capsule;
+        // A placement that keeps the type's own size shares its recipe's capsule: rebuilt through the
+        // turned matrix it differs in its last bits with the heading, which keeps equal recipes apart.
+        const bool rescaled = instance.placement && std::fabs(model_transform_scale(*instance.placement) - recipe.scale) > same_scale_tolerance * recipe.scale;
+        entity.capsule = rescaled && recipe.soft_radius <= 0.0F ? model_footprint_capsule(recipe.bounds, *instance.placement) : recipe.capsule;
         entity.turn_rate = recipe.turn_rate;
         entity.min_speed = recipe.min_speed;
         entity.movement = recipe.movement;

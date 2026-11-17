@@ -106,6 +106,8 @@ std::vector<ModelAttachment> type_hardpoint_models(const ResourceManager& resour
 // hardpoints get meshes of their own).
 std::string attached_mesh_key(const std::string& model_path, std::span<const ModelAttachment> attachments);
 
+// The uniform scale a model transform applies (the length of its first row).
+[[nodiscard]] float model_transform_scale(const Matrix4& transform) noexcept;
 // Separation footprint of a model placed with `transform` (row-vector): a quarter of the summed X
 // and Y extents of its drawn bounds (assets/model_geometry), scaled by the transform's horizontal
 // scale. An engine choice until collision meshes and UnitCollisionClass are interpreted.

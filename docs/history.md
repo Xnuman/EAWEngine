@@ -930,3 +930,10 @@ rewritten to describe the current state; the source document is noted in bracket
 - Oriented footprints, step 1: every unit's recipe and placement carry a FootprintCapsule from its
   model bounds (model_footprint_capsule; a soft radius stays a circle), not read by any system yet.
   Battle hashes unchanged.
+- Oriented footprints, step 1 fixed: the previous commit (edd0e1a) changed three land battles'
+  hashes though nothing reads the capsules, and was pushed without the battle check gating it (my
+  slip). A capsule rebuilt through each placement's turned matrix differed in its last bits with the
+  heading, keeping otherwise equal recipes apart, and recipe ids are hashed. A placement that keeps
+  its type's size now shares the recipe's capsule (same_scale_tolerance, 1e-4 relative, an engine
+  choice); the transform scale became one helper (model_transform_scale) for the three footprint
+  functions. Battle hashes back to their expected values.
