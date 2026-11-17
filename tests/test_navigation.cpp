@@ -682,6 +682,37 @@ void test_group_move()
                     "the allies that opened the lane must return to their places (one at " + std::to_string(ally.position.x) + ", " + std::to_string(ally.position.y) + ")");
         }
     }
+    // Giving way ahead (the owner, 2026-11-17): an idle ally standing on a unit's route is found when
+    // the route is planned and steps aside before the unit reaches it, not once it is held up there;
+    // it returns to its place after, and the unit arrives.
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_ground(ground);
+        const auto walker =
+            test_spawn(world, {.type_name = "Walker", .position = {60.0F, 200.0F, 0.0F}, .max_speed = 20.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 12.0F});
+        const eaw::Vector3 place{260.0F, 200.0F, 0.0F};
+        require(walker.ok() &&
+                    test_spawn(world, {.type_name = "Trooper", .position = place, .max_speed = 30.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 9.0F}).ok(),
+                "test spawn must succeed");
+        world.submit({.kind = eaw::SimCommandKind::move, .entities = {*walker}, .target = {360.0F, 200.0F, 0.0F}});
+        // How far the walker was when the ally first left its place.
+        float apart_when_asked = 0.0F;
+        for (int tick = 0; tick < 600; ++tick)
+        {
+            world.step();
+            const auto& entities = world.snapshot().entities;
+            if (apart_when_asked == 0.0F && std::hypot(entities[1].position.x - place.x, entities[1].position.y - place.y) > 0.5F)
+            {
+                apart_when_asked = std::hypot(entities[1].position.x - entities[0].position.x, entities[1].position.y - entities[0].position.y);
+            }
+        }
+        const auto& entities = world.snapshot().entities;
+        // Touching is 21 apart (12 + 9); asked ahead, 3 s at 20 units a second.
+        require(apart_when_asked > 40.0F, "an ally on the route must be asked to step aside ahead of the unit (it left at " + std::to_string(apart_when_asked) + " apart)");
+        require(!entities[0].moving && std::hypot(entities[0].position.x - 360.0F, entities[0].position.y - 200.0F) < 2.0F, "the unit must arrive");
+        require(!entities[1].moving && std::hypot(entities[1].position.x - place.x, entities[1].position.y - place.y) < 1.0F,
+                "the ally must return to its place (at " + std::to_string(entities[1].position.x) + ", " + std::to_string(entities[1].position.y) + ")");
+    }
     // Destinations fit where they are ordered (the owner's model, 2026-11-15): a move onto a standing
     // unit ends beside it; a group's block ordered against ground it cannot enter shifts until every
     // member's slot fits.

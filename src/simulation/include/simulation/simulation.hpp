@@ -1214,6 +1214,24 @@ private:
         Vector3 back;
         std::uint32_t ticks{};
         bool returning{};
+        // Ticks added to the limit: asked ahead, it waits for the passer to arrive first.
+        std::uint32_t grace{};
+    };
+    // Giving way ahead (pathfinding-design.md 4.4): an ally on a unit's route that could step aside,
+    // with the route's point beside it and the route's direction there.
+    struct AheadYield
+    {
+        bool operator==(const AheadYield&) const = default;
+        EntityId yielder;
+        Vector3 beside;
+        Vector2 heading;
+    };
+    // A unit's route scan: due when a route is set; the allies to ask as it comes near.
+    struct GiveWayAhead
+    {
+        bool operator==(const GiveWayAhead&) const = default;
+        bool scan{};
+        std::vector<AheadYield> yielders;
     };
     struct RouteColumns
     {
@@ -1255,6 +1273,8 @@ private:
         // Detours a unit planned around held movers since its route was set (at most
         // mover_detour_limit; then it is held as by standing units). Hashed.
         std::vector<std::uint8_t> mover_detours;
+        // Giving way ahead (GiveWayAhead).
+        std::vector<GiveWayAhead> ahead;
         template <class Visit> void for_each_column(Visit&& visit)
         {
             visit(move_targets);
@@ -1272,6 +1292,7 @@ private:
             visit(ask_waits);
             visit(detoured);
             visit(mover_detours);
+            visit(ahead);
         }
     };
     // Flight (pooled: flyers only, the entities whose recipe has a minimum speed above 0): the
@@ -2129,8 +2150,9 @@ private:
         // way ahead): the shortest free step out of its corridor in any of give_way_directions
         // directions, or one a line of standing allies opens by stepping on the same way (shift_on).
         // With `commit` its requests (and the chain's) go to requests_; without, it only answers
-        // whether it could. False when it found none.
-        [[nodiscard]] bool make_way(const View& view, std::size_t yielder, std::size_t passer, Vector2 heading, Vector2 from, Vector2 passer_facing, bool commit);
+        // whether it could. False when it found none; `chained`, when given, tells whether the place it
+        // found needs a lane of allies to step on.
+        [[nodiscard]] bool make_way(const View& view, std::size_t yielder, std::size_t passer, Vector2 heading, Vector2 from, Vector2 passer_facing, bool commit, bool* chained = nullptr);
         // The chain's next link: the single ally in blockers_ steps on along `toward` to clear the last
         // place of chain_; false when it cannot (more than one in the way, not one that may shift, no
         // ground, or deeper than give_way_chain).
@@ -2201,8 +2223,17 @@ private:
             std::uint32_t yielder{};
             std::uint32_t passer{};
             Vector3 aside;
+            // GiveWay::grace (asked ahead).
+            std::uint32_t grace{};
         };
         std::vector<GiveWayRequest> requests_;
+        // Giving way ahead (simulation_give_way_ahead.cpp): scans of new routes and asks as passers come
+        // near; whether a unit is an idle ally of `passer` (standing, may move), and whether it fights.
+        void give_way_ahead(const View& view);
+        void scan_ahead(const View& view, std::size_t passer);
+        [[nodiscard]] bool idle_ally(const View& view, std::size_t unit, std::size_t passer) const noexcept;
+        [[nodiscard]] bool fighting(const View& view, std::size_t unit) const noexcept;
+        std::vector<std::uint32_t> ahead_query_;
         std::vector<std::uint32_t> room_query_;
         // make_way's scratch: the chain of units stepping aside for one passer, and those in the way.
         std::vector<GiveWayRequest> chain_;

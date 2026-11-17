@@ -281,7 +281,7 @@ void SimulationWorld::NavigationSystem::plan_giving_way(const View& view)
         }
         ++way->ticks;
         const auto passer = dense_index(view, way->passer);
-        bool done = !passer || !ground_steers(view, *passer) || way->ticks > limit;
+        bool done = !passer || !ground_steers(view, *passer) || way->ticks > limit + way->grace;
         if (!done)
         {
             const auto heading = heading_toward_waypoint(view, *passer);
@@ -399,6 +399,8 @@ void SimulationWorld::NavigationSystem::plan_giving_way(const View& view)
             }
         }
     }
+    // Allies standing on routes ahead, asked as their passers come near (give_way_ahead).
+    give_way_ahead(view);
     // One passer per unit, the lowest, so the outcome does not depend on the order of the scan.
     std::ranges::sort(requests_,
                       [](const GiveWayRequest& a, const GiveWayRequest& b)
@@ -414,7 +416,7 @@ void SimulationWorld::NavigationSystem::plan_giving_way(const View& view)
         }
         auto& way = route.give_ways[asked.yielder];
         const auto back = way ? way->back : placement.positions[asked.yielder];
-        way = GiveWay{.passer = identity.ids[asked.passer], .aside = asked.aside, .back = back};
+        way = GiveWay{.passer = identity.ids[asked.passer], .aside = asked.aside, .back = back, .grace = asked.grace};
     }
 }
 
@@ -691,8 +693,12 @@ bool SimulationWorld::NavigationSystem::may_shift(const View& view, const std::s
 }
 
 bool SimulationWorld::NavigationSystem::make_way(const View& view, const std::size_t yielder, const std::size_t passer, const Vector2 heading, const Vector2 from, const Vector2 passer_facing,
-                                                 const bool commit)
+                                                 const bool commit, bool* const chained)
 {
+    if (chained != nullptr)
+    {
+        *chained = false;
+    }
     const auto& placement = view.get<PlacementColumns>();
     const auto& ground = view.get<GroundState>();
     const auto& avoidance = view.get<Avoidance>();
@@ -787,6 +793,10 @@ bool SimulationWorld::NavigationSystem::make_way(const View& view, const std::si
         blockers_at(view, yielder, passer, at(candidate));
         if (shift_on(view, passer, candidates[candidate].toward, 1U))
         {
+            if (chained != nullptr)
+            {
+                *chained = true;
+            }
             if (commit)
             {
                 requests_.insert(requests_.end(), chain_.begin(), chain_.end());

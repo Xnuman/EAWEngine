@@ -25,7 +25,7 @@ param(
     [string] $Configuration = 'Release',
     # The reference battle's state hash at tick 3000 since the last change that altered the
     # simulation on purpose.
-    [string] $Expected = '0x609e1d978e37739c',
+    [string] $Expected = '0x235cc2a1e4f4ec23',
     [switch] $Extended,
     [string] $GameRoot
 )
@@ -46,15 +46,15 @@ $battles = @(
 )
 if ($Extended) {
     $battles += @(
-        @{ Name = 'large Utapau'; Expected = '0xfd5d3ff726c03067'
+        @{ Name = 'large Utapau'; Expected = '0x7f620bed5af59350'
             Arguments = @('--map', $utapau, '--spawn', 'Rebel_Infantry_Squad:80@1', '--spawn', 'Imperial_Stormtrooper_Squad:80@2', '--spawn', 'T2B_Tank:60@1',
                 '--spawn', 'AT_ST_Walker:40@2', '--auto-move', '--ticks', '1800') },
-        @{ Name = 'Kuat fighters'; Expected = '0x9259b7aa5bbe80d9'
+        @{ Name = 'Kuat fighters'; Expected = '0x6ceb71e324afdd9d'
             Arguments = @('--map', $kuat, '--spawn', 'Rebel_X-Wing_Squadron:4@1', '--spawn', 'TIE_Fighter_Squadron:4@2', '--ticks', '3000') },
-        @{ Name = 'Kuat capital ships'; Expected = '0xcc298f70e2acaa4c'
+        @{ Name = 'Kuat capital ships'; Expected = '0xca4b22c9901874b8'
             Arguments = @('--map', $kuat, '--spawn', 'Nebulon_B_Frigate:4@1', '--spawn', 'Corellian_Corvette:6@1', '--spawn', 'Acclamator_Assault_Ship:3@2',
                 '--spawn', 'Tartan_Patrol_Cruiser:6@2', '--auto-move', '--ticks', '3000') },
-        @{ Name = 'Utapau AT-ATs'; Expected = '0xd20fddd217b5561b'
+        @{ Name = 'Utapau AT-ATs'; Expected = '0xb9f8985ae0fbca7a'
             Arguments = @('--map', $utapau, '--spawn', 'AT_AT_Walker:4@2', '--spawn', 'Rebel_Infantry_Squad:6@1', '--spawn', 'T2B_Tank:4@1', '--auto-move', '--ticks', '3600') }
     )
 }

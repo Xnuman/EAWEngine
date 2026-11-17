@@ -286,21 +286,27 @@ Built in `simulation_avoidance.cpp` and `orca.*` (the solver alone, tested by `t
   - A unit whose ask found no place asks again after a quarter of a second
     (`RouteColumns::ask_waits`; asking every tick cost 2.5 ms a tick at 500 units, nearly every ask
     failing in the crowds).
-- **Giving way ahead** (the owner, 2026-11-17; agreed, being built): today a unit asks only once it
-  is held up, and only the nearest ally in its corridor. Instead:
-  - when a unit's route is planned, the idle allies standing along the whole route are found: those
-    whose footprints reach its corridor (its extent across the way plus the give-way margin), through
-    the avoidance grid along the route's segments; allies firing at an enemy hold their place (the
-    owner) and count as obstacles;
-  - each is asked at once whether it could step out of the way (a dry run of `make_way`, with the
-    chain of up to `give_way_chain` units as in lanes), measured from the passer's place on its route
-    beside it and the route's direction there;
-  - if any cannot, the unit plans a detour around those at once instead of finding out on arrival
-    (the owner);
-  - those that can are asked for real when the unit is about 3 s of travel from them (an engine
-    choice), step aside, wait until it has passed, and return to their places, as giving way does; the
-    time limit counts from then;
-  - moving allies keep today's rules (who is slower or behind in the flow yields).
+- **Giving way ahead** (the owner, 2026-11-17; built, `simulation_give_way_ahead.cpp`): a unit no
+  longer waits to be held up before allies on its way step aside.
+  - When a unit's route is set, the idle allies standing along the whole route are found (a few
+    units' routes a tick, `ahead_scans_per_tick`): those whose footprints reach its corridor (its
+    extent across the way plus the give-way margin), through the avoidance grid along the route's
+    segments. Allies firing at an enemy hold their place and are passed as before (the owner).
+  - Each is asked at once whether it could step out of the way to a free place (a dry run of
+    `make_way`), measured from the route's point beside it and the route's direction there.
+  - Those that can are asked for real when the unit is `give_way_ahead_seconds` (3 s, an engine
+    choice) of travel from them. They step aside, wait until it has passed, and return to their
+    places, as giving way does. Their time limit counts from when the unit is due.
+  - The rest are left to giving way as the unit arrives. One that needs a lane of allies to step on is
+    asked then, one at a time and the nearest first: a packed block whose members were all asked ahead
+    jammed its own lanes (the lane test).
+  - Moving allies keep today's rules (who is slower or behind in the flow yields).
+  - Tried and left out: a detour planned at once around allies that could not step aside (the owner's
+    refinement). On the large Utapau battle, 33 of 39 such searches found no way: the allies that
+    cannot step aside are packed crowds that close the passage. Each failed search cost about 16,000
+    expansions, and blocked moves rose from 1,371 to 1,522. Whether a group of allies closes the way
+    is what the detours on arrival already test (`plan_detours`). A detour ahead would need that test,
+    not the step-aside answer, and waits for the owner's decision.
 - **Any direction, and lanes** (the owner: units may step diagonally and in other directions as long
   as the way is free, and go back to their place; lines open): the point aside is the shortest step
   out of the passer's corridor in any of 16 directions (sideways, diagonally, forward, or back, not

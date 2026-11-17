@@ -1047,3 +1047,15 @@ rewritten to describe the current state; the source document is noted in bracket
   before it arrives and return afterwards. Allies firing at an enemy hold their place (the owner's
   choice). The broad phase uses the avoidance grid along the route rather than the chunk graph,
   which knows ground, not units.
+- Giving way ahead built (pathfinding-design.md 4.4): when a unit's route is set, the idle allies
+  standing along it that could step to a free place (a dry run of make_way, which now takes the
+  passer's place and facing and can answer without asking) are listed; each is asked when the unit
+  is 3 s of travel away and returns after it has passed. Allies firing hold their place (the owner's
+  choice); those that need a lane of allies are still asked on arrival, since asking a packed block
+  ahead jammed its lanes. The owner's detour at once around allies that cannot step aside was built
+  and measured, then left out: on the large Utapau battle 33 of 39 searches found no way (packed
+  crowds close the passage), path expansions rose fivefold (142k to 683k) and blocked moves rose
+  from 1,371 to 1,522; the decision is the owner's. Large battle with giving way ahead: 1,371
+  blocked moves (1,385 before), 3.97 ms a tick (3.87). Hashes: reference 0x235cc2a1e4f4ec23, large Utapau
+  0x7f620bed5af59350, AT-ATs 0xb9f8985ae0fbca7a; the space battles 0x6ceb71e324afdd9d and 0xca4b22c9901874b8 change only because
+  the new route state is hashed for every entity.

@@ -290,6 +290,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn, const EntityId
     route_.ask_waits.push_back(0);
     route_.detoured.push_back(0);
     route_.mover_detours.push_back(0);
+    route_.ahead.emplace_back();
     placement_.pitches.push_back(0.0F);
     motion_.speeds.push_back(0.0F);
     motion_.starts.push_back(spawn.position);
@@ -535,6 +536,7 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
             hasher.add(give_way->back);
             hasher.add(give_way->ticks);
             hasher.add(give_way->returning);
+            hasher.add(give_way->grace);
         }
         hasher.add(route_.last_goals[index].has_value());
         if (route_.last_goals[index])
@@ -547,6 +549,15 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
         hasher.add(route_.ask_waits[index]);
         hasher.add(route_.detoured[index]);
         hasher.add(route_.mover_detours[index]);
+        const auto& ahead = route_.ahead[index];
+        hasher.add(ahead.scan);
+        hasher.add(ahead.yielders.size());
+        for (const auto& yielder : ahead.yielders)
+        {
+            hasher.add(yielder.yielder);
+            hasher.add(yielder.beside);
+            hasher.add(yielder.heading);
+        }
         hasher.add(route_.loiter_points[index].has_value());
         if (route_.loiter_points[index])
         {

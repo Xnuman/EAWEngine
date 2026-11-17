@@ -154,6 +154,8 @@ void SimulationWorld::NavigationSystem::set_route(const View& view, const std::s
     path.clear();
     route.detoured[index] = detour_none;
     route.mover_detours[index] = 0;
+    // A new route is scanned for allies standing on it (giving way ahead).
+    route.ahead[index] = {.scan = true};
     if (waypoints.empty())
     {
         route.move_targets[index].reset();

@@ -36,6 +36,7 @@ set(EAW_SIMULATION_SOURCES
     ${SOURCES_DIR}/simulation_combat.cpp
     ${SOURCES_DIR}/simulation_contact.cpp
     ${SOURCES_DIR}/simulation_frames.cpp
+    ${SOURCES_DIR}/simulation_give_way_ahead.cpp
     ${SOURCES_DIR}/simulation_internal.hpp
     ${SOURCES_DIR}/simulation_locomotion.cpp
     ${SOURCES_DIR}/simulation_navigation.cpp

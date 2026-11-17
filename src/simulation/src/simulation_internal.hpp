@@ -80,6 +80,11 @@ inline constexpr float contact_tolerance = 0.01F;
 inline constexpr float give_way_lookahead_seconds = 1.0F;
 inline constexpr float give_way_margin = 0.25F;
 inline constexpr float give_way_seconds = 4.0F;
+// Giving way ahead (pathfinding-design.md 4.4): an ally on a unit's route is asked to step aside when
+// the unit is this long from it at its travel speed, and route scans run for this many units a tick
+// (engine choices).
+inline constexpr float give_way_ahead_seconds = 3.0F;
+inline constexpr std::uint32_t ahead_scans_per_tick = 8;
 inline constexpr float give_way_slower_fraction = 0.9F;
 inline constexpr float give_way_held_fraction = 0.5F;
 // Where a unit steps to give way: the shortest step out of the mover's corridor in this many

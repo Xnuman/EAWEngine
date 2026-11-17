@@ -844,6 +844,10 @@ navigation, not a reproduction of the original's.
   living hostile unit squashable by its kind, `can_crush`) ignore each other, so a walker walks over
   standing infantry and infantry may stand at a still walker's feet, as in the original. Last tick's
   velocities are hashed (`MotionColumns::velocities`).
+- **Giving way ahead**: when a unit's route is set, the idle allies standing along it that could
+  step to a free place are listed. Each is asked when the unit is 3 s of travel away (an engine
+  choice), steps aside, and returns after it has passed. Allies firing hold their place, and those
+  that need a lane are asked on arrival (pathfinding-design.md 4.4).
 - **Giving way**: a held-up unit asks allies in its way to step aside (`make_way`): the point aside
   is the shortest step out of the passer's corridor in 16 directions, then the unit's own side; it
   must be free, standable, reached on its ground, with no unit closer than contact on the way there
