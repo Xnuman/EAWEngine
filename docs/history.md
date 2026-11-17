@@ -1061,3 +1061,7 @@ rewritten to describe the current state; the source document is noted in bracket
   the new route state is hashed for every entity.
 - The owner decided to keep giving way ahead without a detour planned ahead: units detour when they
   find the way closed (plan_detours). The roadmap item for a detour ahead is removed.
+- Route overlay (the owner's request): a route is drawn for every unit that has one, moving or held
+  (before, a held unit's route vanished), with every point marked by its kind from the new
+  SimulationWorld::route_points (waypoints, avoidance detour point, move target, formation frame
+  waypoints, final slot); route() is built on it. Battle hashes unchanged.

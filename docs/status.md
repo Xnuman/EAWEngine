@@ -1652,8 +1652,9 @@ or sound (WeatherAudio.xml).
   `intersect_terrain`, liquid surfaces included; the z = 0 plane in space), or attacks a hostile under
   it (resolved through a pick against the entity list of the frame that drew it); Ctrl + right-click
   attack-moves, Shift + right-click guards a point or object, Alt + right-click makes a formation move.
-  The selection is tinted and outlined by its bounds; selected units' routes are drawn, in 3D through
-  the detour in space. Every order goes through `SandboxSession::give_order`.
+  The selection is tinted and outlined by its bounds; selected units' routes are drawn with every point
+  marked by what it is (waypoints, detour point, move target, formation frame's way, final slot), in
+  3D in space. Every order goes through `SandboxSession::give_order`.
 - Spawning: the spawn panel filters by category (infantry, vehicles, heroes, structures, space units,
   props, other) and faction (XML `Affiliation`), has a search field, lists squads, companies,
   squadrons, and props, marks types not loaded yet, and sets type, count, and owner; N spawns at the

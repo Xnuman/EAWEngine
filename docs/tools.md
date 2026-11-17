@@ -134,7 +134,7 @@ Key actions (`engine_app/sandbox_actions.cpp`), with their default keys:
 | `spawn_type_back`, `spawn_type_ten` | Shift, Ctrl | While held, the next type goes back, or steps by ten. |
 | `pause` | P | Pause or resume the world (simulation, animation, particles; models: the animation); cameras keep working. |
 | `bounds` | B | Bounds of every object and the world axes. |
-| `navigation` | G | Navigation: every ground unit's footprint as the simulation measures it (its rectangle with a line to its front, or its circle), every moving unit's route, and the whole map's passability as outlines between cells of different classes (red steep, blue water, orange impassable, green infantry only, magenta obstacle). Selected units' routes show without it. |
+| `navigation` | G | Navigation: every ground unit's footprint as the simulation measures it (its rectangle with a line to its front, or its circle), every unit's route, and the whole map's passability as outlines between cells of different classes (red steep, blue water, orange impassable, green infantry only, magenta obstacle). Selected units' routes show without it. |
 | `animation_next`, `animation_previous` | Right, Left | Model view: step through the bind pose and every `<MODEL>_*.ALA` beside the model. |
 
 Escape quits and F1 shows or hides the bar at the top; these two are fixed. Every other action is
@@ -151,9 +151,15 @@ shadow resolution and particle fidelity stay as started. Panels first open side 
 bar; where they are moved and sized is kept in `sandbox_imgui.ini` next to the executable. Panels
 can be dragged, resized, and minimized; the mouse does not reach the scene while it is over a panel.
 
-Selected units show their remaining route (on space maps in 3D, through the detour a ship takes
-around a unit in its way), and damaged or selected units show health (green) and shield (blue)
-bars.
+Selected units show their remaining route, moving or held (on space maps in 3D), with every
+point marked by what it is (`SimulationWorld::route_points`):
+- the unit's own legs in cyan, each waypoint a cross;
+- an avoidance detour point (a ship steering around a unit in its way) an orange diagonal cross;
+- the move target (a formation member's slot now) a yellow square;
+- a formation frame's way on in dim blue, its waypoints crosses, and the member's slot at the end a
+  larger blue square.
+
+Damaged or selected units show health (green) and shield (blue) bars.
 
 ## EAWLauncher
 

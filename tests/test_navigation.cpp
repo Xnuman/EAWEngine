@@ -201,6 +201,14 @@ void test_pathfinding()
     const auto route = world.route(*walker);
     require(!route.empty() && route.back().x == 110.0F && route.back().y == 12.0F && world.stats().path_searches == 1 && world.stats().path_expansions > 0,
             "a ground order must be planned and expose its route");
+    const auto points = world.route_points(*walker);
+    require(points.size() == route.size() && points.back().kind == eaw::SimulationWorld::RoutePointKind::target &&
+                std::all_of(points.begin(), points.end() - 1,
+                            [](const auto& point)
+                            {
+                                return point.kind == eaw::SimulationWorld::RoutePointKind::waypoint;
+                            }),
+            "a route's points must say what each is: waypoints, then the move target");
     for (int tick = 0; tick < 40; ++tick)
     {
         world.step();

@@ -113,52 +113,87 @@ std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& v
             }
         }
     }
-    if (view.world != nullptr && !ground.valid())
+    if (view.world != nullptr)
     {
-        // Space: the remaining route of every selected moving unit (every one while navigation is
-        // shown) in 3D, through its avoidance detour when it steers around a unit in its way.
+        // The remaining route of every selected unit with one (every one while navigation is shown),
+        // moving or held: its own legs cyan, its formation frame's way on dim blue, each point marked
+        // by what it is (route_points). On ground, draped just above the surface; in space, in 3D.
+        using Kind = SimulationWorld::RoutePointKind;
+        // Marker half-sizes (engine choices, for reading the overlay).
+        constexpr float point_size = 3.0F;
+        constexpr float end_size = 6.0F;
+        const Color own_leg{0.35F, 1.0F, 0.9F, 0.9F};
+        const Color frame_leg{0.35F, 0.55F, 1.0F, 0.8F};
         for (const auto& entity : view.world->snapshot().entities)
         {
-            if (!entity.moving || (!view.show_navigation && !view.selection->contains(entity_key(entity.id))))
+            if (!view.show_navigation && !view.selection->contains(entity_key(entity.id)))
             {
                 continue;
             }
-            auto from = entity.position;
-            for (const auto& to : view.world->route(entity.id))
-            {
-                lines.push_back({from, to, {0.35F, 1.0F, 0.9F, 0.9F}});
-                from = to;
-            }
-        }
-    }
-    if (view.world != nullptr && ground.valid())
-    {
-        // The remaining route of every selected moving unit (every one while navigation is shown),
-        // draped just above the surface.
-        for (const auto& entity : view.world->snapshot().entities)
-        {
-            if (!entity.moving || (!view.show_navigation && !view.selection->contains(entity_key(entity.id))))
+            const auto points = view.world->route_points(entity.id);
+            if (points.empty())
             {
                 continue;
             }
-            auto from = entity.position;
-            for (const auto& to : view.world->route(entity.id))
+            const bool draped = ground.valid() && entity.follows_ground;
+            const auto lift = [&](const float x, const float y, const float z)
             {
-                const auto length = std::hypot(to.x - from.x, to.y - from.y);
-                const auto pieces = std::clamp(static_cast<int>(length / ground.spacing), 1, 256);
+                return Vector3{x, y, draped ? ground.surface_height(x, y) + 2.0F : z};
+            };
+            const auto leg = [&](const Vector3& from, const Vector3& to, const Color& color)
+            {
+                const auto pieces = draped ? std::clamp(static_cast<int>(std::hypot(to.x - from.x, to.y - from.y) / ground.spacing), 1, 256) : 1;
                 for (int piece = 0; piece < pieces; ++piece)
                 {
                     const auto at = [&](const int step)
                     {
                         const auto t = static_cast<float>(step) / static_cast<float>(pieces);
-                        const auto x = from.x + (to.x - from.x) * t;
-                        const auto y = from.y + (to.y - from.y) * t;
-                        const auto z = entity.follows_ground ? ground.surface_height(x, y) + 2.0F : from.z + (to.z - from.z) * t;
-                        return Vector3{x, y, z};
+                        return lift(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t, from.z + (to.z - from.z) * t);
                     };
-                    lines.push_back({at(piece), at(piece + 1), {0.35F, 1.0F, 0.9F, 0.9F}});
+                    lines.push_back({at(piece), at(piece + 1), color});
                 }
-                from = to;
+            };
+            // A cross (+), a diagonal cross (x), or a square around a point.
+            const auto cross_at = [&](const Vector3& at, const float size, const bool diagonal, const Color& color)
+            {
+                const auto tilt = diagonal ? size : 0.0F;
+                lines.push_back({lift(at.x - size, at.y - tilt, at.z), lift(at.x + size, at.y + tilt, at.z), color});
+                lines.push_back({lift(at.x - tilt, at.y + size, at.z), lift(at.x + tilt, at.y - size, at.z), color});
+            };
+            const auto square_at = [&](const Vector3& at, const float size, const Color& color)
+            {
+                const std::array<Vector3, 4> corners{lift(at.x - size, at.y - size, at.z), lift(at.x + size, at.y - size, at.z), lift(at.x + size, at.y + size, at.z),
+                                                     lift(at.x - size, at.y + size, at.z)};
+                for (std::size_t corner = 0; corner < corners.size(); ++corner)
+                {
+                    lines.push_back({corners[corner], corners[(corner + 1) % corners.size()], color});
+                }
+            };
+            auto from = entity.position;
+            bool past_target = false;
+            for (const auto& point : points)
+            {
+                leg(from, point.at, past_target ? frame_leg : own_leg);
+                switch (point.kind)
+                {
+                case Kind::detour:
+                    cross_at(point.at, point_size, true, {1.0F, 0.55F, 0.15F, 1.0F});
+                    break;
+                case Kind::waypoint:
+                    cross_at(point.at, point_size, false, own_leg);
+                    break;
+                case Kind::target:
+                    square_at(point.at, point_size, {1.0F, 0.9F, 0.3F, 1.0F});
+                    past_target = true;
+                    break;
+                case Kind::frame_waypoint:
+                    cross_at(point.at, point_size, false, frame_leg);
+                    break;
+                case Kind::final_slot:
+                    square_at(point.at, end_size, frame_leg);
+                    break;
+                }
+                from = point.at;
             }
         }
     }

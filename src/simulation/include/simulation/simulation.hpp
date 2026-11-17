@@ -740,6 +740,24 @@ public:
     // when it is not moving or unknown); a ship's avoidance detour comes first. For debugging and
     // presentation; not part of snapshots.
     [[nodiscard]] std::vector<Vector3> route(EntityId id) const;
+    // What a point of route_points is: an avoidance detour point, a waypoint of the entity's own
+    // route, its move target (a formation member's slot now), a waypoint of its formation frame's
+    // way on, and the member's slot at the frame's end.
+    enum class RoutePointKind : std::uint8_t
+    {
+        detour,
+        waypoint,
+        target,
+        frame_waypoint,
+        final_slot,
+    };
+    struct RoutePoint
+    {
+        Vector3 at;
+        RoutePointKind kind{};
+    };
+    // route's points with what each is, for debug drawing.
+    [[nodiscard]] std::vector<RoutePoint> route_points(EntityId id) const;
     [[nodiscard]] const SimSnapshot& snapshot() const noexcept;
     [[nodiscard]] Stats stats() const noexcept;
     // FNV-1a over every gameplay component, in storage order: equal hashes mean identical simulation

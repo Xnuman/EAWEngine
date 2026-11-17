@@ -893,6 +893,16 @@ void SimulationWorld::remove_entities(std::vector<std::size_t> dense)
 std::vector<Vector3> SimulationWorld::route(const EntityId id) const
 {
     std::vector<Vector3> points;
+    for (const auto& point : route_points(id))
+    {
+        points.push_back(point.at);
+    }
+    return points;
+}
+
+std::vector<SimulationWorld::RoutePoint> SimulationWorld::route_points(const EntityId id) const
+{
+    std::vector<RoutePoint> points;
     const auto dense = dense_index(*this, id);
     if (!dense || !route_.move_targets[*dense])
     {
@@ -900,21 +910,27 @@ std::vector<Vector3> SimulationWorld::route(const EntityId id) const
     }
     if (*dense < route_.detours.size() && route_.detours[*dense])
     {
-        points.push_back(*route_.detours[*dense]);
+        points.push_back({*route_.detours[*dense], RoutePointKind::detour});
     }
-    points.insert(points.end(), route_.paths[*dense].rbegin(), route_.paths[*dense].rend());
-    points.push_back(*route_.move_targets[*dense]);
+    for (auto waypoint = route_.paths[*dense].rbegin(); waypoint != route_.paths[*dense].rend(); ++waypoint)
+    {
+        points.push_back({*waypoint, RoutePointKind::waypoint});
+    }
+    points.push_back({*route_.move_targets[*dense], RoutePointKind::target});
     // A formation frame's member: its slot now, then the frame's way on to its slot at the end.
     if (const auto row = group_.find(slot_of(*this, *dense)))
     {
         if (const auto frame = std::ranges::find(frames_.list, group_.columns.ids[*row], &FormationFrame::group); frame != frames_.list.end() && !frame->arrived)
         {
-            points.insert(points.end(), frame->route.rbegin(), frame->route.rend());
+            for (auto waypoint = frame->route.rbegin(); waypoint != frame->route.rend(); ++waypoint)
+            {
+                points.push_back({*waypoint, RoutePointKind::frame_waypoint});
+            }
             const auto ahead = group_.columns.ahead[*row];
             const auto aside = group_.columns.aside[*row];
             const auto forward_x = std::cos(frame->target_facing);
             const auto forward_y = std::sin(frame->target_facing);
-            points.push_back({frame->target.x + forward_x * ahead + forward_y * aside, frame->target.y + forward_y * ahead - forward_x * aside, frame->target.z});
+            points.push_back({{frame->target.x + forward_x * ahead + forward_y * aside, frame->target.y + forward_y * ahead - forward_x * aside, frame->target.z}, RoutePointKind::final_slot});
         }
     }
     return points;
