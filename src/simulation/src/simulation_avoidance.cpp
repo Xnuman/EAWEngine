@@ -393,7 +393,7 @@ void SimulationWorld::NavigationSystem::plan_giving_way(const View& view)
             {
                 continue;
             }
-            if (!make_way(view, yielder, passer, heading))
+            if (!make_way(view, yielder, passer, heading, {placement.positions[passer].x, placement.positions[passer].y}, avoidance.facings[passer], true))
             {
                 route.ask_waits[passer] = ticks_for(view, give_way_retry_seconds);
             }
@@ -690,15 +690,16 @@ bool SimulationWorld::NavigationSystem::may_shift(const View& view, const std::s
                                 });
 }
 
-bool SimulationWorld::NavigationSystem::make_way(const View& view, const std::size_t yielder, const std::size_t passer, const Vector2 heading)
+bool SimulationWorld::NavigationSystem::make_way(const View& view, const std::size_t yielder, const std::size_t passer, const Vector2 heading, const Vector2 from, const Vector2 passer_facing,
+                                                 const bool commit)
 {
     const auto& placement = view.get<PlacementColumns>();
     const auto& ground = view.get<GroundState>();
+    const auto& avoidance = view.get<Avoidance>();
     const Vector2 here{placement.positions[yielder].x, placement.positions[yielder].y};
-    const Vector2 from{placement.positions[passer].x, placement.positions[passer].y};
     const auto aside = cross(heading, here - from);
     const Vector2 across = aside >= 0.0F ? Vector2{-heading.y, heading.x} : Vector2{heading.y, -heading.x};
-    const auto clear = agent_extent(view, passer, across) + agent_extent(view, yielder, {-across.x, -across.y}) * (1.0F + give_way_margin);
+    const auto clear = footprint_extent(avoidance.bodies[passer], avoidance.radii[passer], passer_facing, across) + agent_extent(view, yielder, {-across.x, -across.y}) * (1.0F + give_way_margin);
     // Candidates: the shortest step in each of give_way_directions directions that takes the unit out
     // of the passer's corridor, shortest first, then toward its own side of the line (the owner's
     // drawing, 2026-11-15, and after it: any direction where the ground is free, sideways, diagonally,
@@ -767,7 +768,10 @@ bool SimulationWorld::NavigationSystem::make_way(const View& view, const std::si
         if (blockers_.empty())
         {
             start_chain(to);
-            requests_.insert(requests_.end(), chain_.begin(), chain_.end());
+            if (commit)
+            {
+                requests_.insert(requests_.end(), chain_.begin(), chain_.end());
+            }
             chain_.clear();
             return true;
         }
@@ -783,7 +787,10 @@ bool SimulationWorld::NavigationSystem::make_way(const View& view, const std::si
         blockers_at(view, yielder, passer, at(candidate));
         if (shift_on(view, passer, candidates[candidate].toward, 1U))
         {
-            requests_.insert(requests_.end(), chain_.begin(), chain_.end());
+            if (commit)
+            {
+                requests_.insert(requests_.end(), chain_.begin(), chain_.end());
+            }
             chain_.clear();
             return true;
         }

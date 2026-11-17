@@ -2124,11 +2124,13 @@ private:
         // A unit that can no longer see the waypoint it heads for across its ground (avoidance pushed
         // it around a corner) gets a short leg back to it, at most route_repairs_per_tick a tick.
         void repair_routes(const View& view);
-        // Where the unit at `yielder` steps to let `passer` (heading `heading`) by: the shortest free
-        // step out of its corridor in any of give_way_directions directions, or one a line of standing
-        // allies opens by stepping on the same way (shift_on); its requests (and the chain's) go to
-        // requests_; false when it found none.
-        [[nodiscard]] bool make_way(const View& view, std::size_t yielder, std::size_t passer, Vector2 heading);
+        // Where the unit at `yielder` steps to let `passer` by, the passer at `from` heading `heading`
+        // and facing `passer_facing` (where it is now, or where its route passes the yielder: giving
+        // way ahead): the shortest free step out of its corridor in any of give_way_directions
+        // directions, or one a line of standing allies opens by stepping on the same way (shift_on).
+        // With `commit` its requests (and the chain's) go to requests_; without, it only answers
+        // whether it could. False when it found none.
+        [[nodiscard]] bool make_way(const View& view, std::size_t yielder, std::size_t passer, Vector2 heading, Vector2 from, Vector2 passer_facing, bool commit);
         // The chain's next link: the single ally in blockers_ steps on along `toward` to clear the last
         // place of chain_; false when it cannot (more than one in the way, not one that may shift, no
         // ground, or deeper than give_way_chain).
