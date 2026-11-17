@@ -953,3 +953,14 @@ rewritten to describe the current state; the source document is noted in bracket
   place as the rectangle bounding their soldiers in the squad's frame. My suggestions added: the
   collision mesh as the rectangle's source when present, and moving steps testing the rectangle at
   the heading. Section 4.7 rewritten; the capsule slice will be replaced.
+- Oriented footprints on rectangles, steps 1 and 2 (the owner's scheme): FootprintRect replaces the
+  capsule, from the collision meshes when a model has them, else its drawn bounds; ground units
+  stand and plan with the half side orthogonal to the heading, and spawns, teleports, and
+  destinations test the whole rectangle (ground_rectangle_fits; obstacle stamping shares its cell
+  walk, for_each_cell_in_rectangle). A rectangle test while moving straight, my addition, was tried
+  and dropped: the Gargantuan battle's blocked moves rose from 12 to 82. A wide unit now stays out
+  of a gap narrower than its width (a navigation test). Hashes: reference 0x8573690d823ab40f, large
+  Utapau 0x4641ee051dfb26f6, AT-ATs 0xb9b95ac4f5b1ebf1; space unchanged. The AT-AT battle's path
+  nodes rose from 34,244 to 131,625 (its collision rectangle is narrower than its drawn one, 33
+  against 44 wide, so it fits more ground); its tick 3 takes 19-21 ms, as it did before this change
+  (measured on both builds), now on the roadmap.

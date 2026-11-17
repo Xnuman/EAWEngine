@@ -231,7 +231,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn, const EntityId
     }
     // On free ground: ground units never stand on each other or where their footprint does not fit
     // (found before any column grows, while every column still lists the same entities).
-    const auto start = recipe.follows_ground && ground_.map.valid() ? free_ground(spawn.position, spawn.heading, recipe.radius, recipe.capsule, recipe.passable_types, std::nullopt) : spawn.position;
+    const auto start = recipe.follows_ground && ground_.map.valid() ? free_ground(spawn.position, spawn.heading, recipe.radius, recipe.body, recipe.passable_types, std::nullopt) : spawn.position;
     identity_.ids.push_back(id);
     placement_.positions.push_back(start);
     placement_.headings.push_back(wrap_angle(spawn.heading));
@@ -243,9 +243,9 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn, const EntityId
     identity_.recipes.push_back(spawn.recipe);
     ground_mover_.follows_ground.push_back(recipe.follows_ground ? 1U : 0U);
     ground_mover_.passable_types.push_back(recipe.passable_types);
-    // A unit stands and plans with its capsule's radius (pathfinding-design.md 4.7), so it takes gaps
-    // it fits lengthwise.
-    ground_mover_.footing_radii.push_back(recipe.follows_ground && recipe.capsule.radius > 0.0F ? recipe.capsule.radius : recipe.radius);
+    // A ground unit stands and plans with half the side of its rectangle orthogonal to its heading
+    // (pathfinding-design.md 4.7): the width it sweeps moving forward.
+    ground_mover_.footing_radii.push_back(recipe.follows_ground && recipe.body.half_width > 0.0F ? recipe.body.half_width : recipe.radius);
     route_.paths.emplace_back();
     if (const auto& profile = recipe.combat; profile.health > 0.0F || profile.shield > 0.0F || !profile.weapons.empty() || !profile.hardpoints.empty())
     {
@@ -270,7 +270,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn, const EntityId
         }
     }
     placement_.radii.push_back(recipe.radius);
-    placement_.capsules.push_back(recipe.capsule);
+    placement_.bodies.push_back(recipe.body);
     locomotor_.turn_rates.push_back(recipe.turn_rate);
     locomotor_.movements.push_back(&recipe.movement);
     locomotor_.drive_speeds.push_back(0.0F);
@@ -931,42 +931,23 @@ void SimulationWorld::stamp_footprint(const std::size_t index, const bool add)
     {
         return;
     }
-    const auto cos_heading = std::cos(footprint->heading);
-    const auto sin_heading = std::sin(footprint->heading);
-    const auto reach = std::hypot(footprint->half_length, footprint->half_width);
-    const auto spacing = ground_.map.spacing;
-    const auto first_column = std::max(0L, static_cast<long>(std::floor((footprint->center.x - reach) / spacing)));
-    const auto last_column = std::min(static_cast<long>(ground_.map.width) - 1, static_cast<long>(std::ceil((footprint->center.x + reach) / spacing)));
-    const auto first_row = std::max(0L, static_cast<long>(std::floor((footprint->center.y - reach) / spacing)));
-    const auto last_row = std::min(static_cast<long>(ground_.map.height) - 1, static_cast<long>(std::ceil((footprint->center.y + reach) / spacing)));
-    for (auto row = first_row; row <= last_row; ++row)
-    {
-        for (auto column = first_column; column <= last_column; ++column)
-        {
-            const auto dx = static_cast<float>(column) * spacing - footprint->center.x;
-            const auto dy = static_cast<float>(row) * spacing - footprint->center.y;
-            const auto along = dx * cos_heading + dy * sin_heading;
-            const auto across = -dx * sin_heading + dy * cos_heading;
-            if (std::fabs(along) > footprint->half_length || std::fabs(across) > footprint->half_width)
-            {
-                continue;
-            }
-            const auto cell = static_cast<std::size_t>(row) * ground_.map.width + static_cast<std::size_t>(column);
-            if (add)
-            {
-                ++ground_.footprint_cover[cell];
-                ground_.map.passability[cell] = footprint->passability;
-            }
-            else if (ground_.footprint_cover[cell] > 0 && --ground_.footprint_cover[cell] == 0)
-            {
-                ground_.map.passability[cell] = ground_.own_passability[cell];
-            }
-        }
-    }
+    const auto window = for_each_cell_in_rectangle(ground_.map, {footprint->center.x, footprint->center.y}, footprint->heading, footprint->half_length, footprint->half_width,
+                                                   [&](const std::size_t cell)
+                                                   {
+                                                       if (add)
+                                                       {
+                                                           ++ground_.footprint_cover[cell];
+                                                           ground_.map.passability[cell] = footprint->passability;
+                                                       }
+                                                       else if (ground_.footprint_cover[cell] > 0 && --ground_.footprint_cover[cell] == 0)
+                                                       {
+                                                           ground_.map.passability[cell] = ground_.own_passability[cell];
+                                                       }
+                                                   });
     footprint_.get(slot_of(*this, index), &FootprintColumns::stamped) = add ? 1U : 0U;
-    if (first_column <= last_column && first_row <= last_row)
+    if (window)
     {
-        const CellRect stamped{static_cast<std::uint32_t>(first_column), static_cast<std::uint32_t>(first_row), static_cast<std::uint32_t>(last_column), static_cast<std::uint32_t>(last_row)};
+        const auto& stamped = *window;
         ground_.changed = ground_.changed ? CellRect{std::min(ground_.changed->first_column, stamped.first_column), std::min(ground_.changed->first_row, stamped.first_row),
                                                      std::max(ground_.changed->last_column, stamped.last_column), std::max(ground_.changed->last_row, stamped.last_row)}
                                           : stamped;
@@ -1041,23 +1022,18 @@ const ClearanceField* SimulationWorld::clearance_of(const std::uint32_t passable
     return found != ground_.clearance.end() ? &*found : nullptr;
 }
 
-Vector3 SimulationWorld::free_ground(const Vector3& at, const float heading, const float radius, const FootprintCapsule& capsule, const std::uint32_t passable_types,
-                                     const std::optional<std::size_t> except)
+Vector3 SimulationWorld::free_ground(const Vector3& at, const float heading, const float radius, const FootprintRect& body, const std::uint32_t passable_types, const std::optional<std::size_t> except)
 {
     if (!(radius > 0.0F) || !ground_.map.valid())
     {
         return at;
     }
-    const bool shaped = capsule.radius > 0.0F;
-    const Footing footing(passable_types, clearance_of(passable_types), shaped ? capsule.radius : radius);
+    const bool shaped = body.half_width > 0.0F;
+    const Footing footing(passable_types, clearance_of(passable_types), shaped ? body.half_width : radius);
     const auto stands = [&](const float x, const float y)
     {
-        if (!shaped)
-        {
-            return ground_stands(ground_.map, {x, y}, footing);
-        }
-        const auto [from, to] = capsule_spine_at(capsule, {x, y, 0.0F}, heading);
-        return ground_stands_along(ground_.map, from, to, footing);
+        return ground_stands(ground_.map, {x, y}, footing) &&
+               (!shaped || ground_rectangle_fits(ground_.map, footprint_center_at(body, {x, y, 0.0F}, heading), heading, body.half_length, body.half_width, passable_types));
     };
     const auto free = [&](const float x, const float y)
     {
@@ -1075,11 +1051,11 @@ bool SimulationWorld::destination_free(const float x, const float y, const std::
 {
     const auto radius = unit_radius(*this, index);
     const auto mask = ground_mover_.passable_types[index];
-    // A unit with a footprint capsule needs room for it along its spine, turned the way it arrives
-    // (from where it stands); a squad its whole circle.
-    const auto& capsule = placement_.capsules[index];
-    const bool shaped = capsule.radius > 0.0F && radius == placement_.radii[index];
-    if (mask != 0 && !shaped && !ground_stands(ground_.map, {x, y}, Footing(mask, clearance_of(mask), radius)))
+    // A unit with a footprint rectangle needs room for it, turned the way it arrives (from where it
+    // stands), besides its footing; a squad its whole circle.
+    const auto& body = placement_.bodies[index];
+    const bool shaped = body.half_width > 0.0F && radius == placement_.radii[index];
+    if (mask != 0 && !ground_stands(ground_.map, {x, y}, Footing(mask, clearance_of(mask), shaped ? ground_mover_.footing_radii[index] : radius)))
     {
         return false;
     }
@@ -1087,8 +1063,7 @@ bool SimulationWorld::destination_free(const float x, const float y, const std::
     {
         const auto& from = placement_.positions[index];
         const auto arriving = std::hypot(x - from.x, y - from.y) > 1.0e-3F ? std::atan2(y - from.y, x - from.x) : placement_.headings[index];
-        const auto [start, end] = capsule_spine_at(capsule, {x, y, 0.0F}, arriving);
-        if (!ground_stands_along(ground_.map, start, end, Footing(mask, clearance_of(mask), capsule.radius)))
+        if (!ground_rectangle_fits(ground_.map, footprint_center_at(body, {x, y, 0.0F}, arriving), arriving, body.half_length, body.half_width, mask))
         {
             return false;
         }

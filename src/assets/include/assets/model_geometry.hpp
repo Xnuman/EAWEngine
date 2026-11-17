@@ -71,6 +71,9 @@ struct ModelBounds
 // The bounds of every drawn vertex of `model` and its `attachments` (each placed at its host
 // bone's bind pose), in the model's space.
 [[nodiscard]] ModelBounds drawn_model_bounds(const Model& model, std::span<const ModelAttachment> attachments, bool animated_visibility);
+// The bounds of a model's collision meshes (LegacyMaterialFamily::collision, hidden or not) in its bind
+// pose; empty without any.
+[[nodiscard]] ModelBounds collision_model_bounds(const Model& model);
 
 // Grows `bounds` by the eight corners of `local` placed with `transform` (row-vector), skipping
 // corners that are not finite (malformed vertex data must not make a frame non-finite).

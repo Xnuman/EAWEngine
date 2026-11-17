@@ -113,19 +113,19 @@ bool ground_stands(const GroundMap& ground, const Vector2 point, const Footing& 
     return !cell || footing_fits(ground, *cell, footing);
 }
 
-bool ground_stands_along(const GroundMap& ground, const Vector2 from, const Vector2 to, const Footing& footing) noexcept
+bool ground_rectangle_fits(const GroundMap& ground, const Vector2 center, const float heading, const float half_length, const float half_width, const std::uint32_t passable_types) noexcept
 {
-    const auto length = std::hypot(to.x - from.x, to.y - from.y);
-    const auto steps = ground.spacing > 0.0F && std::isfinite(length) ? static_cast<std::uint32_t>(std::ceil(length / ground.spacing)) : 0U;
-    for (std::uint32_t step = 0; step <= steps; ++step)
+    if (ground.passability.size() != ground.heights.size() || ground.passability.empty())
     {
-        const auto share = steps == 0U ? 0.0F : static_cast<float>(step) / static_cast<float>(steps);
-        if (!ground_stands(ground, {from.x + (to.x - from.x) * share, from.y + (to.y - from.y) * share}, footing))
-        {
-            return false;
-        }
+        return true;
     }
-    return true;
+    bool fits = ground_stands(ground, center, Footing(passable_types));
+    (void)for_each_cell_in_rectangle(ground, center, heading, half_length, half_width,
+                                     [&](const std::size_t cell)
+                                     {
+                                         fits = fits && footing_fits(ground, static_cast<std::uint32_t>(cell), Footing(passable_types));
+                                     });
+    return fits;
 }
 
 } // namespace eaw

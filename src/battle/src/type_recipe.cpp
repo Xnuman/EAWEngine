@@ -31,11 +31,14 @@ TypeRecipe build_type_recipe(const SpawnableBuild& build, const XmlDefinition& d
     recipe.survivors = type_survivors(build.catalog, definition);
     recipe.script = type_script_info(build.catalog, definition);
     recipe.bounds = drawn_model_bounds(host_model, attachments, true);
+    const auto collision = collision_model_bounds(host_model);
+    recipe.body_bounds = collision.empty() ? recipe.bounds : collision;
     recipe.soft_radius = type_soft_footprint_radius(build.catalog, definition);
     if (recipe.max_speed > 0.0F)
     {
         recipe.radius = recipe.soft_radius > 0.0F ? recipe.soft_radius : model_footprint_radius(recipe.bounds, scaled_model_transform(Matrix4::identity(), recipe.scale));
-        recipe.capsule = recipe.soft_radius > 0.0F ? FootprintCapsule{.radius = recipe.soft_radius} : model_footprint_capsule(recipe.bounds, scaled_model_transform(Matrix4::identity(), recipe.scale));
+        recipe.body =
+            recipe.soft_radius > 0.0F ? FootprintRect{recipe.soft_radius, recipe.soft_radius, {}} : model_footprint_rect(recipe.body_bounds, scaled_model_transform(Matrix4::identity(), recipe.scale));
         // Turn rates and acceleration take the mode's speed multiplier in space (type_movement).
         const auto motion_multiplier = build.land ? 1.0F : build.speed_multiplier;
         recipe.turn_rate = type_turn_rate(build.catalog, definition, motion_multiplier);
@@ -115,10 +118,10 @@ PreparedSpawn make_spawn(const TypeRecipe& recipe, const SpawnInstance& instance
         // A placement's matrix sizes the model (a map may scale a placement); a type without a soft
         // radius takes its radius from the bounds through it.
         entity.radius = instance.placement && recipe.soft_radius <= 0.0F ? model_footprint_radius(recipe.bounds, *instance.placement) : recipe.radius;
-        // A placement that keeps the type's own size shares its recipe's capsule: rebuilt through the
+        // A placement that keeps the type's own size shares its recipe's rectangle: rebuilt through the
         // turned matrix it differs in its last bits with the heading, which keeps equal recipes apart.
         const bool rescaled = instance.placement && std::fabs(model_transform_scale(*instance.placement) - recipe.scale) > same_scale_tolerance * recipe.scale;
-        entity.capsule = rescaled && recipe.soft_radius <= 0.0F ? model_footprint_capsule(recipe.bounds, *instance.placement) : recipe.capsule;
+        entity.body = rescaled && recipe.soft_radius <= 0.0F ? model_footprint_rect(recipe.body_bounds, *instance.placement) : recipe.body;
         entity.turn_rate = recipe.turn_rate;
         entity.min_speed = recipe.min_speed;
         entity.movement = recipe.movement;

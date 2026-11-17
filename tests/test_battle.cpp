@@ -979,18 +979,15 @@ void test_type_recipe()
                     at.x == 10.0F && at.y == 20.0F && at.z == 5.0F,
                 "a placement transform must face its heading, keep its scale, and sit at its position");
     }
-    // A model 20 wide (X, left) and 60 long (Y, backward) at scale 2: a capsule of radius 20 whose
-    // spine runs along forward, 40 to either side of the bounds' center (forward -10: model Y 5);
-    // turned wide, the spine runs across; a round model is a circle.
+    // A model 20 wide (X, left) and 60 long (Y, backward) at scale 2: a rectangle 60 along by 20 across
+    // (halves), centered on the bounds (forward -10: model Y 5); a wide one keeps its width across.
     {
         const auto scaled = eaw::placement_transform({}, 0.0F, 2.0F);
-        const auto long_one = eaw::model_footprint_capsule(eaw::ModelBounds{{-10.0F, -25.0F, 0.0F}, {10.0F, 35.0F, 1.0F}}, scaled);
-        const auto wide_one = eaw::model_footprint_capsule(eaw::ModelBounds{{-30.0F, -10.0F, 0.0F}, {30.0F, 10.0F, 1.0F}}, eaw::Matrix4::identity());
-        const auto round_one = eaw::model_footprint_capsule(eaw::ModelBounds{{-5.0F, -5.0F, 0.0F}, {5.0F, 5.0F, 1.0F}}, eaw::Matrix4::identity());
-        require(near(long_one.radius, 20.0F) && near(long_one.spine_start.forward, -50.0F) && near(long_one.spine_end.forward, 30.0F) && near(long_one.spine_start.left, 0.0F) &&
-                    near(wide_one.radius, 10.0F) && near(wide_one.spine_start.left, -20.0F) && near(wide_one.spine_end.left, 20.0F) && near(wide_one.spine_start.forward, 0.0F) &&
-                    near(round_one.radius, 5.0F) && round_one.spine_start == round_one.spine_end,
-                "a model's footprint capsule must run along its long side with half its narrow side as radius");
+        const auto long_one = eaw::model_footprint_rect(eaw::ModelBounds{{-10.0F, -25.0F, 0.0F}, {10.0F, 35.0F, 1.0F}}, scaled);
+        const auto wide_one = eaw::model_footprint_rect(eaw::ModelBounds{{-30.0F, -10.0F, 0.0F}, {30.0F, 10.0F, 1.0F}}, eaw::Matrix4::identity());
+        require(near(long_one.half_length, 60.0F) && near(long_one.half_width, 20.0F) && near(long_one.center.forward, -10.0F) && near(long_one.center.left, 0.0F) &&
+                    near(wide_one.half_length, 10.0F) && near(wide_one.half_width, 30.0F),
+                "a model's footprint rectangle must keep its length along its heading and its width across");
     }
 
     eaw::TypeRecipe wall;

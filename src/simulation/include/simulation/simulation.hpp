@@ -231,9 +231,9 @@ struct EntityRecipe
     CombatProfile combat;
     // Footprint radius in world units for unit separation; zero takes no space.
     float radius{};
-    // The footprint as a capsule along the body (pathfinding-design.md 4.7); a zero radius means
-    // the circle of `radius`.
-    FootprintCapsule capsule;
+    // The footprint as an oriented rectangle (pathfinding-design.md 4.7); a zero half-width means the
+    // circle of `radius`.
+    FootprintRect body;
     // Turn rate in radians per second; zero turns instantly.
     float turn_rate{};
     MovementProfile movement;
@@ -915,9 +915,9 @@ private:
     // (docs/pathfinding-design.md, 4.4: units never overlap): ground with room for its footprint,
     // off every other ground unit's (`except`, the unit itself, aside). `at` itself when it is free,
     // or when no free point lies within free_ground_rings rings around it.
-    // A unit with a footprint capsule (`capsule`, its radius above zero) needs room for it along its
-    // spine at `heading`; units keep `radius` apart.
-    [[nodiscard]] Vector3 free_ground(const Vector3& at, float heading, float radius, const FootprintCapsule& capsule, std::uint32_t passable_types, std::optional<std::size_t> except);
+    // A unit with a footprint rectangle (`body`, its half-width above zero) needs room for it at
+    // `heading`; units keep `radius` apart.
+    [[nodiscard]] Vector3 free_ground(const Vector3& at, float heading, float radius, const FootprintRect& body, std::uint32_t passable_types, std::optional<std::size_t> except);
     // A destination's ground taken already: a slot an earlier member of the same order was placed in.
     struct ReservedGround
     {
@@ -1114,15 +1114,15 @@ private:
         // Flyers' current pitch (0 for everything else).
         std::vector<float> pitches;
         std::vector<float> radii;
-        // Footprint capsules (EntityRecipe::capsule).
-        std::vector<FootprintCapsule> capsules;
+        // Footprint rectangles (EntityRecipe::body).
+        std::vector<FootprintRect> bodies;
         template <class Visit> void for_each_column(Visit&& visit)
         {
             visit(positions);
             visit(headings);
             visit(pitches);
             visit(radii);
-            visit(capsules);
+            visit(bodies);
         }
     };
     struct MotionColumns

@@ -98,6 +98,29 @@ bool has_drawn_geometry(const Model& model, const std::span<const ModelAttachmen
     return false;
 }
 
+ModelBounds collision_model_bounds(const Model& model)
+{
+    ModelBounds bounds;
+    const auto bind_pose = skeleton_bind_pose(model.skeleton);
+    for (const auto& mesh : model.meshes)
+    {
+        for (const auto& submesh : mesh.submeshes)
+        {
+            if (submesh.material.family != LegacyMaterialFamily::collision)
+            {
+                continue;
+            }
+            for (const auto& vertex : submesh.vertices)
+            {
+                const auto position = drawn_vertex_position(vertex.position, mesh, submesh, bind_pose);
+                bounds.minimum = {std::min(bounds.minimum.x, position.x), std::min(bounds.minimum.y, position.y), std::min(bounds.minimum.z, position.z)};
+                bounds.maximum = {std::max(bounds.maximum.x, position.x), std::max(bounds.maximum.y, position.y), std::max(bounds.maximum.z, position.z)};
+            }
+        }
+    }
+    return bounds;
+}
+
 ModelBounds drawn_model_bounds(const Model& model, const std::span<const ModelAttachment> attachments, const bool animated_visibility)
 {
     ModelBounds bounds;

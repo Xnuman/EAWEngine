@@ -67,8 +67,11 @@ struct TypeRecipe
     // Separation footprint of a mobile type unplaced (its soft radius, else its model's bounds
     // through its Scale_Factor) and turn rate (XML Max_Rate_Of_Turn); see EntitySpawn.
     float radius{};
-    // Its footprint capsule (model_footprint_capsule; a soft radius's circle when it has one).
-    FootprintCapsule capsule;
+    // Its footprint rectangle (model_footprint_rect of `body_bounds`; a square of its soft radius when
+    // it has one), and the bounds it comes from: the model's collision meshes when it has them (an
+    // inference: the shape the original collides with), else its drawn bounds.
+    FootprintRect body;
+    ModelBounds body_bounds;
     float turn_rate{};
     // Acceleration and turning (type_movement).
     MovementProfile movement;

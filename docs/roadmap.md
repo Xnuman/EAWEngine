@@ -122,6 +122,9 @@ honor are worked through tag by tag from [xml-tag-status.md](xml-tag-status.md) 
       (status.md). Open:
       - sharing one footprint index between avoidance, contact, behavior, and combat (four grids
         are built each tick; pathfinding-design.md 4.5);
+      - the opening ticks' route planning: in the AT-AT reference battle tick 3 takes 19-21 ms,
+        nearly all navigation (over the 16.7 ms frame budget; there before the oriented
+        footprints, measured 2026-11-17);
       - refining the rest of a route as a unit advances, and rebuilding only changed chunks;
       - companies queueing at narrow places.
       Enemies count for planning when seen; every enemy until fog of war exists. The measurements

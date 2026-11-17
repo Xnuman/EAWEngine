@@ -8,7 +8,6 @@
 #include "math/scalar.hpp"
 #include "math/vector.hpp"
 
-#include <array>
 #include <cmath>
 #include <cstdint>
 #include <optional>
@@ -43,28 +42,25 @@ struct TurretProfile
     bool turns_body{true};
 };
 
-// A footprint as a capsule (pathfinding-design.md 4.7): the points within `radius` of the spine from
-// `spine_start` to `spine_end`, in the entity's local frame (equal ends: a circle). A long unit's
-// spine runs along its long side, the radius half its narrow side.
-struct FootprintCapsule
+// A footprint as an oriented rectangle (pathfinding-design.md 4.7): `half_length` along the entity's
+// heading and `half_width` across it, about `center` in its local frame; a zero half-width means none
+// (the circle of the entity's radius). A ground unit moving along its heading sweeps its width, so it
+// plans with `half_width` as its radius.
+struct FootprintRect
 {
-    bool operator==(const FootprintCapsule&) const = default;
-    float radius{};
-    LocalPoint spine_start;
-    LocalPoint spine_end;
+    bool operator==(const FootprintRect&) const = default;
+    float half_length{};
+    float half_width{};
+    LocalPoint center;
 };
 
-// The spine's ends on the ground for an entity at `at` facing `heading` (local points turned as
-// SimulationWorld::world_point turns them).
-[[nodiscard]] inline std::array<Vector2, 2> capsule_spine_at(const FootprintCapsule& capsule, const Vector3& at, const float heading) noexcept
+// The rectangle's center on the ground for an entity at `at` facing `heading` (a local point turned
+// as SimulationWorld::world_point turns it).
+[[nodiscard]] inline Vector2 footprint_center_at(const FootprintRect& body, const Vector3& at, const float heading) noexcept
 {
     const auto c = std::cos(heading);
     const auto s = std::sin(heading);
-    const auto place = [&](const LocalPoint& point)
-    {
-        return Vector2{at.x + point.forward * c - point.left * s, at.y + point.forward * s + point.left * c};
-    };
-    return {place(capsule.spine_start), place(capsule.spine_end)};
+    return {at.x + body.center.forward * c - body.center.left * s, at.y + body.center.forward * s + body.center.left * c};
 }
 
 // A part of an entity that can be targeted and destroyed on its own (ship hardpoints).

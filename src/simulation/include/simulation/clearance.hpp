@@ -6,9 +6,12 @@
 #include "math/vector.hpp"
 #include "simulation/ground_map.hpp"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 namespace eaw {
@@ -109,10 +112,47 @@ inline constexpr auto footing_buckets = []
 // Whether a unit with `footing` may stand at `point` (its cell's passability and clearance); true
 // when the ground has no passability data.
 [[nodiscard]] bool ground_stands(const GroundMap& ground, Vector2 point, const Footing& footing) noexcept;
-// Whether a unit with `footing` may stand everywhere along the segment from `from` to `to` (a
-// footprint capsule's spine, pathfinding-design.md 4.7): both ends and samples at most one ground
-// cell apart between them.
-[[nodiscard]] bool ground_stands_along(const GroundMap& ground, Vector2 from, Vector2 to, const Footing& footing) noexcept;
+// Calls visit(cell) for each cell whose sample point (column x spacing, row x spacing) lies in the
+// rectangle of `half_length` along `heading` and `half_width` across it about `center`, and returns
+// the window of cells looked at (nothing when it is empty). Placed obstacles' footprints are stamped
+// with it, and units' rectangles tested (pathfinding-design.md 4.7).
+template <typename Visit>
+std::optional<CellRect> for_each_cell_in_rectangle(const GroundMap& ground, const Vector2 center, const float heading, const float half_length, const float half_width, Visit&& visit)
+{
+    const auto cos_heading = std::cos(heading);
+    const auto sin_heading = std::sin(heading);
+    const auto reach = std::hypot(half_length, half_width);
+    const auto spacing = ground.spacing;
+    const auto first_column = std::max(0L, static_cast<long>(std::floor((center.x - reach) / spacing)));
+    const auto last_column = std::min(static_cast<long>(ground.width) - 1, static_cast<long>(std::ceil((center.x + reach) / spacing)));
+    const auto first_row = std::max(0L, static_cast<long>(std::floor((center.y - reach) / spacing)));
+    const auto last_row = std::min(static_cast<long>(ground.height) - 1, static_cast<long>(std::ceil((center.y + reach) / spacing)));
+    for (auto row = first_row; row <= last_row; ++row)
+    {
+        for (auto column = first_column; column <= last_column; ++column)
+        {
+            const auto dx = static_cast<float>(column) * spacing - center.x;
+            const auto dy = static_cast<float>(row) * spacing - center.y;
+            const auto along = dx * cos_heading + dy * sin_heading;
+            const auto across = -dx * sin_heading + dy * cos_heading;
+            if (std::fabs(along) > half_length || std::fabs(across) > half_width)
+            {
+                continue;
+            }
+            visit(static_cast<std::size_t>(row) * ground.width + static_cast<std::size_t>(column));
+        }
+    }
+    if (first_column > last_column || first_row > last_row)
+    {
+        return std::nullopt;
+    }
+    return CellRect{static_cast<std::uint32_t>(first_column), static_cast<std::uint32_t>(first_row), static_cast<std::uint32_t>(last_column), static_cast<std::uint32_t>(last_row)};
+}
+
+// Whether a unit's rectangle (pathfinding-design.md 4.7) may stand there: every cell under it of a
+// passability in `passable_types`, its center's cell too (a rectangle narrower than a cell may hold
+// no sample point); true when the ground has no passability data.
+[[nodiscard]] bool ground_rectangle_fits(const GroundMap& ground, Vector2 center, float heading, float half_length, float half_width, std::uint32_t passable_types) noexcept;
 
 // A* over the passability cells (one node per elevation sample): 8-connected, steps cost 10
 // straight and 14 diagonal, a diagonal step needs both side cells, and ties break by lower

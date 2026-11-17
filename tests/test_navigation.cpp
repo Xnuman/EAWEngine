@@ -1050,9 +1050,20 @@ void test_narrow_passage()
     }
     require(world.stats().separated_pairs == 0, "units at rest must stop pushing each other");
 
-    // A long unit (pathfinding-design.md 4.7): its circle (radius 20) does not fit the gap, its
-    // capsule (radius 8, spine 24 either way along its body) goes through lengthwise.
-    for (const bool shaped : {false, true})
+    // Oriented footprints (pathfinding-design.md 4.7), through the gap (clearance 15): a long unit
+    // whose circle (radius 20) does not fit it passes lengthwise (a rectangle 32 along by 8 across,
+    // halves); a plain circle of 20 stays out; a wide unit whose circle (radius 14) would fit stays out
+    // (it sweeps 20 either side moving forward).
+    struct Case
+    {
+        float radius{};
+        eaw::FootprintRect body;
+        bool passes{};
+        const char* failure{};
+    };
+    for (const auto& [radius, body, passes, failure] : {Case{20.0F, {.half_length = 32.0F, .half_width = 8.0F}, true, "a long unit must pass a gap its body fits lengthwise"},
+                                                        Case{20.0F, {}, false, "a unit whose circle does not fit a gap must stay out of it"},
+                                                        Case{14.0F, {.half_length = 8.0F, .half_width = 20.0F}, false, "a wide unit must stay out of a gap narrower than its width"}})
     {
         eaw::SimulationWorld through(1.0 / 30.0);
         through.set_ground(ground);
@@ -1061,8 +1072,8 @@ void test_narrow_passage()
                                              .max_speed = 30.0F,
                                              .follows_ground = true,
                                              .passable_types = eaw::passability::clear,
-                                             .radius = 20.0F,
-                                             .capsule = shaped ? eaw::FootprintCapsule{.radius = 8.0F, .spine_start = {.forward = -24.0F}, .spine_end = {.forward = 24.0F}} : eaw::FootprintCapsule{},
+                                             .radius = radius,
+                                             .body = body,
                                              .turn_rate = 8.0F});
         require(id.ok(), "test spawn must succeed");
         through.submit({.kind = eaw::SimCommandKind::move, .entities = {*id}, .target = {240.0F, 140.0F, 0.0F}});
@@ -1071,8 +1082,7 @@ void test_narrow_passage()
             through.step();
         }
         const auto x = through.snapshot().entities.front().position.x;
-        require(shaped ? x > 200.0F : x < 150.0F,
-                shaped ? "a long unit must pass a gap its body fits lengthwise; it stands at x " + std::to_string(x) : "a unit whose circle does not fit a gap must stay out of it");
+        require(passes ? x > 200.0F : x < 150.0F, std::string(failure) + "; it stands at x " + std::to_string(x));
     }
 }
 

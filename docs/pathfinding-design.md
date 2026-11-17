@@ -354,7 +354,7 @@ Built in `simulation_avoidance.cpp` and `orca.*` (the solver alone, tested by `t
 - Weapons whose unit's target is out of range share their unit's timer instead of searching every
   tick (built). Searches read the shared index once it exists (4.5).
 
-### 4.7 Oriented footprints (agreed with the owner, 2026-11-17; being rebuilt on rectangles)
+### 4.7 Oriented footprints (agreed with the owner, 2026-11-17; steps 1 and 2 built)
 
 Why: a ground unit is a circle of radius (width + depth) / 4 (`model_footprint_radius`), so a long
 unit needs a gap as wide as its average size: the Gargantuan (hull about 72 by 150) a gap of about
@@ -374,9 +374,11 @@ whole width moving forward.
   footing radius (`GroundMoverColumns::footing_radii`: size buckets, region labels, route lines and
   smoothing, plus the wall margin). The grid search knows positions, not headings, so the shape's
   length matters only where the unit turns and stops.
-- **Moving**: each step tests the cells under the rectangle at the unit's heading (as obstacles'
-  `GroundFootprint` rectangles are stamped). A turn may overlap blocked ground (the owner's choice:
-  a unit never deadlocks; refusing the turn and backing up was the alternative).
+- **Moving**: a step needs only the footing, the centerline at half the orthogonal side (the
+  owner's scheme). Testing the whole rectangle at the heading while going straight (within 20
+  degrees) was tried and dropped: its corners swing out by the half-length times the angle's sine,
+  beyond what the route keeps from walls, and the Gargantuan battle's blocked moves rose from 12 to
+  82 and its routes from 26 to 98. A turn may overlap blocked ground (the owner's choice).
 - **Placement** needs both sides: a unit's whole rectangle at the heading it arrives with (spawns,
   teleports, `free_ground`, `destination_free`); a group's members each at the group's facing, its
   slots spaced by their sides.
@@ -398,9 +400,14 @@ whole width moving forward.
   radius, its stale header comment fixed. Each step with its tests (`test_navigation`'s
   narrow-passage and footprint cases gain a long and a wide unit), the battle check, and a
   Gargantuan battle.
-- **As built so far** (the capsule slice, to be replaced by step 1-2): `FootprintCapsule` on
-  recipes and placements; ground units plan and step with the capsule's radius, and spawns,
-  teleports, and destinations test its spine (`ground_stands_along`).
+- **As built (steps 1 and 2)**: `FootprintRect` on recipes (`TypeRecipe::body` from
+  `body_bounds`: `collision_model_bounds`, else the drawn bounds; `model_footprint_rect`) and in
+  `PlacementColumns::bodies`; ground units stand and plan with its half-width
+  (`GroundMoverColumns::footing_radii`); spawns, teleports, and destinations test the whole rectangle
+  (`ground_rectangle_fits`, through `for_each_cell_in_rectangle`, which also stamps obstacles). The
+  stock rectangles, halves along by across: Gargantuan 78.2 by 37.3, AT-AT 53.9 by 16.7 (its
+  collision meshes are its legs, neck, and head; drawn 68.3 by 22.2), T2-B 23.3 by 10.0, AT-ST 12.1
+  by 9.6.
 
 ## 5. Order of work
 
