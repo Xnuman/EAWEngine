@@ -16,8 +16,9 @@ Every program only reads the game installation and mods.
 | `path-audit` | The pathfinding baseline ([Path audit](#path-audit)). |
 | `lua-survey` | Runs every script on recording stubs ([Lua survey](#lua-survey)). |
 | `compare-images` | Compares two captures ([Captures and image regression](#captures-and-image-regression)). |
+| `movement-scenarios` | Synthetic group moves measured for route churn and stalls ([Movement measurements](#movement-measurements)). |
 
-Every mode but `compare-images` first mounts the game and reads the probe asset (`--probe <path>`,
+Every mode but `compare-images` and `movement-scenarios` first mounts the game and reads the probe asset (`--probe <path>`,
 default `Data/XML/GameObjectFiles.xml`) and prints the installation, runtime root, hardware threads,
 mounts, and indexed MEG entries. Exit codes of that start: 2 no installation found or an
 installation without both game data sets, 3 the probe missing or unreadable.
@@ -294,6 +295,31 @@ Each order line starts with the tick it was given at (it applies in the next ste
 `index.generation`. A replay needs the same game data and mods as the recording; logs do not record
 them yet. Headless runs skip textures and animation clips, and the state hash covers gameplay state
 only, so a log recorded in the sandbox replays headless with the same hash.
+
+## Movement measurements
+
+How smoothly ground units move is measured in two places ([group-movement-research.md](group-movement-research.md)):
+
+- Every headless battle prints a `Movement:` line after `Paths:`: the **reversals** (a turn of at
+  least 10 degrees one way undone within a second, the visible turning left and right; steering
+  wobble below half a thousandth of a radian a tick is ignored), the **stalled** unit-seconds (ordered
+  to move but under a twentieth of top speed) out of all unit-seconds moving, and the **route
+  changes** by what made them: a plan (an order or a re-plan), a share of a group route, a repair leg
+  back to the route, a detour around units, and a formation frame's route. Squad soldiers are left
+  out (they follow their team). The thresholds are engine choices for the measure
+  (`sandbox/movement_metrics.hpp`); route changes are counted by the simulation
+  (`SimulationWorld::Stats::route_changes`), never hashed.
+- `EAWEngine movement-scenarios` needs no game installation. On generated flat ground (80 x 80
+  cells, 10 units apart) it runs, with tanks roughly like a T2-B (an approximation, not converted XML
+  values), ten tanks through a one-tank gap in a wall as a formation and as a group move, a head-on
+  pair, three tanks converging on one point, and two groups of five crossing. Each runs until every
+  tank stopped, or 60 seconds, and prints its time, the measurements above, blocked moves, and the
+  state hash. The runs repeat exactly, so a movement change is compared line by line with the
+  baseline in [group-movement-research.md](group-movement-research.md#baseline).
+
+```powershell
+EAWEngine.exe movement-scenarios
+```
 
 ## Path audit
 

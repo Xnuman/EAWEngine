@@ -8,6 +8,7 @@
 #include "presentation/projectile_visuals.hpp"
 #include "presentation/unit_animation.hpp"
 #include "scene/scene_builder_internal.hpp"
+#include "sandbox/movement_metrics.hpp"
 #include "sandbox/sandbox_options.hpp"
 
 namespace {
@@ -100,8 +101,57 @@ void test_sandbox_options()
             "stress orders must not combine with other orders or leave battle mode");
 }
 
+// The movement meter counts visible swings undone and stalls, not steering noise or one wide turn.
+void test_movement_meter()
+{
+    const auto run = [](const std::vector<float>& headings, const float speed)
+    {
+        eaw::MovementMeter meter;
+        for (const auto heading : headings)
+        {
+            eaw::SimSnapshot snapshot;
+            eaw::EntitySnapshot tank;
+            tank.id = {1, 1};
+            tank.heading = heading;
+            tank.moving = true;
+            tank.max_speed = 100.0F;
+            tank.follows_ground = true;
+            tank.speed = speed;
+            snapshot.entities.push_back(tank);
+            meter.observe(snapshot);
+        }
+        return meter.metrics();
+    };
+    // A wide turn of 90 degrees over a second, then straight on.
+    std::vector<float> turn;
+    for (int tick = 0; tick < 120; ++tick)
+    {
+        turn.push_back(std::min(tick, 60) * 0.026F);
+    }
+    // Steering noise: a thousandth of a radian either way each tick.
+    std::vector<float> noise;
+    for (int tick = 0; tick < 120; ++tick)
+    {
+        noise.push_back(tick % 2 == 0 ? 0.0F : 0.0004F);
+    }
+    // Swinging 20 degrees left and right every quarter of a second, for two seconds.
+    std::vector<float> swings;
+    for (int tick = 0; tick < 120; ++tick)
+    {
+        const auto phase = tick % 30;
+        swings.push_back(0.35F * static_cast<float>(phase < 15 ? phase : 30 - phase) / 15.0F);
+    }
+    const auto wide = run(turn, 100.0F);
+    const auto steady = run(noise, 100.0F);
+    const auto swinging = run(swings, 100.0F);
+    const auto crawling = run(noise, 2.0F);
+    require(wide.reversals == 0 && steady.reversals == 0 && swinging.reversals >= 6, "the meter must count swings undone, not one wide turn or noise (" + std::to_string(swinging.reversals) + ")");
+    require(wide.moving_ticks == 120 && wide.stalled_ticks == 0 && crawling.stalled_ticks == 120, "the meter must count ticks below a twentieth of top speed as stalled");
+}
+
 const ModuleRegistrar registrar("sandbox", {
                                                {"test_sandbox_options", &test_sandbox_options},
+                                               {"test_movement_meter", &test_movement_meter},
                                            });
 
 } // namespace

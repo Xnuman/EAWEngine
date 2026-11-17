@@ -1,7 +1,7 @@
 // Route tracing (SimulationWorld::RouteTrace): debug records of every change to a ground unit's route
 // and to formation frames' routes, with the stages of the search behind each. Recorded only while
 // tracing is on, in the serial code that applies a search's result; never hashed, never read back by
-// the simulation.
+// the simulation. Every change is counted (Stats::route_changes), traced or not.
 
 #include "simulation_internal.hpp"
 
@@ -48,6 +48,7 @@ const std::deque<SimulationWorld::RouteTrace>* SimulationWorld::NavigationSystem
 
 void SimulationWorld::NavigationSystem::record_route(const View& view, const std::size_t index, const RouteTraceKind kind, const PathTrace& stages)
 {
+    ++route_changes[static_cast<std::size_t>(kind)];
     if (!navigation_data_.tracing())
     {
         return;
@@ -70,6 +71,7 @@ void SimulationWorld::NavigationSystem::record_route(const View& view, const std
 
 void SimulationWorld::NavigationSystem::record_frame(const View& view, const FormationFrame& frame, const PathTrace& stages)
 {
+    ++route_changes[static_cast<std::size_t>(RouteTraceKind::frame)];
     if (!navigation_data_.tracing())
     {
         return;
