@@ -1912,6 +1912,74 @@ void test_crushing()
             "a crusher must walk over standing hostile infantry instead of being held back");
 }
 
+// Footprint rectangles among units (docs/pathfinding-design.md, 4.7): a crusher crushes what its
+// rectangle covers, and placement keeps units apart by their rectangles' extents toward each other.
+void test_footprint_rectangles()
+{
+    eaw::GroundMap ground;
+    ground.width = 40;
+    ground.height = 40;
+    ground.spacing = 10.0F;
+    ground.heights.assign(1600, 0.0F);
+    ground.passability.assign(1600, eaw::passability::clear);
+    eaw::Hostility hostility;
+    hostility.set(1, 2, true);
+    eaw::CombatProfile alive;
+    alive.health = 10.0F;
+    // A crusher passing a soldier 9 units beside its path: its circle (radius 10) reaches him, its
+    // rectangle (8 to either side) does not.
+    const auto crushed = [&](const eaw::FootprintRect body)
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_ground(ground);
+        world.set_hostility(hostility);
+        const auto tank = test_spawn(world, {.type_name = "Tank",
+                                             .owner = 1,
+                                             .position = {50.0F, 100.0F, 0.0F},
+                                             .max_speed = 50.0F,
+                                             .follows_ground = true,
+                                             .passable_types = eaw::passability::clear,
+                                             .radius = 10.0F,
+                                             .body = body,
+                                             .crush = {.crusher = eaw::Crusher::crusher}});
+        const auto victim = test_spawn(world, {.type_name = "Soldier",
+                                               .owner = 2,
+                                               .position = {150.0F, 109.0F, 0.0F},
+                                               .follows_ground = true,
+                                               .passable_types = eaw::passability::clear,
+                                               .combat = alive,
+                                               .crush = {.squashable = true}});
+        require(tank && victim, "test spawns must succeed");
+        world.submit({.kind = eaw::SimCommandKind::move, .entities = {*tank}, .target = {250.0F, 100.0F, 0.0F}});
+        for (int tick = 0; tick < 300; ++tick)
+        {
+            world.step();
+        }
+        return world.stats().crushed;
+    };
+    require(crushed({}) == 1 && crushed({.half_length = 20.0F, .half_width = 8.0F}) == 0, "a crusher must crush what its rectangle covers, not its circle");
+
+    // Two long units (30 along, 8 across, halves; radius 19) placed 20 apart side by side: as circles
+    // they overlap and the second is put elsewhere, as rectangles they stand where they were placed.
+    const auto second_moved = [&](const eaw::FootprintRect body)
+    {
+        eaw::SimulationWorld world(0.1);
+        world.set_ground(ground);
+        for (const float y : {100.0F, 120.0F})
+        {
+            require(
+                static_cast<bool>(test_spawn(
+                    world,
+                    {.type_name = "Platform", .position = {200.0F, y, 0.0F}, .max_speed = 10.0F, .follows_ground = true, .passable_types = eaw::passability::clear, .radius = 19.0F, .body = body})),
+                "test spawn must succeed");
+        }
+        world.step();
+        const auto& placed = world.snapshot().entities.back().position;
+        return std::hypot(placed.x - 200.0F, placed.y - 120.0F);
+    };
+    require(second_moved({}) > 1.0F && second_moved({.half_length = 30.0F, .half_width = 8.0F}) < 1.0e-3F, "units placed side by side must keep their rectangles' widths apart, not their circles'");
+}
+
 const ModuleRegistrar registrar("navigation", {
                                                   {"test_braking_stop_and_winding_turns", &test_braking_stop_and_winding_turns},
                                                   {"test_walk_as_clips", &test_walk_as_clips},
@@ -1933,6 +2001,7 @@ const ModuleRegistrar registrar("navigation", {
                                                   {"test_space_crowds", &test_space_crowds},
                                                   {"test_movement_profiles", &test_movement_profiles},
                                                   {"test_crushing", &test_crushing},
+                                                  {"test_footprint_rectangles", &test_footprint_rectangles},
                                               });
 
 } // namespace

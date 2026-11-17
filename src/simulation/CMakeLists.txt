@@ -10,6 +10,7 @@ set(EAW_SIMULATION_HEADERS
     ${HEADERS_DIR}/chunk_graph.hpp
     ${HEADERS_DIR}/clearance.hpp
     ${HEADERS_DIR}/combat.hpp
+    ${HEADERS_DIR}/footprint.hpp
     ${HEADERS_DIR}/component_pool.hpp
     ${HEADERS_DIR}/formation.hpp
     ${HEADERS_DIR}/ground_map.hpp

@@ -688,6 +688,18 @@ template <class Data> float SimulationWorld::unit_radius(Data& data, const std::
     return squad != nullptr ? squad->extent : data.template get<PlacementColumns>().radii[index];
 }
 
+template <class Data> float SimulationWorld::agent_room(Data& data, const std::size_t a, const Vector3& a_at, const std::size_t b, const Vector3& b_at) noexcept
+{
+    const auto& avoidance = data.template get<Avoidance>();
+    return footprints_reach({a_at, avoidance.facings[a], avoidance.radii[a], avoidance.bodies[a]}, {b_at, avoidance.facings[b], avoidance.radii[b], avoidance.bodies[b]});
+}
+
+template <class Data> float SimulationWorld::agent_extent(Data& data, const std::size_t a, const Vector2 direction) noexcept
+{
+    const auto& avoidance = data.template get<Avoidance>();
+    return footprint_extent(avoidance.bodies[a], avoidance.radii[a], avoidance.facings[a], direction);
+}
+
 template <class Data> Footing SimulationWorld::footing_of(Data& data, const std::size_t index) noexcept
 {
     auto& ground = data.template get<GroundState>();

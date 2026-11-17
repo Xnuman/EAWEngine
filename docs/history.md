@@ -1007,3 +1007,14 @@ rewritten to describe the current state; the source document is noted in bracket
   Hashes: large Utapau 0x862a172bd0c6c388, AT-ATs 0xabcafa1f187abf70; reference and space unchanged.
 - The owner confirmed the Gargantuan now takes Utapau's gate; its turrets and its height above the
   ground still look wrong (left for later, on the roadmap).
+- Oriented footprints, steps 3 and 4 (rectangles among units). Every spacing test between units now
+  uses each unit's extent toward the other (footprints_reach) instead of two radii: placement, ORCA,
+  keep_apart, giving way, detours, and the arrival rules; crushing takes what lies within the
+  crusher's rectangle; squad soldiers keep their circles until step 5. FootprintRect moved from
+  combat.hpp to footprint.hpp. The owner chose to profile the cost (option a): a temporary probe
+  showed the same neighbour candidates (48M) and the extra time in keep_apart; after a reboot the
+  260-unit battle measured 5.5 ms against 4.8 (14%), but 4.2 ms with avoidance agents forced to
+  circles, so the cost is the closer-packed battle, not arithmetic, and the planned data packing was
+  dropped; accepted. A navigation test covers crushing by rectangle and side-by-side placement.
+  Hashes: reference 0xa6e9ed5caaf4c217, large Utapau 0xc4de3053589e738b, AT-ATs 0x8d8b36566a141c37;
+  space unchanged.

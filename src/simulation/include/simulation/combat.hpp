@@ -6,9 +6,7 @@
 // caller, with 0 meaning "none".
 
 #include "math/scalar.hpp"
-#include "math/vector.hpp"
 
-#include <cmath>
 #include <cstdint>
 #include <optional>
 #include <unordered_map>
@@ -41,27 +39,6 @@ struct TurretProfile
     float yaw_limit{pi};
     bool turns_body{true};
 };
-
-// A footprint as an oriented rectangle (pathfinding-design.md 4.7): `half_length` along the entity's
-// heading and `half_width` across it, about `center` in its local frame; a zero half-width means none
-// (the circle of the entity's radius). A ground unit moving along its heading sweeps its width, so it
-// plans with `half_width` as its radius.
-struct FootprintRect
-{
-    bool operator==(const FootprintRect&) const = default;
-    float half_length{};
-    float half_width{};
-    LocalPoint center;
-};
-
-// The rectangle's center on the ground for an entity at `at` facing `heading` (a local point turned
-// as SimulationWorld::world_point turns it).
-[[nodiscard]] inline Vector2 footprint_center_at(const FootprintRect& body, const Vector3& at, const float heading) noexcept
-{
-    const auto c = std::cos(heading);
-    const auto s = std::sin(heading);
-    return {at.x + body.center.forward * c - body.center.left * s, at.y + body.center.forward * s + body.center.left * c};
-}
 
 // A part of an entity that can be targeted and destroyed on its own (ship hardpoints).
 struct HardpointProfile

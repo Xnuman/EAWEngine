@@ -32,6 +32,7 @@ void SimulationWorld::NavigationSystem::measure_agents(const View& view)
     const auto& members = view.get<ComponentPool<SquadMemberColumns>>();
     auto& avoidance = view.get<Avoidance>();
     avoidance.radii.assign(identity.ids.size(), 0.0F);
+    avoidance.bodies.assign(identity.ids.size(), FootprintRect{});
     avoidance.crush_proxies.resize(identity.ids.size());
     for (std::size_t index = 0; index < identity.ids.size(); ++index)
     {
@@ -49,7 +50,15 @@ void SimulationWorld::NavigationSystem::measure_agents(const View& view)
         else if (members.find(slot, &SquadMemberColumns::states) == nullptr && ground_body(view, index))
         {
             avoidance.radii[index] = placement.radii[index];
+            avoidance.bodies[index] = placement.bodies[index];
         }
+    }
+    avoidance.reaches.resize(identity.ids.size());
+    avoidance.facings.resize(identity.ids.size());
+    for (std::size_t index = 0; index < identity.ids.size(); ++index)
+    {
+        avoidance.reaches[index] = avoidance.radii[index] > 0.0F ? footprint_reach(avoidance.bodies[index], avoidance.radii[index]) : 0.0F;
+        avoidance.facings[index] = avoidance.bodies[index].half_width > 0.0F ? facing_of(placement.headings[index]) : Vector2{1.0F, 0.0F};
     }
 }
 
@@ -119,9 +128,9 @@ void SimulationWorld::NavigationSystem::plan_ground_avoidance(const View& view)
     {
         return;
     }
-    // By avoidance radius, so a query reaches only as far as the asking agent's own reach, however
-    // large other agents are (as contact's grid).
-    avoidance.grid.build(placement.positions, radii, avoidance_cell_size);
+    // By how far each agent reaches (its rectangle or circle), so a query reaches only as far as the
+    // asking agent's own reach, however large other agents are (as contact's grid).
+    avoidance.grid.build(placement.positions, avoidance.reaches, avoidance_cell_size);
     {
         EAW_PROFILE_ZONE("giving way");
         plan_giving_way(view);
@@ -164,7 +173,7 @@ void SimulationWorld::NavigationSystem::plan_ground_avoidance(const View& view)
         auto& nearest = scratch.nearest;
         auto& lines = scratch.lines;
         query.clear();
-        avoidance.grid.query_overlapping(placement.positions[index], radius + std::min(speed * avoidance_horizon_seconds, radius * avoidance_reach_radii), query);
+        avoidance.grid.query_overlapping(placement.positions[index], avoidance.reaches[index] + std::min(speed * avoidance_horizon_seconds, radius * avoidance_reach_radii), query);
         nearest.clear();
         for (const auto other : query)
         {
@@ -196,7 +205,9 @@ void SimulationWorld::NavigationSystem::plan_ground_avoidance(const View& view)
                 share = theirs / (mine + theirs);
                 own = motion.velocities[index];
             }
-            lines.push_back(orca_line(offset, own - motion.velocities[other], radius + radii[other] - contact_tolerance, avoidance_horizon_seconds, step, share, own));
+            // The room the two keep along the line between them (their rectangles' extents).
+            const auto room = agent_room(view, index, placement.positions[index], other, placement.positions[other]);
+            lines.push_back(orca_line(offset, own - motion.velocities[other], room - contact_tolerance, avoidance_horizon_seconds, step, share, own));
         }
         if (lines.empty())
         {
@@ -273,7 +284,7 @@ void SimulationWorld::NavigationSystem::plan_giving_way(const View& view)
         {
             const auto heading = heading_toward_waypoint(view, *passer);
             const auto behind = Vector2{placement.positions[index].x - placement.positions[*passer].x, placement.positions[index].y - placement.positions[*passer].y};
-            done = dot(behind, heading) < -(radii[index] + radii[*passer]);
+            done = dot(behind, heading) < -agent_room(view, index, placement.positions[index], *passer, placement.positions[*passer]);
         }
         if (!done)
         {
@@ -327,7 +338,7 @@ void SimulationWorld::NavigationSystem::plan_giving_way(const View& view)
         // The unit in its way: the nearest ground unit in its corridor (ties by dense index). Only that
         // one is asked; the ones beyond it are not what holds the mover up.
         query_.clear();
-        avoidance.grid.query_overlapping(placement.positions[passer], own_radius + ahead, query_);
+        avoidance.grid.query_overlapping(placement.positions[passer], avoidance.reaches[passer] + ahead, query_);
         std::optional<std::uint32_t> blocker;
         auto nearest = std::numeric_limits<float>::max();
         for (const auto other : query_)
@@ -338,7 +349,7 @@ void SimulationWorld::NavigationSystem::plan_giving_way(const View& view)
             }
             const auto offset = Vector2{placement.positions[other].x - placement.positions[passer].x, placement.positions[other].y - placement.positions[passer].y};
             const auto along = dot(offset, heading);
-            const auto reach = own_radius + radii[other];
+            const auto reach = agent_room(view, passer, placement.positions[passer], other, placement.positions[other]);
             if (along > 0.0F && along <= reach + ahead && std::fabs(cross(heading, offset)) < reach && along < nearest)
             {
                 nearest = along;
@@ -363,7 +374,7 @@ void SimulationWorld::NavigationSystem::plan_giving_way(const View& view)
             {
                 continue;
             }
-            const auto reach = own_radius + radii[yielder];
+            const auto reach = agent_room(view, passer, placement.positions[passer], yielder, placement.positions[yielder]);
             // A standing unit on its destination does not make way: the mover stops at it (goal_taken).
             // Units merely near the destination do (a later formation member reaches its slot past
             // members already in theirs).
@@ -449,10 +460,11 @@ void SimulationWorld::NavigationSystem::plan_detours(const View& view)
         // wall). The cells marked are cleared again after each search (only they, not the map).
         const auto& here = placement.positions[index];
         const auto own = radii[index];
+        const auto own_reach = avoidance.reaches[index];
         const auto& goal = *route.move_targets[index];
         const auto goal_cell = map.cell_at(goal.x, goal.y);
         query_.clear();
-        avoidance.grid.query_overlapping(here, own + detour_window, query_);
+        avoidance.grid.query_overlapping(here, own_reach + detour_window, query_);
         struct Marked
         {
             bool beside{};
@@ -470,8 +482,8 @@ void SimulationWorld::NavigationSystem::plan_detours(const View& view)
                 }
                 marked.movers = marked.movers || held_mover;
                 const auto& there = placement.positions[other];
-                const auto reach = own + radii[other];
-                marked.beside = marked.beside || distance_xy(there, here) <= reach * detour_beside;
+                const auto reach = own_reach + avoidance.reaches[other];
+                marked.beside = marked.beside || distance_xy(there, here) <= agent_room(view, index, here, other, there) * detour_beside;
                 const auto first_x = static_cast<long>(std::floor((there.x - reach) / map.spacing));
                 const auto last_x = static_cast<long>(std::ceil((there.x + reach) / map.spacing));
                 const auto first_y = static_cast<long>(std::floor((there.y - reach) / map.spacing));
@@ -481,7 +493,7 @@ void SimulationWorld::NavigationSystem::plan_detours(const View& view)
                     for (auto x = std::max(0L, first_x); x <= std::min(static_cast<long>(map.width) - 1, last_x); ++x)
                     {
                         const Vector3 center{static_cast<float>(x) * map.spacing, static_cast<float>(y) * map.spacing, 0.0F};
-                        if (distance_xy(center, there) < reach && distance_xy(center, here) > own)
+                        if (distance_xy(center, there) < agent_room(view, index, center, other, there) && distance_xy(center, here) > own)
                         {
                             const auto cell = static_cast<std::uint32_t>(y) * map.width + static_cast<std::uint32_t>(x);
                             if (obstacle_cells_[cell] == 0)
@@ -594,10 +606,10 @@ void SimulationWorld::NavigationSystem::blockers_at(const View& view, const std:
     const auto& placement = view.get<PlacementColumns>();
     const auto& avoidance = view.get<Avoidance>();
     const auto& radii = avoidance.radii;
-    const auto radius = radii[unit];
+    const Vector3 there_at{at.x, at.y, 0.0F};
     blockers_.clear();
     room_query_.clear();
-    avoidance.grid.query_overlapping({at.x, at.y, 0.0F}, radius, room_query_);
+    avoidance.grid.query_overlapping(there_at, avoidance.reaches[unit], room_query_);
     for (const auto other : room_query_)
     {
         const bool chained = std::ranges::any_of(chain_,
@@ -605,7 +617,8 @@ void SimulationWorld::NavigationSystem::blockers_at(const View& view, const std:
                                                  {
                                                      return asked.yielder == other;
                                                  });
-        if (other != unit && other != passer && radii[other] > 0.0F && !chained && std::hypot(placement.positions[other].x - at.x, placement.positions[other].y - at.y) < radius + radii[other])
+        if (other != unit && other != passer && radii[other] > 0.0F && !chained &&
+            std::hypot(placement.positions[other].x - at.x, placement.positions[other].y - at.y) < agent_room(view, unit, there_at, other, placement.positions[other]))
         {
             blockers_.push_back(other);
         }
@@ -613,7 +626,7 @@ void SimulationWorld::NavigationSystem::blockers_at(const View& view, const std:
     // The places units of this chain step to are taken too.
     for (const auto& asked : chain_)
     {
-        if (asked.yielder != unit && std::hypot(asked.aside.x - at.x, asked.aside.y - at.y) < radius + radii[asked.yielder])
+        if (asked.yielder != unit && std::hypot(asked.aside.x - at.x, asked.aside.y - at.y) < agent_room(view, unit, there_at, asked.yielder, asked.aside))
         {
             blockers_.push_back(asked.yielder);
         }
@@ -633,7 +646,7 @@ bool SimulationWorld::NavigationSystem::way_clear(const View& view, const std::s
     }
     const auto middle = from + step * 0.5F;
     room_query_.clear();
-    avoidance.grid.query_overlapping({middle.x, middle.y, 0.0F}, span * 0.5F + radii[unit], room_query_);
+    avoidance.grid.query_overlapping({middle.x, middle.y, 0.0F}, span * 0.5F + avoidance.reaches[unit], room_query_);
     for (const auto other : room_query_)
     {
         // The units of the chain step on ahead of it; those at its new place are the chain's to move.
@@ -648,9 +661,10 @@ bool SimulationWorld::NavigationSystem::way_clear(const View& view, const std::s
             continue;
         }
         const Vector2 there{placement.positions[other].x, placement.positions[other].y};
-        const auto reach = radii[unit] + radii[other];
         const auto along = std::clamp(dot(there - from, step) / (span * span), 0.0F, 1.0F);
-        const auto nearest = length(there - (from + step * along));
+        const auto closest = from + step * along;
+        const auto nearest = length(there - closest);
+        const auto reach = agent_room(view, unit, {closest.x, closest.y, 0.0F}, other, placement.positions[other]);
         // Not nearer than it already is (units packed side by side may slide past each other).
         if (nearest < std::min(reach, length(there - from)) - give_way_way_tolerance)
         {
@@ -678,11 +692,11 @@ bool SimulationWorld::NavigationSystem::make_way(const View& view, const std::si
 {
     const auto& placement = view.get<PlacementColumns>();
     const auto& ground = view.get<GroundState>();
-    const auto& radii = view.get<Avoidance>().radii;
     const Vector2 here{placement.positions[yielder].x, placement.positions[yielder].y};
     const Vector2 from{placement.positions[passer].x, placement.positions[passer].y};
-    const auto clear = radii[passer] + radii[yielder] * (1.0F + give_way_margin);
     const auto aside = cross(heading, here - from);
+    const Vector2 across = aside >= 0.0F ? Vector2{-heading.y, heading.x} : Vector2{heading.y, -heading.x};
+    const auto clear = agent_extent(view, passer, across) + agent_extent(view, yielder, {-across.x, -across.y}) * (1.0F + give_way_margin);
     // Candidates: the shortest step in each of give_way_directions directions that takes the unit out
     // of the passer's corridor, shortest first, then toward its own side of the line (the owner's
     // drawing, 2026-11-15, and after it: any direction where the ground is free, sideways, diagonally,
@@ -780,7 +794,6 @@ bool SimulationWorld::NavigationSystem::shift_on(const View& view, const std::si
 {
     const auto& placement = view.get<PlacementColumns>();
     const auto& ground = view.get<GroundState>();
-    const auto& radii = view.get<Avoidance>().radii;
     // The one ally in the way of the last place of the chain; more than one, or one that cannot move,
     // and the chain fails.
     if (blockers_.size() != 1 || depth > give_way_chain || !may_shift(view, blockers_.front(), passer))
@@ -792,7 +805,7 @@ bool SimulationWorld::NavigationSystem::shift_on(const View& view, const std::si
     const Vector2 there{placement.positions[unit].x, placement.positions[unit].y};
     const Vector2 taken{pusher.aside.x, pusher.aside.y};
     // Far enough along `toward` to clear the place the unit before it steps to.
-    const auto reach = (radii[unit] + radii[pusher.yielder]) * (1.0F + give_way_margin);
+    const auto reach = agent_room(view, unit, placement.positions[unit], pusher.yielder, pusher.aside) * (1.0F + give_way_margin);
     const auto offset = there - taken;
     const auto along = dot(offset, toward);
     const auto discriminant = along * along - (dot(offset, offset) - reach * reach);
@@ -832,7 +845,7 @@ Vector3 SimulationWorld::MovementSystem::keep_apart(const View& view, const std:
     // On land the grid is built by footprint (plan_ground_avoidance); in space by center.
     if (land)
     {
-        avoidance.grid.query_overlapping(here, radius + std::hypot(step.x, step.y), query_);
+        avoidance.grid.query_overlapping(here, avoidance.reaches[index] + std::hypot(step.x, step.y), query_);
     }
     else
     {
@@ -852,7 +865,18 @@ Vector3 SimulationWorld::MovementSystem::keep_apart(const View& view, const std:
         {
             return false;
         }
-        if (std::hypot(here.x + candidate.x - there.x, here.y + candidate.y - there.y) >= radius + other_radius)
+        const Vector3 next{here.x + candidate.x, here.y + candidate.y, here.z};
+        const auto next_x = next.x - there.x;
+        const auto next_y = next.y - there.y;
+        const auto apart_squared = next_x * next_x + next_y * next_y;
+        // Farther apart than both reach: clear, without measuring their extents (squared, no root).
+        const auto most = land ? avoidance.reaches[index] + avoidance.reaches[other] : radius + other_radius;
+        if (apart_squared >= most * most)
+        {
+            return false;
+        }
+        const auto room = land ? agent_room(view, index, next, other, there) : radius + other_radius;
+        if (apart_squared >= room * room)
         {
             return false;
         }
@@ -973,11 +997,12 @@ bool SimulationWorld::MovementSystem::goal_taken(const View& view, const std::si
     const bool given_up = route.stalled_ticks[index] >= ticks_for(view, arrival_give_up_seconds);
     goal_query_.clear();
     avoidance.grid.query_overlapping(goal, radius, goal_query_);
-    const bool goal_occupied = std::ranges::any_of(goal_query_,
-                                                   [&](const std::uint32_t other)
-                                                   {
-                                                       return other != index && radii[other] > 0.0F && standing_at(other) && distance_xy(placed[other], goal) < radius + radii[other];
-                                                   });
+    const bool goal_occupied =
+        std::ranges::any_of(goal_query_,
+                            [&](const std::uint32_t other)
+                            {
+                                return other != index && radii[other] > 0.0F && standing_at(other) && distance_xy(placed[other], goal) < agent_room(view, index, goal, other, placed[other]);
+                            });
     return std::ranges::any_of(query_,
                                [&](const std::uint32_t other)
                                {
@@ -985,11 +1010,16 @@ bool SimulationWorld::MovementSystem::goal_taken(const View& view, const std::si
                                    {
                                        return false;
                                    }
+                                   // Both rules below take a standing unit: the others cost nothing more.
+                                   const bool standing = standing_at(other);
+                                   if (!standing)
+                                   {
+                                       return false;
+                                   }
                                    const auto& there = placement.positions[other];
-                                   const auto reach = radius + radii[other];
+                                   const auto reach = agent_room(view, index, here, other, there);
                                    const auto from_goal = std::hypot(goal.x - there.x, goal.y - there.y);
                                    const auto apart = std::hypot(here.x - there.x, here.y - there.y);
-                                   const bool standing = standing_at(other);
                                    // Its goal under a standing unit it touches.
                                    if (standing && from_goal < reach && apart <= reach * (1.0F + taken_goal_margin))
                                    {

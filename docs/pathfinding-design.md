@@ -366,7 +366,7 @@ Built in `simulation_avoidance.cpp` and `orca.*` (the solver alone, tested by `t
 - Weapons whose unit's target is out of range share their unit's timer instead of searching every
   tick (built). Searches read the shared index once it exists (4.5).
 
-### 4.7 Oriented footprints (agreed with the owner, 2026-11-17; steps 1 and 2 built)
+### 4.7 Oriented footprints (agreed with the owner, 2026-11-17; steps 1 to 4 built)
 
 Why: a ground unit is a circle of radius (width + depth) / 4 (`model_footprint_radius`), so a long
 unit needs a gap as wide as its average size: the Gargantuan (hull about 72 by 150) a gap of about
@@ -399,11 +399,17 @@ whole width moving forward.
   rectangle bounding its soldiers in the squad's own frame (each slot's offset plus and minus the
   soldier's half-sizes, from the front-left corner of the front-left soldier to the back-right
   corner of the back-right one), turned with the squad's facing.
-- **Units among units**: overlap, contact, and crushing test oriented rectangles exactly
-  (separating axes); the spatial grid's broad phase keeps one bounding radius per unit (the
-  rectangle's half-diagonal). ORCA keeps circles per pair, each agent's radius its rectangle's extent
-  toward the other (a standard approximation); giving way and detours around standing units use the
-  rectangle tests.
+- **Units among units** (as built): one measure for every spacing test, so placement and avoidance
+  agree: two units keep between their positions each one's extent toward the other (the rectangle's
+  support distance along the line between them, or the circle's radius; `footprint.hpp`:
+  `footprint_extent`, `footprints_reach`). Side by side a rectangle keeps its half-width, end to end
+  its half-length, at a slant a little more room than an exact test. Exact separating-axis tests were
+  the first plan; mixing them with extents in avoidance would let placement put units where
+  avoidance holds them. Placement (`overlaps_unit`), ORCA (each pair's reach), `keep_apart`, giving
+  way, detours around standing units, and the arrival rules all use it (`agent_room`,
+  `agent_extent`, with `Avoidance::bodies`, `reaches`, `facings`); broad phases use each unit's reach
+  (the rectangle's half-diagonal plus its centre offset). Crushing is exact: what lies within the
+  crusher's rectangle (`footprint_contains`). A squad's soldiers keep their circles until step 5.
 - **Hashes**: every battle with ground vehicles changes its hash; declared with each change.
 - **Order of work**: (1) the rectangle on recipes and in `PlacementColumns` in place of the first
   slice's capsule, from the collision mesh or the bounds; (2) planning by the half side orthogonal
@@ -420,6 +426,12 @@ whole width moving forward.
   stock rectangles, halves along by across: Gargantuan 78.2 by 37.3, AT-AT 53.9 by 16.7 (its
   collision meshes are its legs, neck, and head; drawn 68.3 by 22.2), T2-B 23.3 by 10.0, AT-ST 12.1
   by 9.6.
+- **Cost (steps 3 and 4)**: the 260-unit Utapau battle averages 5.5 ms a tick against 4.8 before
+  (99th percentile 9.4 against 8.6 ms), measured on an idle machine against a build of the step
+  before. The same code with every avoidance agent forced to a circle runs at 4.2 ms, so the cost is
+  the battle the rectangles make (vehicles pass and pack closer, more of them slide along each other),
+  not the measure's arithmetic; profiling found the same neighbour candidates and the time in
+  `keep_apart` per call. Accepted (well within the frame budget).
 
 ## 5. Order of work
 

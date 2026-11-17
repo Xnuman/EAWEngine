@@ -13,6 +13,7 @@
 #include "core/status.hpp"
 #include "simulation/combat.hpp"
 #include "simulation/component_pool.hpp"
+#include "simulation/footprint.hpp"
 #include "simulation/formation.hpp"
 #include "simulation/ground_map.hpp"
 #include "simulation/orca.hpp"
@@ -946,8 +947,9 @@ private:
     [[nodiscard]] std::vector<Vector3> place_group(std::span<const std::size_t> movers, const Vector3& target);
     // Builds the occupancy grid for this tick if it is not built yet.
     void refresh_occupancy();
-    // Whether a footprint of `radius` at (x, y) overlaps a ground unit that `counts` accepts.
-    template <class Counts> [[nodiscard]] bool overlaps_unit(float x, float y, float radius, Counts&& counts);
+    // Whether a footprint (`body` facing `heading`, or the circle of `radius` without one) at (x, y)
+    // overlaps a ground unit that `counts` accepts (footprints_overlap).
+    template <class Counts> [[nodiscard]] bool overlaps_unit(float x, float y, float heading, float radius, const FootprintRect& body, Counts&& counts);
     // The clearance field of a movement class (null when none is built).
     [[nodiscard]] const ClearanceField* clearance_of(std::uint32_t passable_types) const noexcept;
     // Where ground units stand, for free_ground (scratch, not state): built at the tick's first
@@ -960,7 +962,8 @@ private:
         float origin_y{};
         std::uint32_t columns{};
         std::uint32_t rows{};
-        float largest_radius{};
+        // The farthest any unit in it reaches (footprint_reach).
+        float largest_reach{};
         std::vector<std::vector<std::uint32_t>> cells;
     };
     Occupancy occupancy_;
@@ -1026,6 +1029,11 @@ private:
     template <class Data> [[nodiscard]] static bool in_moving_frame(Data& data, std::size_t index) noexcept;
     // The radius the entity at `index` takes as a whole: a squad's extent, otherwise its footprint.
     template <class Data> [[nodiscard]] static float unit_radius(Data& data, std::size_t index) noexcept;
+    // The room two avoidance agents keep between their positions, `a` at `a_at` and `b` at `b_at`, each
+    // facing its heading (footprints_reach of their rectangles, or circles), and how far an agent
+    // reaches toward a direction (pathfinding-design.md 4.7).
+    template <class Data> [[nodiscard]] static float agent_room(Data& data, std::size_t a, const Vector3& a_at, std::size_t b, const Vector3& b_at) noexcept;
+    template <class Data> [[nodiscard]] static float agent_extent(Data& data, std::size_t a, Vector2 direction) noexcept;
     // Whether the entity at `index` waits this tick (for its formation group, or as a team for its
     // members), and its leaving its formation group (if it has one).
     template <class Data> [[nodiscard]] static bool waits(Data& data, std::size_t index) noexcept;
@@ -1791,6 +1799,13 @@ private:
         // stands for it (a squad's first soldier, itself otherwise).
         std::vector<float> radii;
         std::vector<std::uint32_t> crush_proxies;
+        // A ground unit's footprint rectangle (none for a squad, which avoids as its circle, and for
+        // what avoidance leaves alone), and how far each agent reaches (footprint_reach; the grid is
+        // built with it).
+        std::vector<FootprintRect> bodies;
+        std::vector<float> reaches;
+        // Each agent's facing this tick (facing_of its heading), for the extents.
+        std::vector<Vector2> facings;
     };
     GroundState ground_;
     Avoidance avoidance_;
@@ -1919,6 +1934,8 @@ private:
         [[nodiscard]] static const CrushProfile& crush_profile_of(const View& view, std::size_t index) noexcept;
         std::vector<Vector3> pushes_;
         SpatialGrid grid_;
+        // How far each entity reaches this tick (grid_ is built with them).
+        std::vector<float> reaches_;
         std::vector<std::uint32_t> query_;
     };
     ContactSystem contact_;

@@ -15,9 +15,16 @@ using namespace simulation_detail;
 
 void SimulationWorld::ContactSystem::run(const View& view, const float dt)
 {
-    // One grid of footprints after movement for crushing and separation (crushing moves nothing).
+    // One grid of footprints after movement for crushing and separation (crushing moves nothing): a
+    // ground unit as far as its rectangle reaches, anything else by its radius (flyers separate by it).
     const auto& placement = view.get<PlacementColumns>();
-    grid_.build(placement.positions, placement.radii, contact_cell_size);
+    const auto& ground_mover = view.get<GroundMoverColumns>();
+    reaches_.resize(placement.radii.size());
+    for (std::size_t index = 0; index < reaches_.size(); ++index)
+    {
+        reaches_[index] = ground_mover.follows_ground[index] != 0 ? footprint_reach(placement.bodies[index], placement.radii[index]) : placement.radii[index];
+    }
+    grid_.build(placement.positions, reaches_, contact_cell_size);
     crush(view);
     separate(view, dt);
     measure_speeds(view, dt);
@@ -49,9 +56,10 @@ void SimulationWorld::ContactSystem::crush(const View& view)
         {
             continue;
         }
-        // What lies under the crusher, in index order (as a scan of every entity found it).
+        // What lies under the crusher (its rectangle, or its circle without one), in index order (as a
+        // scan of every entity found it).
         query_.clear();
-        grid_.query(at, placement.radii[crusher], query_);
+        grid_.query(at, reaches_[crusher], query_);
         std::ranges::sort(query_);
         for (const auto victim : query_)
         {
@@ -59,7 +67,7 @@ void SimulationWorld::ContactSystem::crush(const View& view)
             {
                 continue;
             }
-            if (std::hypot(placement.positions[victim].x - at.x, placement.positions[victim].y - at.y) < placement.radii[crusher])
+            if (footprint_contains(placement.bodies[crusher], placement.radii[crusher], at, placement.headings[crusher], {placement.positions[victim].x, placement.positions[victim].y}))
             {
                 damage.events.push_back({.kind = DamageEvent::Kind::crush, .victim = identity.ids[victim]});
             }

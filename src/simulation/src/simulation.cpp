@@ -231,7 +231,9 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn, const EntityId
     }
     // On free ground: ground units never stand on each other or where their footprint does not fit
     // (found before any column grows, while every column still lists the same entities).
-    const auto start = recipe.follows_ground && ground_.map.valid() ? free_ground(spawn.position, spawn.heading, recipe.radius, recipe.body, recipe.passable_types, std::nullopt) : spawn.position;
+    const auto start = recipe.follows_ground && ground_.map.valid()
+                           ? free_ground(spawn.position, spawn.heading, recipe.radius, squad.valid() ? FootprintRect{} : recipe.body, recipe.passable_types, std::nullopt)
+                           : spawn.position;
     identity_.ids.push_back(id);
     placement_.positions.push_back(start);
     placement_.headings.push_back(wrap_angle(spawn.heading));
@@ -270,7 +272,9 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn, const EntityId
         }
     }
     placement_.radii.push_back(recipe.radius);
-    placement_.bodies.push_back(recipe.body);
+    // A squad's soldiers keep their circles among units: the squad is shaped as a whole (the owner's
+    // plan, pathfinding-design.md 4.7, step 5).
+    placement_.bodies.push_back(squad.valid() ? FootprintRect{} : recipe.body);
     locomotor_.turn_rates.push_back(recipe.turn_rate);
     locomotor_.movements.push_back(&recipe.movement);
     locomotor_.drive_speeds.push_back(0.0F);
@@ -965,7 +969,7 @@ void SimulationWorld::occupy(const std::size_t index)
     const auto column = static_cast<std::uint32_t>(std::clamp(std::floor((at.x - occupancy_.origin_x) / occupancy_.cell), 0.0F, static_cast<float>(occupancy_.columns - 1U)));
     const auto row = static_cast<std::uint32_t>(std::clamp(std::floor((at.y - occupancy_.origin_y) / occupancy_.cell), 0.0F, static_cast<float>(occupancy_.rows - 1U)));
     occupancy_.cells[static_cast<std::size_t>(row) * occupancy_.columns + column].push_back(static_cast<std::uint32_t>(index));
-    occupancy_.largest_radius = std::max(occupancy_.largest_radius, placement_.radii[index]);
+    occupancy_.largest_reach = std::max(occupancy_.largest_reach, footprint_reach(placement_.bodies[index], placement_.radii[index]));
 }
 
 void SimulationWorld::refresh_occupancy()
@@ -981,7 +985,7 @@ void SimulationWorld::refresh_occupancy()
     occupancy_.origin_y = -ground_.map.spacing;
     occupancy_.columns = static_cast<std::uint32_t>(std::ceil((static_cast<float>(ground_.map.width + 1U) * ground_.map.spacing) / occupancy_.cell)) + 1U;
     occupancy_.rows = static_cast<std::uint32_t>(std::ceil((static_cast<float>(ground_.map.height + 1U) * ground_.map.spacing) / occupancy_.cell)) + 1U;
-    occupancy_.largest_radius = 0.0F;
+    occupancy_.largest_reach = 0.0F;
     occupancy_.cells.assign(static_cast<std::size_t>(occupancy_.columns) * occupancy_.rows, {});
     for (std::size_t index = 0; index < identity_.ids.size(); ++index)
     {
@@ -989,10 +993,12 @@ void SimulationWorld::refresh_occupancy()
     }
 }
 
-template <class Counts> bool SimulationWorld::overlaps_unit(const float x, const float y, const float radius, Counts&& counts)
+template <class Counts> bool SimulationWorld::overlaps_unit(const float x, const float y, const float heading, const float radius, const FootprintRect& body, Counts&& counts)
 {
     refresh_occupancy();
-    const auto reach_all = radius + occupancy_.largest_radius;
+    const PlacedFootprint placed{{x, y, 0.0F}, facing_of(heading), radius, body};
+    const auto own_reach = footprint_reach(body, radius);
+    const auto reach_all = own_reach + occupancy_.largest_reach;
     const auto cell_of = [&](const float value, const float origin, const std::uint32_t count)
     {
         return static_cast<std::uint32_t>(std::clamp(std::floor((value - origin) / occupancy_.cell), 0.0F, static_cast<float>(count - 1U)));
@@ -1003,10 +1009,16 @@ template <class Counts> bool SimulationWorld::overlaps_unit(const float x, const
         {
             for (const auto other : occupancy_.cells[static_cast<std::size_t>(row) * occupancy_.columns + column])
             {
-                const auto reach = radius + placement_.radii[other];
+                // Farther apart than both reach: no overlap, without the extents' trigonometry.
                 const auto dx = placement_.positions[other].x - x;
                 const auto dy = placement_.positions[other].y - y;
-                if (dx * dx + dy * dy < reach * reach && counts(other))
+                const auto most = own_reach + footprint_reach(placement_.bodies[other], placement_.radii[other]);
+                if (dx * dx + dy * dy >= most * most)
+                {
+                    continue;
+                }
+                const PlacedFootprint there{placement_.positions[other], facing_of(placement_.headings[other]), placement_.radii[other], placement_.bodies[other]};
+                if (footprints_overlap(placed, there) && counts(other))
                 {
                     return true;
                 }
@@ -1037,7 +1049,7 @@ Vector3 SimulationWorld::free_ground(const Vector3& at, const float heading, con
     };
     const auto free = [&](const float x, const float y)
     {
-        return (passable_types == 0 || stands(x, y)) && !overlaps_unit(x, y, radius,
+        return (passable_types == 0 || stands(x, y)) && !overlaps_unit(x, y, heading, radius, body,
                                                                        [&](const std::uint32_t other)
                                                                        {
                                                                            return other != except;
@@ -1089,7 +1101,9 @@ bool SimulationWorld::destination_free(const float x, const float y, const std::
         }
         return std::ranges::find(movers, unit) != movers.end();
     };
-    return !overlaps_unit(x, y, radius,
+    const auto& from = placement_.positions[index];
+    const auto arriving = std::hypot(x - from.x, y - from.y) > 1.0e-3F ? std::atan2(y - from.y, x - from.x) : placement_.headings[index];
+    return !overlaps_unit(x, y, arriving, radius, shaped ? body : FootprintRect{},
                           [&](const std::uint32_t other)
                           {
                               return !route_.move_targets[other] && !moving_with(other);
