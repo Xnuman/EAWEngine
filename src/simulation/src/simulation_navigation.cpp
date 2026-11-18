@@ -175,12 +175,12 @@ bool SimulationWorld::NavigationSystem::plan_around(const View& view, const std:
         }
         previous = ahead[point];
     }
-    // The cells of the blocker and of every other unit standing within the chunk's reach (moving no
-    // faster than blocker_moving_fraction of its top speed), each widened by this unit's radius, and
-    // for a unit within reach of this one's footprint at least as far as it stands from it (they may
-    // touch where their footprints meet, beyond their radii): cells whose centers lie that close.
-    const auto& motion = view.get<MotionColumns>();
-    const auto& locomotor = view.get<LocomotorColumns>();
+    // Obstacles (the owner, 2026-11-18): every unit within the chunk's reach that blocks this one
+    // (keep_apart's rule: a ground unit it cannot crush) and is not of its order, moving or standing.
+    // Each covers the cells whose centers lie within its radius widened by this unit's, and for a
+    // unit within reach of this one's footprint at least as far as it stands from it (they may touch
+    // where their footprints meet, beyond their radii).
+    const auto order = route.orders[index];
     obstacle_cells_.resize(static_cast<std::size_t>(ground.width) * ground.height, 0);
     const auto mark = [&](const std::size_t other)
     {
@@ -211,27 +211,44 @@ bool SimulationWorld::NavigationSystem::plan_around(const View& view, const std:
     avoidance.grid.query_overlapping(here, span, nearby_);
     for (const auto other : nearby_)
     {
-        if (other != index && other != blocker && other < avoidance.radii.size() && avoidance.radii[other] > 0.0F && motion.speeds[other] <= blocker_moving_fraction * locomotor.max_speeds[other])
+        const bool same_order = order != 0 && route.orders[other] == order;
+        if (other != index && other != blocker && other < avoidance.radii.size() && avoidance.radii[other] > 0.0F && !same_order && !flies(view, other) &&
+            !can_crush(view, index, avoidance.crush_proxies[other]))
         {
             mark(other);
         }
     }
+    // First within the chunk, to where the route leaves it; then, when that finds no way, the whole
+    // route to the destination around the same obstacles.
+    const auto footing = footing_of(view, index);
     around_.set_obstacles(obstacle_cells_);
-    auto found = around_.find(navigation_data_, ground, {here.x, here.y}, goal, footing_of(view, index));
+    auto found = around_.find(navigation_data_, ground, {here.x, here.y}, goal, footing);
     around_.set_obstacles({});
+    ++path_searches;
+    path_expansions += found.expanded;
+    const bool local = found.status == PathStatus::reached && !found.waypoints.empty();
+    if (!local)
+    {
+        around_whole_.set_obstacles(obstacle_cells_);
+        found = around_whole_.find(navigation_data_, ground, {here.x, here.y}, ahead.back(), footing);
+        around_whole_.set_obstacles({});
+        ++path_searches;
+        path_expansions += found.expanded;
+    }
     for (const auto cell : marked_cells_)
     {
         obstacle_cells_[cell] = 0;
     }
     marked_cells_.clear();
-    ++path_searches;
-    path_expansions += found.expanded;
     if (found.status != PathStatus::reached || found.waypoints.empty())
     {
         return false;
     }
     auto waypoints = std::move(found.waypoints);
-    waypoints.insert(waypoints.end(), ahead.begin() + static_cast<std::ptrdiff_t>(rest), ahead.end());
+    if (local)
+    {
+        waypoints.insert(waypoints.end(), ahead.begin() + static_cast<std::ptrdiff_t>(rest), ahead.end());
+    }
     set_route(view, index, waypoints, route.move_targets[index]->z);
     record_route(view, index, RouteTraceKind::around, found.trace);
     return true;

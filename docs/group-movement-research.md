@@ -345,3 +345,12 @@ Tried and left out: units of one order going around each other like units of dif
 (their step 8 for all). It changed none of the scenarios but crossing groups (9.2 s, 125 ways
 around) and made the large battle worse (9,619 ways around, stalled 2,841 of 3,574 unit-s, 2.15 ms a
 tick).
+
+With the owner's rule for the searches around units (2026-11-18: every unit that blocks and is not
+of the same order is an obstacle, moving or standing; the second search to the destination around
+them), the scenarios change to three converging 6.2 s (4 reversals, 5 ways around) and crossing
+groups 2.2 s with all ten moves ended halfway (6 ways around, 1 reversal): the ways around lead tanks
+into their own group's tanks, and two of one order blocking each other both end their moves. With
+units of the same order as obstacles as well, crossing groups take 7.3 s (2 ways around, the 9 stops
+arrivals). The passage, the head-on pair, and the four battles do not change (the battles need no
+way around).

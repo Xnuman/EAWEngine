@@ -1163,3 +1163,11 @@ rewritten to describe the current state; the source document is noted in bracket
   0xf2bf375f99ee11ba, large Utapau 0x7b271f9612206d1d -> 0xd8cae913d2401356, Kuat fighters
   0x44a0aee571affa51 -> 0x3c1998f3f3a33611, Kuat capital 0xd3c0c7aae986e0e0 -> 0x195a3e582287f460,
   AT-ATs 0x3935648b19513d0a -> 0x597947f00d8bc53c.
+- Step 8 per the owner's answer (movement-redesign branch): the searches around a blocker avoid
+  every unit near it that blocks the unit (keep_apart's rule) and is not of its order, moving or
+  standing (before: standing units only), and when the search within the chunk finds none, a second
+  search plans a new route to the destination around them (a cell search without chunks, 16,384
+  nodes; a chunk route would hold it to a corridor through the units). Three converging 6.2 s (was
+  7.0 s, 4 reversals instead of 15); crossing groups now stop halfway (2.2 s, all ten ended: ways
+  around lead into units of the own order); with same-order units as obstacles too they take 7.3 s,
+  a question for the owner. Battle hashes unchanged (no battle needs a way around).

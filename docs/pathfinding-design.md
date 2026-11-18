@@ -51,6 +51,9 @@ is deliberately left out for now: every unit of an order moves by these rules on
    - otherwise it plans a new route: first an A* inside its current 32-cell chunk around the
      blocker; when that finds none, an A* from where it stands to its destination with its current
      chunk marked blocked; when that finds none either, the unit stops (the order ends there).
+     The owner's answer (2026-11-18): the second search marks the blockers' cells, not the chunk,
+     and while a unit goes around, every other unit that blocks it (by its collision rule) and is
+     not of its order is an obstacle, moving or standing.
 
 To try: marking the whole current chunk blocked in the second search (the owner's choice; a finer
 mark, the cells under the blocker only, is the alternative if whole chunks close corridors or
@@ -85,16 +88,19 @@ Built: steps 6 to 8, with these engine choices:
   (top speeds compared); otherwise it plans around it (`plan_around`): a cell search without chunks,
   at most 2,048 nodes (twice a 32-cell chunk's cells; it stays near the chunk without being bounded
   to it), from where it stands to where its route leaves its 32-cell chunk (half a cell inside the
-  edge), or to its destination when that lies in the chunk; the rest of its route is kept. The
-  search may not enter the cells within reach of the blocker and of every other ground unit near it
-  that stands (an addition to the owner's step: around only the blocker, three units converging went
-  around one straight into the third, every tick), each widened by the unit's radius and, for a
-  unit close enough to touch it, to at least where it stands. When no way is found the unit ends its
-  move.
-- The second search of step 8 (to the destination with the current chunk marked blocked) is not
-  built: the unit stands in that chunk, and a search may not leave a blocked start's neighbors, so
-  it could never find a way. Open for the owner: which chunk to mark (the one ahead on the route?),
-  or the blocker's cells only.
+  edge), or to its destination when that lies in the chunk; the rest of its route is kept. When it
+  finds none, a second search plans a new route to the destination: a cell search without chunks of
+  at most 16,384 nodes (a chunk route knows nothing of units and would hold the search to a corridor
+  through them). Both may not enter the cells within reach of the blocker and of every other ground
+  unit within a chunk's reach that blocks the unit (keep_apart's rule: a ground unit it cannot crush)
+  and is not of its order, moving or standing (the owner's rule), each widened by the unit's radius
+  and, for a unit close enough to touch it, to at least where it stands. When neither finds a way
+  the unit ends its move.
+- Open for the owner: units of one order are no obstacles to each other's searches, so a way around
+  another order's units can lead into a unit of the unit's own order; the two block each other and
+  both end their move. Two groups crossing so stop halfway (2.2 s, all ten ended); with units of the
+  same order as obstacles too (they still never start a search), the groups cross and arrive (7.3 s,
+  the 9 stops arrivals), and nothing else measured changes.
 - No tie-break was needed: two units meeting head-on both plan around and pass (6 detours).
 
 The measurements are in

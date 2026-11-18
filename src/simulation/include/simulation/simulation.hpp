@@ -2053,8 +2053,10 @@ private:
         // The new movement of a single unit, steps 7 and 8 (docs/pathfinding-design.md): what a ground
         // unit blocked in the last tick does: wait, go around (plan_around), or end its move.
         void resolve_blocks(const View& view);
-        // A way for the unit at `index` around `blocker` to where its route leaves its 32-cell chunk
-        // (or to its destination within it), the rest of its route kept; false when none is found.
+        // A way for the unit at `index` around `blocker` and the other units near it that block it and
+        // are not of its order: to where its route leaves its 32-cell chunk (or to its destination
+        // within it), the rest of its route kept; else a new route to its destination around them;
+        // false when neither is found.
         [[nodiscard]] bool plan_around(const View& view, std::size_t index, std::size_t blocker);
         // A search around a blocker expands at most this many nodes: twice the cells of a 32-cell
         // chunk, so it stays near the chunk it starts in. An engine choice.
@@ -2062,6 +2064,11 @@ private:
         // Searches around a blocker (no chunks), the cells they may not enter (one per ground cell,
         // nonzero blocked), and the cells marked in it.
         GridPathfinder around_{around_budget};
+        // The second search around blockers, to the destination: a cell search without chunks (a chunk
+        // route knows nothing of units and holds the search to a corridor through them), at most this
+        // many nodes. An engine choice: a 128-cell square's cells.
+        static constexpr std::uint32_t around_whole_budget = 16384;
+        GridPathfinder around_whole_{around_whole_budget};
         std::vector<std::uint8_t> obstacle_cells_;
         std::vector<std::uint32_t> marked_cells_;
         std::vector<std::uint32_t> nearby_;
