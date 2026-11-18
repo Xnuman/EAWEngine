@@ -15,12 +15,9 @@ namespace {
 
 constexpr std::uint32_t straight_cost = 10;
 constexpr std::uint32_t diagonal_cost = 14;
-// Routes keep off walls where there is room (the owner's finer size buckets, 2026-11-15, let units
-// through every gap they fit, but routes hugged corners at exactly the unit's radius and crowds
-// jammed there): a cell closer than this margin beyond the unit's radius to ground it cannot enter
-// costs this much more to enter, and smoothing keeps the margin where it can. Engine choices.
-constexpr float wall_margin = 5.0F;
-constexpr std::uint32_t wall_cost = straight_cost;
+// Routes keep off walls where there is room (wall_reach, pathfinding.hpp; before, 2026-11-15, a cell
+// closer than wall_margin beyond the unit's radius cost one straight step more, so routes ran exactly
+// that far from walls); smoothing keeps wall_margin where it can.
 
 bool finite(const PathPoint point) noexcept
 {
@@ -360,9 +357,14 @@ GridPathfinder::CellSearch GridPathfinder::search_cells(const GroundMap& ground,
             {
                 continue;
             }
-            const bool near_wall =
-                footing.clearance != nullptr && footing.radius > 0.0F && neighbor < footing.clearance->cells.size() && footing.clearance->cells[neighbor] < footing.radius + wall_margin;
-            const auto cost = cost_[node.cell] + (diagonal ? diagonal_cost : straight_cost) + (near_wall ? wall_cost : 0U);
+            auto wall = 0U;
+            if (footing.clearance != nullptr && footing.radius > 0.0F && neighbor < footing.clearance->cells.size())
+            {
+                const auto reach = wall_reach(footing.radius);
+                const auto room = std::max(0.0F, footing.clearance->cells[neighbor] - footing.radius);
+                wall = room < reach ? static_cast<std::uint32_t>(std::lround(static_cast<float>(wall_cost_most) * (1.0F - room / reach))) : 0U;
+            }
+            const auto cost = cost_[node.cell] + (diagonal ? diagonal_cost : straight_cost) + wall;
             if (seen_[neighbor] != search_ || cost < cost_[neighbor])
             {
                 seen_[neighbor] = search_;
@@ -702,9 +704,12 @@ PathResult GridPathfinder::find(NavigationData& navigation, const GroundMap& gro
         }
     }
     // Keep a waypoint only when the next one cannot be reached in a straight line from the last
-    // kept point: with the wall margin as far as the line can keep it, else with the unit's own room
-    // (kept only, a margin-less stretch left the search's staircase along a wall in the route).
+    // kept point: with the wall reach as far as the line can keep it (so a straightened route keeps
+    // the distance from walls the search chose), else with the wall margin, else with the unit's own
+    // room (kept only, a margin-less stretch left the search's staircase along a wall in the route).
     // Consecutive cell centers are always connected, so this never fails to advance.
+    auto spacious = footing;
+    spacious.radius = footing.radius > 0.0F ? footing.radius + wall_reach(footing.radius) : 0.0F;
     auto roomy = footing;
     roomy.radius = footing.radius > 0.0F ? footing.radius + wall_margin : 0.0F;
     // With obstacles set, a straight line must also keep off their cells (sampled every half cell).
@@ -742,7 +747,11 @@ PathResult GridPathfinder::find(NavigationData& navigation, const GroundMap& gro
     std::size_t anchor = 0;
     while (anchor + 1 < points.size())
     {
-        auto next = furthest(anchor, roomy);
+        auto next = furthest(anchor, spacious);
+        if (next == anchor + 1)
+        {
+            next = furthest(anchor, roomy);
+        }
         if (next == anchor + 1)
         {
             next = furthest(anchor, footing);

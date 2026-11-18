@@ -354,7 +354,10 @@ EAWEngine.exe path-audit --game foc --report D:\eaw-audit\before
 The baseline (2026-11-15, the grid A*): 76 stock land maps, 13 movement classes, 98,800 pairs, 82%
 reached (the rest partial: their goal lies in a region the start cannot reach); nodes expanded mean
 1,385, 95th percentile 6,722; 0.25 ms a search on average, 1.1 ms at the 95th percentile; the whole
-run takes about 80 s.
+run takes about 80 s. With a size bucket every 2 units the run plans 3,359,200 pairs: with the
+refined layout and the graded wall cost (2026-11-19) 81% reached, nodes expanded mean 447, 95th
+percentile 1,409, 0.24 ms a search (0.52 ms at the 95th percentile), and the whole run takes about 20
+minutes; a single map (44,200 pairs) under a minute.
 
 ## Lua survey
 

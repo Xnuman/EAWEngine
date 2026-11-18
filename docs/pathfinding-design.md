@@ -153,17 +153,27 @@ proposal models the group:
 - **Unit level, local**: a member steers to its slot on the moving formation (or to the trail point
   behind the member ahead), its heading aligned with the group's (fewer turning rectangles); the hard
   no-overlap rule and priority yielding stay; ways around units remain only for units of other
-  orders.
-- **Route cost (the owner, 2026-11-18)**: the shortest route hugs walls and cuts corners, and every
-  unit sent the same way takes the same one, so they converge on one line along the wall, where the
-  hard cases arise. Cells near walls and obstacles should cost more (from the clearance field), so
-  routes run along the middle of passages and keep their distance from corners.
+  orders. A member not in its slot drives at its own top speed to catch up, and keeps the
+  formation's speed once in it (the owner, 2026-11-18), so a group forms up while it moves.
+- **Route cost (the owner, 2026-11-18; built as step A)**: the shortest route hugs walls and cuts
+  corners, and every unit sent the same way takes the same one, so they converge on one line along
+  the wall, where the hard cases arise. Entering a cell costs extra while the room it leaves beyond
+  the unit's radius is under `wall_reach` (the radius plus `wall_margin`), up to `wall_cost_most`
+  (two straight steps) at no room, fading to none at the reach; the clearance field measures that far
+  (`wall_room`). Smoothing keeps the wall reach where a straight line can, then the margin, then the
+  unit's own room (with the margin only, it pulled the routes back along the walls: lengths
+  unchanged at 2.5 times the nodes). Measured on Utapau, Coruscant, Kashyyyk, and Hoth: every pair
+  reaches what it did, about one route in eight keeps further from walls, length +0.3% to +0.4%,
+  nodes expanded 2.4 to 2.6 times, search time about a third more; the large Utapau battle's ways
+  around 12,474 to 7,162, frozen 21 to 17, tick 1.68 to 1.96 ms; the freezes of groups whose ways
+  cross remain (step B). Engine choices.
 - Boids was considered: cohesion and alignment come for free, but separation is a soft force (the
   bumping and heading wobble the owner rejected in the avoidance build), narrow passages are its
   weak point, and the observed original (stop before contact, no shoving, slots from the start,
   detours to arrive facing the way) does not look like flocking. Its alignment rule is kept.
-- Main had formation frames; the owner's rejection of main concerned the avoidance layer's bumping
-  and wobble, which is my reading and to be confirmed before relying on frames again.
+- Main had formation frames; the owner (2026-11-18): any technique (frames, ORCA, flow fields) is
+  fine as long as its behavior is correct and it performs. The order of work: A route cost (built),
+  B the moving formation, C folding into a trail in narrow places, D alignment and arrival.
 
 
 ## 1. Why

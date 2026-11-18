@@ -1095,8 +1095,9 @@ void SimulationWorld::refresh_clearance()
     for (const auto& [mask, radius] : needs)
     {
         auto field = std::ranges::find(ground_.clearance, mask, &ClearanceField::passable_types);
-        const auto limit = std::max(clearance_minimum_limit, radius);
-        if (field == ground_.clearance.end() || field->limit < radius)
+        // As far as a route's wall cost reads (wall_room), at least the largest footing.
+        const auto limit = std::max(clearance_minimum_limit, wall_room(radius));
+        if (field == ground_.clearance.end() || field->limit < limit)
         {
             if (field != ground_.clearance.end())
             {

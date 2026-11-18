@@ -53,6 +53,23 @@ struct PathResult
     PathTrace trace;
 };
 
+// Routes keep off walls where there is room (the owner, 2026-11-18: shortest routes hug walls and
+// corners, and every unit sent the same way takes the same line along them): entering a cell costs
+// extra while the room it leaves beyond the unit's radius (its clearance less the radius) is under
+// wall_reach(radius), the most, wall_cost_most, at no room, fading to none at the reach. The reach is
+// the unit's radius plus a margin, so a unit keeps about its own size from walls where it can and
+// passages are crossed along their middle. Engine choices. The clearance a search reads must reach
+// as far (wall_room).
+inline constexpr float wall_margin = 5.0F;
+inline constexpr std::uint32_t wall_cost_most = 20;
+[[nodiscard]] constexpr float wall_reach(const float radius) noexcept
+{
+    return radius + wall_margin;
+}
+[[nodiscard]] constexpr float wall_room(const float radius) noexcept
+{
+    return radius + wall_reach(radius);
+}
 // Whether the straight segment crosses only cells whose type is in `passable_types`. Cells are the
 // nearest-sample regions of GroundMap::passability_at, traversed exactly; a segment through a cell
 // corner needs both side cells. The cell containing `from` is not checked, so a unit may leave a

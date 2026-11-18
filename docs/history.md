@@ -1193,3 +1193,14 @@ rewritten to describe the current state; the source document is noted in bracket
   line. Scenarios: 0 frozen. Six T2-Bs ordered to Utapau's middle: 5 frozen, not 1: the leader
   freezes and the lower priorities wait for it, so one frozen leader stops the group. Hashes
   unchanged.
+- Route cost from clearance (step A of group movement as a whole, the owner's point that shortest
+  routes hug walls and converge): a graded cost near walls (wall_reach, wall_cost_most,
+  pathfinding.hpp) replaces the one-step cost within wall_margin, the clearance field measures as
+  far, and smoothing keeps the wall reach where it can. The cost alone left lengths unchanged at 2.5
+  times the nodes (full audit, 3,359,200 pairs); with the smoothing, on four maps about one route in
+  eight keeps further from walls, length +0.3%, nodes 2.5 times, time about a third more; the large
+  battle's ways around 12,474 to 7,162, frozen 21 to 17. The owner's state before the experiments is
+  kept apart as branch group-order-baseline, tag baseline-2026-11-19. The owner added to step B: a
+  member not in its slot catches up at its own top speed. Hashes: reference 0x25dff7f5de654a0b ->
+  0x0ac40ac399fbe3f1, large Utapau 0x3d6f30b055a97bd9 -> 0xbcae1b0b31723485, AT-ATs
+  0x86d689dc50a995ca -> 0x6f28bde6a042d960; space unchanged.
