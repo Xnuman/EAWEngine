@@ -31,8 +31,17 @@ void MovementMeter::observe(const SimSnapshot& snapshot)
         auto& track = tracks_[entity.id.index];
         if (track.generation != entity.id.generation)
         {
-            track = {.generation = entity.id.generation, .heading = entity.heading};
+            track = {.generation = entity.id.generation, .heading = entity.heading, .still_at = entity.position};
             continue;
+        }
+        if (!entity.moving || std::hypot(entity.position.x - track.still_at.x, entity.position.y - track.still_at.y) > freeze_tolerance)
+        {
+            track.still_at = entity.position;
+            track.still_ticks = 0;
+        }
+        else if (++track.still_ticks == freeze_ticks)
+        {
+            ++metrics_.freezes;
         }
         // The heading change, wrapped to (-pi, pi].
         auto change = entity.heading - track.heading;
@@ -70,8 +79,9 @@ std::string format_movement(const MovementMetrics& metrics, const SimulationWorl
         return std::to_string(stats.route_changes[static_cast<std::size_t>(kind)]);
     };
     using Kind = SimulationWorld::RouteTraceKind;
-    return std::to_string(metrics.reversals) + " reversals, stalled " + seconds(metrics.stalled_ticks) + " of " + seconds(metrics.moving_ticks) + " unit-s moving | route changes: plan " +
-           changes(Kind::plan) + ", shared " + changes(Kind::shared) + ", around " + changes(Kind::around) + " | stopped at units " + std::to_string(stats.blocked_stops);
+    return std::to_string(metrics.reversals) + " reversals, stalled " + seconds(metrics.stalled_ticks) + " of " + seconds(metrics.moving_ticks) + " unit-s moving, " + std::to_string(metrics.freezes) +
+           " frozen | route changes: plan " + changes(Kind::plan) + ", shared " + changes(Kind::shared) + ", around " + changes(Kind::around) + " | stopped at units " +
+           std::to_string(stats.blocked_stops);
 }
 
 } // namespace eaw

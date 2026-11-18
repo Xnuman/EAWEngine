@@ -1188,3 +1188,8 @@ rewritten to describe the current state; the source document is noted in bracket
   0xd8cae913d2401356 -> 0x3d6f30b055a97bd9, Kuat fighters 0x3c1998f3f3a33611 -> 0x3200606ae3e5bd51,
   Kuat capital 0x195a3e582287f460 -> 0xd44c596127f887e0, AT-ATs 0x597947f00d8bc53c ->
   0x86d689dc50a995ca.
+- Movement measurements count freezes (sandbox/movement_metrics): a unit ordered to move that has
+  not moved at all for 300 ticks (5 seconds at 60 ticks a second), once per episode, on the Movement
+  line. Scenarios: 0 frozen. Six T2-Bs ordered to Utapau's middle: 5 frozen, not 1: the leader
+  freezes and the lower priorities wait for it, so one frozen leader stops the group. Hashes
+  unchanged.
