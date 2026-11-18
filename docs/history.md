@@ -1118,7 +1118,8 @@ rewritten to describe the current state; the source document is noted in bracket
 - Group formations of the retail game recorded (compatibility-research.md, Group moves of vehicles):
   the owner's 28 screenshots of slot markers (2 to 13 units) and observations: slots assigned at the
   destination when ordered, nearer units in front, loose movement before formation, no shoving,
-  ragged arrival, no turn to a common facing. The row inference is replaced by halving (clusters of
+  ragged arrival with the bodies facing one way (turrets free; the owner corrected my first reading,
+  which took turrets for headings). The row inference is replaced by halving (clusters of
   two to four, halves offset diagonally), marked unverified. xml-object-tags.md: MaxJiggleDistance
   read as a likely arrival tolerance, MinimumPushReturnDistance left unexplained (no pushing
   observed).

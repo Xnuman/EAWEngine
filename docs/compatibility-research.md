@@ -611,8 +611,8 @@ groups of 2 to 13 squads, T2-Bs, and T4-Bs, 2026-11-18):
   (`FormationOrder`) do not strictly order them: infantry is not always placed before tanks.
 - Units move toward their slots loosely: movement comes before keeping the formation. No shoving
   was reproduced: units do not move into other units and stop before contact.
-- Arrived groups stand ragged, and arrived units keep the heading they arrived with; they do not
-  turn to a common facing afterwards.
+- Arrived groups stand ragged in position, but the bodies of arrived vehicles face one direction;
+  only their turrets point different ways (the owner's correction of a reading of the screenshots).
 
 Inference, unverified, replacing the row rule above: every count seen fits halving. Two to four
 units make one cluster (a pair, a triangle, a square); a larger group splits into the floor and
