@@ -113,6 +113,23 @@ void SimulationWorld::NavigationSystem::resolve_blocks(const View& view)
         }
         const bool mutual = blocks_[*blocker] == identity.ids[index];
         const bool same_order = route.orders[index] != 0 && route.orders[index] == route.orders[*blocker];
+        if (same_order && route.priorities[index] != 0 && route.priorities[*blocker] != 0)
+        {
+            // In a formation (the owner, 2026-11-18): a unit waits for a higher-priority unit of its
+            // order that is still on its way, and goes around one that arrived and any of lower
+            // priority; with no way around it ends its move.
+            if (route.move_targets[*blocker] && route.priorities[*blocker] < route.priorities[index])
+            {
+                continue;
+            }
+            if (!plan_around(view, index, *blocker))
+            {
+                route.move_targets[index].reset();
+                route.paths[index].clear();
+                ++blocked_stops;
+            }
+            continue;
+        }
         const bool under_way = route.move_targets[*blocker].has_value() && !mutual;
         const bool driving = under_way && motion.speeds[*blocker] > blocker_moving_fraction * locomotor.max_speeds[*blocker];
         if (same_order ? under_way : driving && locomotor.max_speeds[*blocker] >= locomotor.max_speeds[index])
@@ -176,11 +193,11 @@ bool SimulationWorld::NavigationSystem::plan_around(const View& view, const std:
         previous = ahead[point];
     }
     // Obstacles (the owner, 2026-11-18): every unit within the chunk's reach that blocks this one
-    // (keep_apart's rule: a ground unit it cannot crush) and is not of its order, moving or standing.
+    // (keep_apart's rule: a ground unit it cannot crush), moving or standing, units of its own order
+    // too (going around a group-mate is rare by design, and then the group-mates are in the way).
     // Each covers the cells whose centers lie within its radius widened by this unit's, and for a
     // unit within reach of this one's footprint at least as far as it stands from it (they may touch
     // where their footprints meet, beyond their radii).
-    const auto order = route.orders[index];
     obstacle_cells_.resize(static_cast<std::size_t>(ground.width) * ground.height, 0);
     const auto mark = [&](const std::size_t other)
     {
@@ -211,9 +228,7 @@ bool SimulationWorld::NavigationSystem::plan_around(const View& view, const std:
     avoidance.grid.query_overlapping(here, span, nearby_);
     for (const auto other : nearby_)
     {
-        const bool same_order = order != 0 && route.orders[other] == order;
-        if (other != index && other != blocker && other < avoidance.radii.size() && avoidance.radii[other] > 0.0F && !same_order && !flies(view, other) &&
-            !can_crush(view, index, avoidance.crush_proxies[other]))
+        if (other != index && other != blocker && other < avoidance.radii.size() && avoidance.radii[other] > 0.0F && !flies(view, other) && !can_crush(view, index, avoidance.crush_proxies[other]))
         {
             mark(other);
         }
@@ -396,7 +411,7 @@ void SimulationWorld::NavigationSystem::process_path_queue(const View& view)
             continue;
         }
         const auto before = path_expansions;
-        const bool finished = plan_shared_route(view, request, spent, first);
+        const bool finished = request.formation ? plan_formation(view, request, spent, first) : plan_shared_route(view, request, spent, first);
         first = false;
         spent += path_expansions - before;
         if (!finished)
@@ -518,6 +533,172 @@ bool SimulationWorld::NavigationSystem::plan_shared_route(const View& view, Path
         }
     }
     return true;
+}
+
+bool SimulationWorld::NavigationSystem::plan_formation(const View& view, PathRequest& request, const std::uint64_t spent_before, const bool first_in_tick)
+{
+    const auto& route = view.get<RouteColumns>();
+    const auto& placement = view.get<PlacementColumns>();
+    const auto& ground = view.get<GroundState>();
+    const auto live = [&](const std::size_t member) -> std::optional<std::size_t>
+    {
+        const auto dense = dense_index(view, request.members[member]);
+        return dense && route.pending[*dense] == request.serials[member] ? dense : std::nullopt;
+    };
+    request.routes.resize(request.members.size());
+    request.lengths.resize(request.members.size(), std::numeric_limits<float>::infinity());
+    const auto call_start = path_expansions;
+    bool planned_any = false;
+    while (request.next_member < request.members.size())
+    {
+        batch_.clear();
+        for (auto member = request.next_member; member < request.members.size() && batch_.size() < batch_limit(); ++member)
+        {
+            if (const auto dense = live(member))
+            {
+                batch_.push_back({*dense, request.goals[member]});
+                pathfinder_.prepare(navigation_data_, ground.map, footing_of(view, *dense));
+            }
+        }
+        plan_batch(
+            [&](const BatchEntry& entry, RouteScratch& scratch)
+            {
+                return plan_route(view, entry.index, entry.goal, scratch);
+            });
+        std::size_t given = 0;
+        for (; request.next_member < request.members.size(); ++request.next_member)
+        {
+            if (spent_before + (path_expansions - call_start) >= path_budget_per_tick && (planned_any || !first_in_tick))
+            {
+                return false;
+            }
+            const auto dense = live(request.next_member);
+            if (!dense)
+            {
+                continue;
+            }
+            if (given == batch_.size())
+            {
+                break;
+            }
+            const auto& planned = planned_[given++];
+            path_searches += planned.searches;
+            partial_paths += planned.partials;
+            path_expansions += planned.expansions;
+            planned_any = true;
+            auto& waypoints = request.routes[request.next_member];
+            waypoints = planned.waypoints;
+            if (!waypoints.empty())
+            {
+                const auto& here = placement.positions[*dense];
+                auto length = 0.0F;
+                PathPoint from{here.x, here.y};
+                for (const auto& point : waypoints)
+                {
+                    length += eaw::length(point - from);
+                    from = point;
+                }
+                request.lengths[request.next_member] = length;
+            }
+        }
+    }
+    form_up(view, request);
+    return true;
+}
+
+void SimulationWorld::NavigationSystem::form_up(const View& view, PathRequest& request)
+{
+    auto& route = view.get<RouteColumns>();
+    const auto& placement = view.get<PlacementColumns>();
+    const auto& ground = view.get<GroundState>();
+    // The live members by route length (ties to the lower id): the priority order.
+    std::vector<std::size_t> ranked;
+    for (std::size_t member = 0; member < request.members.size(); ++member)
+    {
+        const auto dense = dense_index(view, request.members[member]);
+        if (dense && route.pending[*dense] == request.serials[member])
+        {
+            ranked.push_back(member);
+        }
+    }
+    std::ranges::sort(ranked,
+                      [&](const std::size_t left, const std::size_t right)
+                      {
+                          return request.lengths[left] != request.lengths[right] ? request.lengths[left] < request.lengths[right] : request.members[left] < request.members[right];
+                      });
+    if (ranked.empty())
+    {
+        return;
+    }
+    std::vector<FormationMember> members;
+    for (const auto member : ranked)
+    {
+        const auto dense = *dense_index(view, request.members[member]);
+        members.push_back({.id = request.members[member], .position = placement.positions[dense], .radius = unit_radius(view, dense), .spacing = request.spacings[member]});
+    }
+    // The leader's arrival: its route's end (placed for it) and the direction of its last leg.
+    const auto leader = *dense_index(view, request.members[ranked.front()]);
+    const auto& leader_route = request.routes[ranked.front()];
+    auto facing = formation_facing(members, request.group_target);
+    Vector3 leader_slot = request.group_target;
+    if (!leader_route.empty())
+    {
+        const auto& here = placement.positions[leader];
+        const auto from = leader_route.size() > 1 ? leader_route[leader_route.size() - 2] : PathPoint{here.x, here.y};
+        const auto end = leader_route.back();
+        leader_slot = {end.x, end.y, request.group_target.z};
+        if (length(end - from) > 1.0e-3F)
+        {
+            facing = std::atan2(end.y - from.y, end.x - from.x);
+        }
+    }
+    const PathPoint forward{std::cos(facing), std::sin(facing)};
+    const auto behind = [&](const Vector3& slot)
+    {
+        return PathPoint{slot.x - forward.x, slot.y - forward.y};
+    };
+    auto slots = cluster_slots(members, leader_slot, facing);
+    if (ranked.size() == 2)
+    {
+        // Two units: side by side, or one behind the other when the second does not fit beside.
+        const auto second = *dense_index(view, request.members[ranked[1]]);
+        if (!destination_fits(view, slots[1].position.x, slots[1].position.y, second, behind(slots[1].position)))
+        {
+            slots = cluster_slots(members, leader_slot, facing, true);
+        }
+    }
+    auto& scratch = route_scratch_.front();
+    for (std::size_t rank = 0; rank < ranked.size(); ++rank)
+    {
+        const auto member = ranked[rank];
+        const auto dense = *dense_index(view, request.members[member]);
+        auto waypoints = std::move(request.routes[member]);
+        route.pending[dense] = 0;
+        route.priorities[dense] = static_cast<std::uint32_t>(rank + 1U);
+        if (rank > 0)
+        {
+            // Its slot, fitted to the ground facing the formation's way, reached by turning the last
+            // leg of its route to the point: straight when the ground allows, else searched.
+            const auto slot = place_destination(view, slots[rank].position, dense, behind(slots[rank].position));
+            const PathPoint to{slot.x, slot.y};
+            const auto& here = placement.positions[dense];
+            const auto from = waypoints.size() > 1 ? waypoints[waypoints.size() - 2] : PathPoint{here.x, here.y};
+            const auto footing = footing_of(view, dense);
+            if (!waypoints.empty() && ground_line_passable(ground.map, from, to, footing))
+            {
+                waypoints.back() = to;
+            }
+            else
+            {
+                auto found = scratch.route.find(navigation_data_, ground.map, {here.x, here.y}, to, footing);
+                ++path_searches;
+                path_expansions += found.expanded;
+                waypoints = std::move(found.waypoints);
+            }
+        }
+        set_route(view, dense, waypoints, request.group_target.z);
+        record_route(view, dense, RouteTraceKind::plan, {});
+    }
 }
 
 SimulationWorld::NavigationSystem::PlannedRoute SimulationWorld::NavigationSystem::plan_member(const View& view, const PathRequest& request, const std::size_t index, const Vector3& goal,
@@ -937,7 +1118,11 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
     // a group order goes to the ordered point itself, on a route of its own.
     if (ground_.map.valid())
     {
+        // The owner's group order (docs/pathfinding-design.md): the ground units that form up go in
+        // one request (plan_formation); a unit of Solo grouping, one that does not walk the ground, or
+        // one without a search moves on its own.
         const auto move_order = next_move_order();
+        PathRequest group{.group_target = command.target, .formation = true};
         for (const auto id : command.entities)
         {
             const auto dense = dense_index(*this, id);
@@ -946,22 +1131,51 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
                 ++stale_references_;
                 continue;
             }
-            if (locomotor_.max_speeds[*dense] <= 0.0F)
+            if (locomotor_.max_speeds[*dense] <= 0.0F || std::ranges::find(group.members, id) != group.members.end())
             {
                 continue;
             }
             route_.orders[*dense] = move_order;
+            route_.priorities[*dense] = 0;
             orders_.command_serials[*dense] = command.serial;
             orders_.standing[*dense].kind = StandingOrder::none;
             orders_.standing[*dense].engaging = false;
             drop_target(*this, *dense);
             locomotor_.speed_limits[*dense] = 0.0F;
             auto goal = command.target;
-            if (ground_mover_.follows_ground[*dense] == 0)
+            const auto& recipe = recipes_.list[identity_.recipes[*dense]];
+            if (ground_mover_.follows_ground[*dense] == 0 || recipe.formation_solo)
             {
-                goal.z = placement_.positions[*dense].z;
+                goal.z = ground_mover_.follows_ground[*dense] == 0 ? placement_.positions[*dense].z : goal.z;
+                plan_move(*this, *dense, goal);
+                continue;
             }
-            plan_move(*this, *dense, goal);
+            if (const auto serial = begin_move(*this, *dense, goal); serial != 0)
+            {
+                group.members.push_back(id);
+                group.goals.push_back(goal);
+                group.serials.push_back(serial);
+                group.spacings.push_back(recipe.formation_spacing);
+            }
+        }
+        if (group.members.size() == 1)
+        {
+            group.formation = false;
+        }
+        // The group moves at its slowest member's speed (the owner's design: the units nearest the
+        // destination lead, the others follow at the same speed).
+        auto group_speed = std::numeric_limits<float>::max();
+        for (const auto id : group.members)
+        {
+            group_speed = std::min(group_speed, locomotor_.max_speeds[*dense_index(*this, id)]);
+        }
+        for (const auto id : group.members)
+        {
+            locomotor_.speed_limits[*dense_index(*this, id)] = group.members.size() > 1 ? group_speed : 0.0F;
+        }
+        if (!group.members.empty())
+        {
+            path_queue_.requests.push_back(std::move(group));
         }
         return;
     }

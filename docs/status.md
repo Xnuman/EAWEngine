@@ -14,7 +14,9 @@ footprints, with no avoidance, giving way, detours, arrival rules among others, 
 movement ([pathfinding-design.md](pathfinding-design.md#the-movement-redesign-branch)); the
 descriptions of those systems below are the main branch's. The owner's new single-unit movement is
 built: a destination is placed after its route is planned, turned the way the route's last leg
-arrives; a unit stops at a unit in its way, then waits, goes around it, or ends its move.
+arrives; a unit stops at a unit in its way, then waits, goes around it, or ends its move. A group
+order forms up by the owner's cluster rules with priorities (a first build with known freezes; group
+movement as a whole is proposed in [pathfinding-design.md](pathfinding-design.md#group-movement-as-a-whole-proposal-2026-11-18-for-the-owners-decision)).
 
 ## Milestones
 

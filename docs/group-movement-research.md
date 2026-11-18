@@ -354,3 +354,17 @@ into their own group's tanks, and two of one order blocking each other both end 
 units of the same order as obstacles as well, crossing groups take 7.3 s (2 ways around, the 9 stops
 arrivals). The passage, the head-on pair, and the four battles do not change (the battles need no
 way around).
+
+The group order's first build (the owner's formation rules with priorities, 2026-11-18; see
+[pathfinding-design.md](pathfinding-design.md#the-group-order-the-owners-2026-11-18-first-build-a-checkpoint)):
+
+| Scenario or battle | Time or tick | Ways around | Stopped | Note |
+| --- | --- | --- | --- | --- |
+| Ten tanks through a gap (formation) | 5.4 s | 0 | 7 | arrive formed up |
+| Head-on pair | 5.6 s | 6 | 0 | |
+| Three converging | 6.2 s | 5 | 0 | |
+| Two groups of five crossing | 9.8 s | 22 | 2 | |
+| Utapau, six T2-Bs, auto-move | 60 s | 3,594 | 1 | one unit frozen |
+| Utapau, four T4-Bs, auto-move | 60 s | 3,241 | 1 | one unit frozen |
+| Utapau AT-ATs | 0.47 ms | 3,597 | 21 | one unit frozen |
+| Large Utapau | 2.6 ms | 13,451 | 454 | |

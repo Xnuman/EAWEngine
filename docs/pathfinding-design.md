@@ -106,6 +106,66 @@ Built: steps 6 to 8, with these engine choices:
 The measurements are in
 [group-movement-research.md](group-movement-research.md#the-movement-redesign-branch).
 
+### The group order (the owner's, 2026-11-18): first build, a checkpoint
+
+An order to several ground units forms a formation (`formation_move`, `group_move`, and a `move` of
+more than one unit on land; Solo units and units that do not walk the ground move on their own):
+
+1. Every member's route to the ordered point is planned (the budgeted queue, `plan_formation`).
+2. Members are ranked by route length: priorities from 1, the shortest first, the leader. The
+   leader's route end (placed for it, steps 3 to 5) is its slot, the direction of its last leg the
+   formation's facing.
+3. The layout (`cluster_slots`): two units side by side, or in a column when the second does not fit
+   beside; more split into the fewest clusters of at most 5, as even as possible (the owner's rule A:
+   rule 5 never applies), each a chunk of the priority order; a cluster's front row takes half
+   (rounded up), the members standing furthest forward (so ways do not cross; the leader always in
+   it), the back row the rest, one behind another or in the gaps; further clusters keep the
+   direction their members stand in from the first, packed clear of it. Slots are `pitch_of` apart
+   (footprint diameter times one plus `FormationSpacing`).
+4. Each slot is fitted to the ground facing the formation's way, and each member's route to the point
+   has its last leg turned to its slot (a search when the straight line is blocked).
+5. The group moves at its slowest member's speed. Priority among units of one order: a unit waits
+   for a higher-priority unit still on its way, and holds half its radius short of contact with it
+   (`priority_wait_margin`, an engine choice: waiting at contact froze both); it goes around one that
+   arrived and any of lower priority, and units of its order are obstacles to that search (the
+   owner: rare by design).
+
+Known freezes of this build (the reason for the redesign below): units turn freely, so a rectangle
+can swing into a group-mate; once overlapping, the contact test refuses any step leaning toward it;
+a way around, searched over cells marked by their centers, can graze the unit it goes around, so a
+higher-priority unit whose way crosses a group-mate's plans the same way around every tick without
+moving while the other waits for it (six T2-Bs around the map's middle, four T4-Bs, the AT-AT
+battle). Tried and dropped: turning that never goes into another unit (wedged units could not start
+their way), searches started only toward directions the unit can turn to (nose-to-nose units could
+not turn at all), the avoided areas widened by half a cell (close groups closed every way out).
+
+### Group movement as a whole (proposal, 2026-11-18, for the owner's decision)
+
+The build above moves N units that share a destination and referees their meetings; the formation
+exists only at the end, and every freeze traced was two group-mates with crossing intentions. The
+proposal models the group:
+
+- **Group level, planned once**: one route for the group (the chunk A* at the clearance of its widest
+  member) and a formation anchor moving along it at the slowest member's speed. The formation's width
+  follows the corridor: the clearance field gives how wide the ground is along the route, so clusters
+  fold into a column (a trail in priority order) where it is narrow and unfold after it (the owner's
+  observation: a group breaks its formation in a passage and forms again after it).
+- **Unit level, local**: a member steers to its slot on the moving formation (or to the trail point
+  behind the member ahead), its heading aligned with the group's (fewer turning rectangles); the hard
+  no-overlap rule and priority yielding stay; ways around units remain only for units of other
+  orders.
+- **Route cost (the owner, 2026-11-18)**: the shortest route hugs walls and cuts corners, and every
+  unit sent the same way takes the same one, so they converge on one line along the wall, where the
+  hard cases arise. Cells near walls and obstacles should cost more (from the clearance field), so
+  routes run along the middle of passages and keep their distance from corners.
+- Boids was considered: cohesion and alignment come for free, but separation is a soft force (the
+  bumping and heading wobble the owner rejected in the avoidance build), narrow passages are its
+  weak point, and the observed original (stop before contact, no shoving, slots from the start,
+  detours to arrive facing the way) does not look like flocking. Its alignment rule is kept.
+- Main had formation frames; the owner's rejection of main concerned the avoidance layer's bumping
+  and wobble, which is my reading and to be confirmed before relying on frames again.
+
+
 ## 1. Why
 
 ### Gameplay

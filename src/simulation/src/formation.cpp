@@ -281,4 +281,121 @@ std::vector<FormationSlot> formation_slots(const std::span<const FormationMember
     return slots;
 }
 
+std::vector<FormationSlot> cluster_slots(const std::span<const FormationMember> members, const Vector3 leader_slot, const float facing, const bool two_in_column)
+{
+    // A further cluster moves out along its direction in steps of half its pitch, at most this many
+    // (an engine choice; clusters are a few pitches across, so this is never reached in practice).
+    constexpr int cluster_place_steps = 64;
+    const auto count = members.size();
+    std::vector<FormationSlot> slots(count);
+    if (count == 0)
+    {
+        return slots;
+    }
+    const Vector2 forward{std::cos(facing), std::sin(facing)};
+    const Vector2 right{forward.y, -forward.x};
+    const auto side_of = [&](const std::size_t member)
+    {
+        return members[member].position.x * right.x + members[member].position.y * right.y;
+    };
+    const auto depth_of = [&](const std::size_t member)
+    {
+        return members[member].position.x * forward.x + members[member].position.y * forward.y;
+    };
+    const auto across = [&](const std::size_t left, const std::size_t right_member)
+    {
+        const auto left_side = side_of(left);
+        const auto right_side = side_of(right_member);
+        return left_side != right_side ? left_side < right_side : members[left].id < members[right_member].id;
+    };
+    // Each member's offset (forward, right) in the formation, before the leader's moves to its slot.
+    std::vector<Vector2> at(count);
+    if (count == 2)
+    {
+        const auto step = std::max(pitch(members[0]), pitch(members[1]));
+        at[1] = two_in_column ? Vector2{-step, 0.0F} : Vector2{0.0F, across(1, 0) ? -step : step};
+    }
+    else if (count > 2)
+    {
+        struct Cluster
+        {
+            Vector2 center;
+            Vector2 centroid;
+            float pitch{};
+            float reach{};
+        };
+        const auto cluster_count = (count + max_cluster_size - 1) / max_cluster_size;
+        std::vector<Cluster> clusters(cluster_count);
+        std::size_t first = 0;
+        for (std::size_t cluster = 0; cluster < cluster_count; ++cluster)
+        {
+            const auto size = count / cluster_count + (cluster < count % cluster_count ? 1U : 0U);
+            auto& placed = clusters[cluster];
+            auto largest = 0.0F;
+            for (auto member = first; member < first + size; ++member)
+            {
+                placed.pitch = std::max(placed.pitch, pitch(members[member]));
+                largest = std::max(largest, members[member].radius);
+                placed.centroid += Vector2{members[member].position.x, members[member].position.y} * (1.0F / static_cast<float>(size));
+            }
+            const auto front = (size + 1) / 2;
+            const auto back = size / 2;
+            // Rows by where members stand along the facing (the owner, 2026-11-18: so their ways do not
+            // cross): the furthest forward take the front row; the leader always stands in it.
+            std::vector<std::size_t> by_depth(size);
+            std::iota(by_depth.begin(), by_depth.end(), first);
+            std::stable_sort(by_depth.begin() + (cluster == 0 ? 1 : 0), by_depth.end(),
+                             [&](const std::size_t left, const std::size_t right_member)
+                             {
+                                 return depth_of(left) > depth_of(right_member);
+                             });
+            for (const auto& [row_first, row_size, ahead] : {std::tuple{std::size_t{0}, front, back > 0 ? 0.5F : 0.0F}, std::tuple{front, back, -0.5F}})
+            {
+                std::vector<std::size_t> row(by_depth.begin() + static_cast<std::ptrdiff_t>(row_first), by_depth.begin() + static_cast<std::ptrdiff_t>(row_first + row_size));
+                std::ranges::sort(row, across);
+                for (std::size_t column = 0; column < row.size(); ++column)
+                {
+                    at[row[column]] = {ahead * placed.pitch, (static_cast<float>(column) - 0.5F * static_cast<float>(row.size() - 1U)) * placed.pitch};
+                }
+            }
+            placed.reach = std::hypot(0.5F * static_cast<float>(front - 1U) * placed.pitch + largest, (back > 0 ? 0.5F * placed.pitch : 0.0F) + largest);
+            // The cluster's place: the first at the origin; a further one along the direction its
+            // members stand in from the first cluster's (in the formation's frame), clear of the
+            // clusters before it.
+            if (cluster > 0)
+            {
+                const auto from_first = placed.centroid - clusters.front().centroid;
+                const Vector2 way{dot(from_first, forward), dot(from_first, right)};
+                const auto direction = length(way) > 1.0e-3F ? way * (1.0F / length(way)) : Vector2{-1.0F, 0.0F};
+                auto distance = placed.reach + clusters.front().reach;
+                for (int step = 0; step < cluster_place_steps; ++step)
+                {
+                    placed.center = direction * distance;
+                    const bool clear = std::ranges::all_of(clusters.begin(), clusters.begin() + static_cast<std::ptrdiff_t>(cluster),
+                                                           [&](const Cluster& other)
+                                                           {
+                                                               return length(placed.center - other.center) >= placed.reach + other.reach;
+                                                           });
+                    if (clear)
+                    {
+                        break;
+                    }
+                    distance += 0.5F * placed.pitch;
+                }
+            }
+            for (auto member = first; member < first + size; ++member)
+            {
+                at[member] += placed.center;
+            }
+            first += size;
+        }
+    }
+    for (std::size_t member = 0; member < count; ++member)
+    {
+        const auto offset = at[member] - at.front();
+        slots[member] = {members[member].id, {leader_slot.x + forward.x * offset.x + right.x * offset.y, leader_slot.y + forward.y * offset.x + right.y * offset.y, leader_slot.z}};
+    }
+    return slots;
+}
+
 } // namespace eaw

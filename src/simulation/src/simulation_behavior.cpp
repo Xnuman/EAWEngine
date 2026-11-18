@@ -37,7 +37,8 @@ void SimulationWorld::apply(const SimCommand& given)
             }
         }
     }
-    if (command.kind == SimCommandKind::formation_move || command.kind == SimCommandKind::group_move)
+    // An order to several units on land is a group order (the owner, 2026-11-18): they form up.
+    if (command.kind == SimCommandKind::formation_move || command.kind == SimCommandKind::group_move || (command.kind == SimCommandKind::move && command.entities.size() > 1 && ground_.map.valid()))
     {
         apply_formation_move(command);
         return;
@@ -85,6 +86,7 @@ void SimulationWorld::apply(const SimCommand& given)
         if (command.kind == SimCommandKind::move || command.kind == SimCommandKind::stop || command.kind == SimCommandKind::attack)
         {
             route_.orders[*dense] = move_order;
+            route_.priorities[*dense] = 0;
             orders_.command_serials[*dense] = command.serial;
             orders_.standing[*dense].kind = StandingOrder::none;
             orders_.standing[*dense].engaging = false;

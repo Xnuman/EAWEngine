@@ -117,18 +117,30 @@ Vector3 SimulationWorld::MovementSystem::keep_apart(const View& view, const std:
         return step;
     }
     const auto& here = placement.positions[index];
+    const auto& route = view.get<RouteColumns>();
+    // On land, a unit of a formation keeps a margin from a higher-priority unit of its order that is
+    // still on its way: it holds before contact (priority_wait_margin).
+    const auto margin_to = [&](const std::uint32_t other)
+    {
+        const auto order = route.orders[index];
+        const auto priority = route.priorities[index];
+        const bool yields =
+            land && order != 0 && priority != 0 && route.orders[other] == order && route.priorities[other] != 0 && route.priorities[other] < priority && route.move_targets[other].has_value();
+        return yields ? radius * priority_wait_margin : 0.0F;
+    };
     query_.clear();
     // On land the grid is built by footprint (plan_ground_avoidance); in space by center.
     if (land)
     {
-        avoidance.grid.query_overlapping(here, avoidance.reaches[index] + std::hypot(step.x, step.y), query_);
+        avoidance.grid.query_overlapping(here, avoidance.reaches[index] + std::hypot(step.x, step.y) + radius * priority_wait_margin, query_);
     }
     else
     {
         avoidance.grid.query(here, radius + avoidance.largest_radius + std::hypot(step.x, step.y), query_);
     }
-    // Whether a step ends inside a unit it moves toward (deeper than it was). On land: ground units,
-    // not what this one crushes; in space: ships at its height, not much smaller.
+    // Whether a step ends inside a unit it moves toward (deeper than it was), or on land within the
+    // unit's margin of it. On land: ground units, not what this one crushes; in space: ships at its
+    // height, not much smaller.
     const auto deeper = [&](const std::uint32_t other, const Vector3& candidate, float& to_x, float& to_y, float& apart)
     {
         const auto& there = placement.positions[other];
@@ -145,13 +157,14 @@ Vector3 SimulationWorld::MovementSystem::keep_apart(const View& view, const std:
         const auto next_x = next.x - there.x;
         const auto next_y = next.y - there.y;
         const auto apart_squared = next_x * next_x + next_y * next_y;
+        const auto margin = margin_to(other);
         // Farther apart than both reach: clear, without measuring their extents (squared, no root).
-        const auto most = land ? avoidance.reaches[index] + avoidance.reaches[other] : radius + other_radius;
+        const auto most = land ? avoidance.reaches[index] + avoidance.reaches[other] + margin : radius + other_radius;
         if (apart_squared >= most * most)
         {
             return false;
         }
-        const auto room = land ? agent_room(view, index, next, other, there) : radius + other_radius;
+        const auto room = land ? agent_room(view, index, next, other, there) + margin : radius + other_radius;
         if (apart_squared >= room * room)
         {
             return false;

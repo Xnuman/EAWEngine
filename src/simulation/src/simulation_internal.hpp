@@ -49,6 +49,10 @@ inline constexpr float avoidance_cell_size = 32.0F;
 // A blocked unit waits for a blocker driving faster than this fraction of its top speed (the
 // movement measurement's stall threshold, a twentieth). An engine choice.
 inline constexpr float blocker_moving_fraction = 0.05F;
+// A unit of a formation holds this fraction of its radius short of contact with a higher-priority
+// unit of its order still on its way (the owner, 2026-11-18: in a squeeze the lower priority waits
+// early, so the higher one passes without touching it). An engine choice.
+inline constexpr float priority_wait_margin = 0.5F;
 // Route tracing keeps this many records per unit (debug drawing).
 inline constexpr std::size_t route_trace_depth = 8;
 // Route searches run this many at a time on the job system (each with its own search scratch, about
@@ -409,7 +413,14 @@ template <class Data> bool SimulationWorld::turning_as_clips(Data& data, const s
 
 template <class Data> void SimulationWorld::plan_move(Data& data, const std::size_t index, const Vector3& target)
 {
-    auto& identity = data.template get<IdentityColumns>();
+    if (const auto serial = begin_move(data, index, target); serial != 0)
+    {
+        data.template get<PathQueue>().requests.push_back({{data.template get<IdentityColumns>().ids[index]}, {target}, {serial}, target});
+    }
+}
+
+template <class Data> std::uint32_t SimulationWorld::begin_move(Data& data, const std::size_t index, const Vector3& target)
+{
     auto& ground_mover = data.template get<GroundMoverColumns>();
     auto& route = data.template get<RouteColumns>();
     auto& walk_clips = data.template get<ComponentPool<WalkClipColumns>>();
@@ -429,7 +440,7 @@ template <class Data> void SimulationWorld::plan_move(Data& data, const std::siz
     if (ground_mover.follows_ground[index] == 0 || ground_mover.passable_types[index] == 0 || ground.map.passability.size() != ground.map.heights.size() || !ground.map.valid())
     {
         route.move_targets[index] = target;
-        return;
+        return 0;
     }
     // The unit holds still (its target set, so it counts as moving) until the queue plans it.
     route.move_targets[index] = target;
@@ -439,7 +450,7 @@ template <class Data> void SimulationWorld::plan_move(Data& data, const std::siz
         path_queue.next_serial = 1;
     }
     route.pending[index] = serial;
-    path_queue.requests.push_back({{identity.ids[index]}, {target}, {serial}, target});
+    return serial;
 }
 template <class Data> const SimulationWorld::CombatState& SimulationWorld::combat_state(Data& data, const std::size_t index) noexcept
 {

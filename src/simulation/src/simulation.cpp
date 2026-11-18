@@ -294,6 +294,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn, const EntityId
     route_.pending.push_back(0);
     route_.orders.push_back(0);
     route_.blockers.emplace_back();
+    route_.priorities.push_back(0);
     for_each_column(
         [&](const auto& column)
         {
@@ -522,6 +523,7 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
         hasher.add(route_.pending[index]);
         hasher.add(route_.orders[index]);
         hasher.add(route_.blockers[index]);
+        hasher.add(route_.priorities[index]);
         hasher.add(motion_.velocities[index]);
         hasher.add(route_.loiter_points[index].has_value());
         if (route_.loiter_points[index])
@@ -695,6 +697,12 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
             hasher.add(request.serials[member]);
         }
         hasher.add(request.group_target);
+        hasher.add(request.formation);
+        hasher.add(request.next_member);
+        for (const auto length : request.lengths)
+        {
+            hasher.add(length);
+        }
     }
     hasher.subject = StateSubject::projectiles;
     for (const auto& projectile : projectiles_.flying)
