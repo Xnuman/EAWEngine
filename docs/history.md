@@ -1119,7 +1119,8 @@ rewritten to describe the current state; the source document is noted in bracket
   the owner's 28 screenshots of slot markers (2 to 13 units) and observations: slots assigned at the
   destination when ordered, nearer units in front, loose movement before formation, no shoving,
   ragged arrival with the bodies facing one way (turrets free; the owner corrected my first reading,
-  which took turrets for headings). The row inference is replaced by halving (clusters of
+  which took turrets for headings), reached without turning in place: a unit detours on the way in
+  to enter its slot in the formation's facing. The row inference is replaced by halving (clusters of
   two to four, halves offset diagonally), marked unverified. xml-object-tags.md: MaxJiggleDistance
   read as a likely arrival tolerance, MinimumPushReturnDistance left unexplained (no pushing
   observed).

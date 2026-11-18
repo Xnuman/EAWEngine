@@ -613,6 +613,9 @@ groups of 2 to 13 squads, T2-Bs, and T4-Bs, 2026-11-18):
   was reproduced: units do not move into other units and stop before contact.
 - Arrived groups stand ragged in position, but the bodies of arrived vehicles face one direction;
   only their turrets point different ways (the owner's correction of a reading of the screenshots).
+  Vehicles do not turn in place after arriving: they arrive already facing that way, and a unit
+  that would otherwise reach its slot at another heading takes a detour on the way in, so that it
+  enters its slot in the formation's facing.
 
 Inference, unverified, replacing the row rule above: every count seen fits halving. Two to four
 units make one cluster (a pair, a triangle, a square); a larger group splits into the floor and
