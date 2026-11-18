@@ -647,14 +647,15 @@ private:
 class SimulationWorld final
 {
 public:
-    // What set a unit's route (route tracing, and Stats::route_changes): a plan of its own, or its part
-    // of a group's shared route (space).
+    // What set a unit's route (route tracing, and Stats::route_changes): a plan of its own, its part
+    // of a group's shared route (space), or a way around a unit that blocked it.
     enum class RouteTraceKind : std::uint8_t
     {
         plan,
         shared,
+        around,
     };
-    static constexpr std::size_t route_trace_kind_count = 2;
+    static constexpr std::size_t route_trace_kind_count = 3;
     struct Stats
     {
         std::uint64_t tick{};
@@ -665,6 +666,9 @@ public:
         // Ground moves whose line reached a cell their class may not enter (pushed off their route, or
         // the ground changed) and were planned again.
         std::uint64_t blocked_moves{};
+        // Ground moves ended at a unit in the way (a unit of the same order standing, or no way around
+        // a unit of another order).
+        std::uint64_t blocked_stops{};
         // Ground move orders planned through the pathfinder, how many of them end short of the
         // ordered point, and the nodes they expanded.
         std::uint64_t path_searches{};
@@ -1241,6 +1245,11 @@ private:
         // Space ships: the point steered at this tick to pass a unit in the way (navigation's local
         // avoidance); recomputed every tick from the state, so not hashed.
         std::vector<std::optional<Vector3>> detours;
+        // The move order that sent the unit (numbered by the world, shared by the units of one order;
+        // 0 for none): who counts as of the same order when units block each other.
+        std::vector<std::uint32_t> orders;
+        // The unit this one stopped at in the last tick (none when it was not blocked).
+        std::vector<EntityId> blockers;
         template <class Visit> void for_each_column(Visit&& visit)
         {
             visit(move_targets);
@@ -1249,6 +1258,8 @@ private:
             visit(loiter_points);
             visit(remaining);
             visit(detours);
+            visit(orders);
+            visit(blockers);
         }
     };
     // Flight (pooled: flyers only, the entities whose recipe has a minimum speed above 0): the
@@ -1897,9 +1908,10 @@ private:
         // Never below the minimum speed; turns and pitches toward the intent's point at the turn rate
         // (pitch limited to flight_max_pitch) and moves along the nose.
         void fly(const View& view, std::size_t index, float dt);
-        // A step without the part that would take the unit deeper into a unit it touches (both radii):
-        // a ground unit on land against other ground units (not what it crushes), a space ship against
-        // ships; units slide along each other instead of overlapping, and a wedged unit holds still.
+        // A step that never ends deeper inside a unit it touches (both radii). On land, a ground unit
+        // against other ground units (not what it crushes) stops (none of the step), and the unit it
+        // stopped at is kept in RouteColumns::blockers for navigation (the new movement of a single
+        // unit, step 7). In space, a ship against ships slides along them, and a wedged one holds still.
         [[nodiscard]] Vector3 keep_apart(const View& view, std::size_t index, Vector3 step);
         // One entity's ground movement this tick, along its route at move_speed (physical movement only:
         // where it goes is the behavior layer's).
@@ -1968,6 +1980,7 @@ private:
         std::uint64_t path_expansions{};
         std::uint64_t shared_routes{};
         std::array<std::uint64_t, route_trace_kind_count> route_changes{};
+        std::uint64_t blocked_stops{};
         std::size_t waiting_members{};
         std::uint64_t released_members{};
 
@@ -2037,6 +2050,23 @@ private:
         [[nodiscard]] static bool ground_steers(const View& view, std::size_t index) noexcept;
         // The direction a moving ground unit heads in: toward its next waypoint (zero when there).
         [[nodiscard]] static Vector2 heading_toward_waypoint(const View& view, std::size_t index) noexcept;
+        // The new movement of a single unit, steps 7 and 8 (docs/pathfinding-design.md): what a ground
+        // unit blocked in the last tick does: wait, go around (plan_around), or end its move.
+        void resolve_blocks(const View& view);
+        // A way for the unit at `index` around `blocker` to where its route leaves its 32-cell chunk
+        // (or to its destination within it), the rest of its route kept; false when none is found.
+        [[nodiscard]] bool plan_around(const View& view, std::size_t index, std::size_t blocker);
+        // A search around a blocker expands at most this many nodes: twice the cells of a 32-cell
+        // chunk, so it stays near the chunk it starts in. An engine choice.
+        static constexpr std::uint32_t around_budget = 2048;
+        // Searches around a blocker (no chunks), the cells they may not enter (one per ground cell,
+        // nonzero blocked), and the cells marked in it.
+        GridPathfinder around_{around_budget};
+        std::vector<std::uint8_t> obstacle_cells_;
+        std::vector<std::uint32_t> marked_cells_;
+        std::vector<std::uint32_t> nearby_;
+        // The last tick's blocks, read before resolve_blocks acts on any.
+        std::vector<EntityId> blocks_;
         // Sets an entity's route from planned waypoints (the last is its destination).
         void set_route(const View& view, std::size_t index, const std::vector<PathPoint>& waypoints, float height);
         // Marks group members that are ahead of their group to wait this tick, and releases members
@@ -2218,6 +2248,17 @@ private:
     std::uint64_t commands_applied_{};
     std::uint64_t stale_references_{};
     std::uint64_t rejected_spawns_{};
+    // The last move order's number (RouteColumns::orders).
+    std::uint32_t move_orders_{};
+    // The number of a new move order (never 0).
+    [[nodiscard]] std::uint32_t next_move_order() noexcept
+    {
+        if (++move_orders_ == 0)
+        {
+            move_orders_ = 1;
+        }
+        return move_orders_;
+    }
     TickPhaseTimes phase_seconds_{};
     TickPhaseTimes slowest_phase_seconds_{};
 };

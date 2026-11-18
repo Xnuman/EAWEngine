@@ -161,7 +161,24 @@ Vector3 SimulationWorld::MovementSystem::keep_apart(const View& view, const std:
         apart = std::hypot(to_x, to_y);
         return apart > 0.0F && candidate.x * to_x + candidate.y * to_y > 0.0F;
     };
-    // Twice, so a unit wedged between two slides clear of both where it can.
+    if (land)
+    {
+        // The new movement of a single unit, step 7: a ground unit stops at a unit in its way instead
+        // of sliding along it; navigation decides in the next tick whether it waits or goes around.
+        for (const auto other : query_)
+        {
+            float to_x = 0.0F;
+            float to_y = 0.0F;
+            float apart = 0.0F;
+            if (deeper(other, step, to_x, to_y, apart))
+            {
+                view.get<RouteColumns>().blockers[index] = view.get<IdentityColumns>().ids[other];
+                return {0.0F, 0.0F, step.z};
+            }
+        }
+        return step;
+    }
+    // Twice, so a ship wedged between two slides clear of both where it can.
     for (int pass = 0; pass < 2; ++pass)
     {
         for (const auto other : query_)

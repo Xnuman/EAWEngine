@@ -162,7 +162,7 @@ While the navigation overlay is on, the simulation records every change to a gro
 (`SimulationWorld::set_route_tracing`, `route_traces`; up to 8 per unit, not part of the state
 hash), and the overlay draws those of the selected ground units:
 - each recorded route, oldest faint and newest bright, colored by what set it: a plan of its own
-  cyan, its share of a group's shared route teal;
+  cyan, its share of a group's shared route teal, a way around a unit in its way orange;
 - for the newest record, the stages of the search behind it: the 32-cell
   chunk route (violet, large squares at its parts' representative cells), the 16-cell chunk route
   (pink, small squares), and the cell path before smoothing (grey, crosses).
@@ -301,8 +301,10 @@ How smoothly ground units move is measured in two places ([group-movement-resear
   least 10 degrees one way undone within a second, the visible turning left and right; steering
   wobble below half a thousandth of a radian a tick is ignored), the **stalled** unit-seconds (ordered
   to move but under a twentieth of top speed) out of all unit-seconds moving, and the **route
-  changes** by what made them: a plan (an order or a re-plan), or a share of a group's shared route
-  (space). Squad soldiers are left
+  changes** by what made them: a plan (an order or a re-plan), a share of a group's shared route
+  (space), or a way around a unit that blocked it; then the moves **stopped at units** (ended at a
+  unit of the same order that arrived, or with no way around one of another order). Squad soldiers
+  are left
   out (they follow their team). The thresholds are engine choices for the measure
   (`sandbox/movement_metrics.hpp`); route changes are counted by the simulation
   (`SimulationWorld::Stats::route_changes`), never hashed.

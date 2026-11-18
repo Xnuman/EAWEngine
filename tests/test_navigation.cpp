@@ -696,6 +696,78 @@ void test_destination_from_last_leg()
             "a unit must keep a destination it fits turned the way its route arrives; it stands at " + std::to_string(at.x) + ", " + std::to_string(at.y));
 }
 
+eaw::GroundMap open_ground(const std::uint32_t cells)
+{
+    eaw::GroundMap ground;
+    ground.width = cells;
+    ground.height = cells;
+    ground.spacing = 10.0F;
+    ground.heights.assign(static_cast<std::size_t>(cells) * cells, 0.0F);
+    ground.passability.assign(ground.heights.size(), eaw::passability::clear);
+    return ground;
+}
+
+eaw::EntityId spawn_blocking_tank(eaw::SimulationWorld& world, const eaw::Vector3& at, const float heading)
+{
+    const auto id = test_spawn(world, {.type_name = "Tank",
+                                       .position = at,
+                                       .heading = heading,
+                                       .max_speed = 100.0F,
+                                       .follows_ground = true,
+                                       .passable_types = eaw::passability::clear,
+                                       .radius = 14.0F,
+                                       .body = {.half_length = 20.0F, .half_width = 10.0F},
+                                       .turn_rate = 3.0F});
+    require(id.ok(), "test spawn must succeed");
+    return *id;
+}
+
+void test_blocked_units_go_around()
+{
+    // The new movement of a single unit, steps 7 and 8 (pathfinding-design.md): two tanks of different
+    // orders meet head-on; each stops at the other, neither drives on, so both plan a way around and
+    // both reach their points.
+    eaw::SimulationWorld world(1.0 / 30.0);
+    world.set_ground(open_ground(80));
+    const eaw::Vector3 west{200.0F, 400.0F, 0.0F};
+    const eaw::Vector3 east{600.0F, 400.0F, 0.0F};
+    const auto a = spawn_blocking_tank(world, west, 0.0F);
+    const auto b = spawn_blocking_tank(world, east, eaw::pi);
+    world.submit({.kind = eaw::SimCommandKind::move, .entities = {a}, .target = east});
+    world.submit({.kind = eaw::SimCommandKind::move, .entities = {b}, .target = west});
+    for (int tick = 0; tick < 600; ++tick)
+    {
+        world.step();
+    }
+    const auto& entities = world.snapshot().entities;
+    const auto off_a = std::hypot(entities[0].position.x - east.x, entities[0].position.y - east.y);
+    const auto off_b = std::hypot(entities[1].position.x - west.x, entities[1].position.y - west.y);
+    require(off_a < 5.0F && off_b < 5.0F && world.stats().route_changes[static_cast<std::size_t>(eaw::SimulationWorld::RouteTraceKind::around)] > 0,
+            "two units of different orders meeting head-on must go around each other to their points (" + std::to_string(off_a) + " and " + std::to_string(off_b) + " off)");
+}
+
+void test_same_order_stops_at_arrived()
+{
+    // Two tanks of one order sent to one point: the first arrives; the second stops where it meets the
+    // first (a unit of its own order that arrived) and ends its move there, without overlapping it.
+    eaw::SimulationWorld world(1.0 / 30.0);
+    world.set_ground(open_ground(80));
+    const auto a = spawn_blocking_tank(world, {300.0F, 400.0F, 0.0F}, 0.0F);
+    const auto b = spawn_blocking_tank(world, {200.0F, 400.0F, 0.0F}, 0.0F);
+    const eaw::Vector3 point{500.0F, 400.0F, 0.0F};
+    world.submit({.kind = eaw::SimCommandKind::move, .entities = {a, b}, .target = point});
+    for (int tick = 0; tick < 600; ++tick)
+    {
+        world.step();
+    }
+    const auto& entities = world.snapshot().entities;
+    const auto first = std::hypot(entities[0].position.x - point.x, entities[0].position.y - point.y);
+    const auto second = std::hypot(entities[1].position.x - point.x, entities[1].position.y - point.y);
+    require(first < 5.0F && second > 20.0F && second < 80.0F && world.stats().blocked_stops == 1, "a unit must end its move at a unit of its own order that arrived (" + std::to_string(first) +
+                                                                                                      " and " + std::to_string(second) + " from the point, " +
+                                                                                                      std::to_string(world.stats().blocked_stops) + " stopped)");
+}
+
 void test_path_budget()
 {
     // A 200x200 field with a wall across x = 100 open only at rows 180-185, so every route detours.
@@ -1440,6 +1512,8 @@ const ModuleRegistrar registrar("navigation", {
                                                   {"test_route_tracing_chunks", &test_route_tracing_chunks},
                                                   {"test_footprints_through_gap", &test_footprints_through_gap},
                                                   {"test_destination_from_last_leg", &test_destination_from_last_leg},
+                                                  {"test_blocked_units_go_around", &test_blocked_units_go_around},
+                                                  {"test_same_order_stops_at_arrived", &test_same_order_stops_at_arrived},
                                                   {"test_space_avoidance", &test_space_avoidance},
                                                   {"test_space_crowds", &test_space_crowds},
                                                   {"test_movement_profiles", &test_movement_profiles},

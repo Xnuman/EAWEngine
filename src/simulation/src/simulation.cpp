@@ -292,6 +292,8 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn, const EntityId
     steering_.intents.emplace_back();
     locomotor_.speed_limits.push_back(0.0F);
     route_.pending.push_back(0);
+    route_.orders.push_back(0);
+    route_.blockers.emplace_back();
     for_each_column(
         [&](const auto& column)
         {
@@ -389,6 +391,7 @@ SimulationWorld::Stats SimulationWorld::stats() const noexcept
             .commands_applied = commands_applied_,
             .stale_references = stale_references_,
             .blocked_moves = movement_.blocked_moves,
+            .blocked_stops = navigation_.blocked_stops,
             .path_searches = navigation_.path_searches,
             .partial_paths = navigation_.partial_paths,
             .path_expansions = navigation_.path_expansions,
@@ -517,6 +520,8 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
             hasher.add(waypoint);
         }
         hasher.add(route_.pending[index]);
+        hasher.add(route_.orders[index]);
+        hasher.add(route_.blockers[index]);
         hasher.add(motion_.velocities[index]);
         hasher.add(route_.loiter_points[index].has_value());
         if (route_.loiter_points[index])

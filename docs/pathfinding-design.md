@@ -62,11 +62,43 @@ the fit (`place_destination`) is tested turned the way the leg from the route's 
 points, and a moved end gets a straight leg when the ground allows, else a search of at most 4,096
 nodes from that point (the shared-leg pathfinder, not bounded to the last chunk; when it fails the
 end stays unmoved). The fit is not tested again for the searched leg's own direction (a shortcut).
-Steps 6 to 8 are next.
 
-Open (engine choices to be named when built): what "blocked" means (contact at the end of a step
-by `keep_apart`, or a contact ahead within some distance), what "moving" means for the blocker (its
-speed above a fraction of its top speed), and whether a waiting unit decides again every tick.
+Built: steps 6 to 8, with these engine choices:
+
+- Step 6 needed nothing new: a unit drives straight at its next waypoint, and plans again from where
+  it stands when its next step would leave ground it fits. The rule that let a unit skip a waypoint
+  once the next one was in straight reach over the ground is gone: it served units avoidance pushed
+  off their route, and it skipped the waypoints of a way around a unit.
+- **Blocked** (step 7) is contact at the end of a step: on land `keep_apart` takes none of a step that
+  would end deeper inside another ground unit (no sliding along it) and keeps the unit it stopped at
+  (`RouteColumns::blockers`). Navigation decides in the next tick, again every tick the unit is
+  blocked, from all of the last tick's blocks read first (`resolve_blocks`).
+- **Moving**, for the blocker: it has a destination and drove faster than a twentieth of its top speed
+  in the last tick (`blocker_moving_fraction`). Two units that block each other both count as
+  standing, whatever their speed.
+- **Same order** (`RouteColumns::orders`: every move order is numbered by the world; the command's own
+  serial is the issuer's and often 0): the unit waits while the blocker is under way (it has a
+  destination) and ends its move at one that arrived or stopped. Ending at once on any contact
+  stopped most of a group at its first touch while units turned in place. Units of one order meeting
+  at their common point so stop where they touch: the ragged arrival observed in the original.
+- **Another order**: the unit waits while the blocker drives on at least as fast as the unit can
+  (top speeds compared); otherwise it plans around it (`plan_around`): a cell search without chunks,
+  at most 2,048 nodes (twice a 32-cell chunk's cells; it stays near the chunk without being bounded
+  to it), from where it stands to where its route leaves its 32-cell chunk (half a cell inside the
+  edge), or to its destination when that lies in the chunk; the rest of its route is kept. The
+  search may not enter the cells within reach of the blocker and of every other ground unit near it
+  that stands (an addition to the owner's step: around only the blocker, three units converging went
+  around one straight into the third, every tick), each widened by the unit's radius and, for a
+  unit close enough to touch it, to at least where it stands. When no way is found the unit ends its
+  move.
+- The second search of step 8 (to the destination with the current chunk marked blocked) is not
+  built: the unit stands in that chunk, and a search may not leave a blocked start's neighbors, so
+  it could never find a way. Open for the owner: which chunk to mark (the one ahead on the route?),
+  or the blocker's cells only.
+- No tie-break was needed: two units meeting head-on both plan around and pass (6 detours).
+
+The measurements are in
+[group-movement-research.md](group-movement-research.md#the-movement-redesign-branch).
 
 ## 1. Why
 

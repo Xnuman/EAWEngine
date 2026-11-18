@@ -26,6 +26,7 @@ void SimulationWorld::NavigationSystem::run(const View& view)
         EAW_PROFILE_ZONE("route searches");
         process_path_queue(view);
     }
+    resolve_blocks(view);
     measure_remaining_routes(route, placement);
     update_group_cohesion(view);
     plan_space_avoidance(view);
@@ -87,6 +88,153 @@ void SimulationWorld::NavigationSystem::place_route_end(const View& view, const 
         waypoints.pop_back();
         waypoints.insert(waypoints.end(), leg.waypoints.begin(), leg.waypoints.end());
     }
+}
+
+// Decided again every tick a unit is blocked, from the blocks of the last tick (all read before any
+// is acted on). Two units that block each other both count as standing. A unit of the same order:
+// the unit waits while the blocker is still under way (it has a destination), and ends its move at
+// one that arrived or stopped (group behavior is left out for now, so units of one order never go
+// around each other). A unit of another order: the unit waits while the blocker drives on at least
+// as fast as it can, and otherwise goes around it, ending its move when no way around is found.
+void SimulationWorld::NavigationSystem::resolve_blocks(const View& view)
+{
+    auto& route = view.get<RouteColumns>();
+    const auto& identity = view.get<IdentityColumns>();
+    const auto& motion = view.get<MotionColumns>();
+    const auto& locomotor = view.get<LocomotorColumns>();
+    blocks_.assign(route.blockers.begin(), route.blockers.end());
+    std::ranges::fill(route.blockers, EntityId{});
+    for (std::size_t index = 0; index < blocks_.size(); ++index)
+    {
+        const auto blocker = dense_index(view, blocks_[index]);
+        if (!blocker || !route.move_targets[index] || route.pending[index] != 0)
+        {
+            continue;
+        }
+        const bool mutual = blocks_[*blocker] == identity.ids[index];
+        const bool same_order = route.orders[index] != 0 && route.orders[index] == route.orders[*blocker];
+        const bool under_way = route.move_targets[*blocker].has_value() && !mutual;
+        const bool driving = under_way && motion.speeds[*blocker] > blocker_moving_fraction * locomotor.max_speeds[*blocker];
+        if (same_order ? under_way : driving && locomotor.max_speeds[*blocker] >= locomotor.max_speeds[index])
+        {
+            continue;
+        }
+        if (!same_order && plan_around(view, index, *blocker))
+        {
+            continue;
+        }
+        route.move_targets[index].reset();
+        route.paths[index].clear();
+        ++blocked_stops;
+    }
+}
+
+bool SimulationWorld::NavigationSystem::plan_around(const View& view, const std::size_t index, const std::size_t blocker)
+{
+    auto& route = view.get<RouteColumns>();
+    const auto& ground = view.get<GroundState>().map;
+    const auto& avoidance = view.get<Avoidance>();
+    const auto& placement = view.get<PlacementColumns>();
+    const auto& here = placement.positions[index];
+    const auto start = ground.cell_at(here.x, here.y);
+    if (!start || index >= avoidance.radii.size() || blocker >= avoidance.radii.size())
+    {
+        return false;
+    }
+    // The route ahead in order: its waypoints, then its destination.
+    std::vector<PathPoint> ahead;
+    for (auto waypoint = route.paths[index].rbegin(); waypoint != route.paths[index].rend(); ++waypoint)
+    {
+        ahead.push_back({waypoint->x, waypoint->y});
+    }
+    ahead.push_back({route.move_targets[index]->x, route.move_targets[index]->y});
+    // The unit's 32-cell chunk in world units (cell c spans c - 0.5 to c + 0.5 spacings).
+    const auto spacing = ground.spacing;
+    const auto span = static_cast<float>(coarse_chunk_cells) * spacing;
+    const PathPoint low{static_cast<float>(*start % ground.width / coarse_chunk_cells) * span - 0.5F * spacing, static_cast<float>(*start / ground.width / coarse_chunk_cells) * span - 0.5F * spacing};
+    const auto inside = [&](const PathPoint point)
+    {
+        return point.x >= low.x && point.y >= low.y && point.x < low.x + span && point.y < low.y + span;
+    };
+    // The goal: where the route leaves the chunk, half a cell inside its edge, or the destination.
+    auto goal = ahead.back();
+    auto rest = ahead.size();
+    PathPoint previous{here.x, here.y};
+    for (std::size_t point = 0; point < ahead.size(); ++point)
+    {
+        if (!inside(ahead[point]))
+        {
+            const auto way = ahead[point] - previous;
+            auto leaves = 1.0F;
+            leaves = way.x > 0.0F ? std::min(leaves, (low.x + span - previous.x) / way.x) : way.x < 0.0F ? std::min(leaves, (low.x - previous.x) / way.x) : leaves;
+            leaves = way.y > 0.0F ? std::min(leaves, (low.y + span - previous.y) / way.y) : way.y < 0.0F ? std::min(leaves, (low.y - previous.y) / way.y) : leaves;
+            leaves = std::max(0.0F, leaves - 0.5F * spacing / std::max(length(way), spacing));
+            goal = previous + way * leaves;
+            rest = point;
+            break;
+        }
+        previous = ahead[point];
+    }
+    // The cells of the blocker and of every other unit standing within the chunk's reach (moving no
+    // faster than blocker_moving_fraction of its top speed), each widened by this unit's radius, and
+    // for a unit within reach of this one's footprint at least as far as it stands from it (they may
+    // touch where their footprints meet, beyond their radii): cells whose centers lie that close.
+    const auto& motion = view.get<MotionColumns>();
+    const auto& locomotor = view.get<LocomotorColumns>();
+    obstacle_cells_.resize(static_cast<std::size_t>(ground.width) * ground.height, 0);
+    const auto mark = [&](const std::size_t other)
+    {
+        const auto& center = placement.positions[other];
+        const auto apart = std::hypot(here.x - center.x, here.y - center.y);
+        const auto reach = std::max(avoidance.radii[other] + avoidance.radii[index], std::min(apart, avoidance.reaches[other] + avoidance.reaches[index]));
+        const auto first_x = static_cast<std::int64_t>(std::floor((center.x - reach) / spacing));
+        const auto last_x = static_cast<std::int64_t>(std::ceil((center.x + reach) / spacing));
+        const auto first_y = static_cast<std::int64_t>(std::floor((center.y - reach) / spacing));
+        const auto last_y = static_cast<std::int64_t>(std::ceil((center.y + reach) / spacing));
+        for (auto y = std::max<std::int64_t>(first_y, 0); y <= std::min<std::int64_t>(last_y, ground.height - 1); ++y)
+        {
+            for (auto x = std::max<std::int64_t>(first_x, 0); x <= std::min<std::int64_t>(last_x, ground.width - 1); ++x)
+            {
+                const auto dx = static_cast<float>(x) * spacing - center.x;
+                const auto dy = static_cast<float>(y) * spacing - center.y;
+                if (dx * dx + dy * dy < reach * reach)
+                {
+                    const auto cell = static_cast<std::uint32_t>(y) * ground.width + static_cast<std::uint32_t>(x);
+                    obstacle_cells_[cell] = 1;
+                    marked_cells_.push_back(cell);
+                }
+            }
+        }
+    };
+    mark(blocker);
+    nearby_.clear();
+    avoidance.grid.query_overlapping(here, span, nearby_);
+    for (const auto other : nearby_)
+    {
+        if (other != index && other != blocker && other < avoidance.radii.size() && avoidance.radii[other] > 0.0F && motion.speeds[other] <= blocker_moving_fraction * locomotor.max_speeds[other])
+        {
+            mark(other);
+        }
+    }
+    around_.set_obstacles(obstacle_cells_);
+    auto found = around_.find(navigation_data_, ground, {here.x, here.y}, goal, footing_of(view, index));
+    around_.set_obstacles({});
+    for (const auto cell : marked_cells_)
+    {
+        obstacle_cells_[cell] = 0;
+    }
+    marked_cells_.clear();
+    ++path_searches;
+    path_expansions += found.expanded;
+    if (found.status != PathStatus::reached || found.waypoints.empty())
+    {
+        return false;
+    }
+    auto waypoints = std::move(found.waypoints);
+    waypoints.insert(waypoints.end(), ahead.begin() + static_cast<std::ptrdiff_t>(rest), ahead.end());
+    set_route(view, index, waypoints, route.move_targets[index]->z);
+    record_route(view, index, RouteTraceKind::around, found.trace);
+    return true;
 }
 
 void SimulationWorld::NavigationSystem::give_route(const View& view, const std::size_t index, const Vector3& goal, const PlannedRoute& planned)
@@ -772,6 +920,7 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
     // a group order goes to the ordered point itself, on a route of its own.
     if (ground_.map.valid())
     {
+        const auto move_order = next_move_order();
         for (const auto id : command.entities)
         {
             const auto dense = dense_index(*this, id);
@@ -784,6 +933,7 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
             {
                 continue;
             }
+            route_.orders[*dense] = move_order;
             orders_.command_serials[*dense] = command.serial;
             orders_.standing[*dense].kind = StandingOrder::none;
             orders_.standing[*dense].engaging = false;

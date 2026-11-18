@@ -1147,3 +1147,19 @@ rewritten to describe the current state; the source document is noted in bracket
   corridor from the side; the old rule put it outside at 230, 100). Hashes: reference
   0x7b84de93d99224c6 -> 0xacafabe83b502d25, large Utapau 0xf4eafde45822c642 -> 0x7b271f9612206d1d,
   AT-ATs 0xa1945a44269bd2d0 -> 0x3935648b19513d0a; space unchanged; movement scenarios unchanged.
+- Single-unit movement, steps 6 to 8 (movement-redesign branch): on land keep_apart stops a unit at
+  contact instead of sliding and keeps its blocker; navigation decides each tick (resolve_blocks):
+  wait while a unit of the same order is under way or one of another order drives on at least as
+  fast, end the move at a same-order unit that arrived or stopped, otherwise go around (plan_around:
+  a 2,048-node cell search to where the route leaves its 32-cell chunk, around the blocker and the
+  standing units near it), ending the move when none is found. Every move order is numbered by the
+  world (RouteColumns::orders). The waypoint-skipping rule is removed (it skipped the ways around).
+  Not built: step 8's second search with the current chunk marked blocked (a search cannot leave a
+  blocked start; a question for the owner). Tried and left out: same-order units going around each
+  other (the large battle got worse). Scenarios: passage 4.3 s, head-on 5.6 s, three converging 7.0
+  s, crossing groups 7.3 s (stripped branch: 60, 60, 7.6, 60 s). New tests
+  test_blocked_units_go_around and test_same_order_stops_at_arrived. Hashes (all five, the new
+  hashed columns; space behavior checked unchanged without them): reference 0xacafabe83b502d25 ->
+  0xf2bf375f99ee11ba, large Utapau 0x7b271f9612206d1d -> 0xd8cae913d2401356, Kuat fighters
+  0x44a0aee571affa51 -> 0x3c1998f3f3a33611, Kuat capital 0xd3c0c7aae986e0e0 -> 0x195a3e582287f460,
+  AT-ATs 0x3935648b19513d0a -> 0x597947f00d8bc53c.

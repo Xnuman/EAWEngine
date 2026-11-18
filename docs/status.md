@@ -13,8 +13,8 @@ or for the owner's judgment in play.
 footprints, with no avoidance, giving way, detours, arrival rules among others, or land group
 movement ([pathfinding-design.md](pathfinding-design.md#the-movement-redesign-branch)); the
 descriptions of those systems below are the main branch's. The owner's new single-unit movement is
-built through step 5: a destination is placed after its route is planned, turned the way the
-route's last leg arrives.
+built: a destination is placed after its route is planned, turned the way the route's last leg
+arrives; a unit stops at a unit in its way, then waits, goes around it, or ends its move.
 
 ## Milestones
 

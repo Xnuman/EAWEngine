@@ -46,6 +46,9 @@ inline constexpr float separation_radii_per_second = 15.0F;
 // Ground units are measured into a grid of this cell size (world units) that keep_apart finds a
 // unit's neighbours in. An engine choice.
 inline constexpr float avoidance_cell_size = 32.0F;
+// A blocked unit waits for a blocker driving faster than this fraction of its top speed (the
+// movement measurement's stall threshold, a twentieth). An engine choice.
+inline constexpr float blocker_moving_fraction = 0.05F;
 // Route tracing keeps this many records per unit (debug drawing).
 inline constexpr std::size_t route_trace_depth = 8;
 // Route searches run this many at a time on the job system (each with its own search scratch, about

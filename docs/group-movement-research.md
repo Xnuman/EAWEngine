@@ -320,3 +320,28 @@ floor a new design starts from (units that meet stop at contact and stay held):
 | Large | 2.78 ms | 154 | 7,353 of 10,095 |
 | AT-ATs | 0.45 ms | 9 | 576.2 of 640.1 |
 | Reference | 0.39 ms | 3 | 232.8 of 241.8 |
+
+With the owner's single-unit movement built (steps 1 to 8,
+[pathfinding-design.md](pathfinding-design.md#the-movement-redesign-branch); 2026-11-18). "Stopped"
+counts the moves ended at a unit: in these scenarios and battles mostly units of one order meeting
+at their common point (the battles spawn their groups around the map's middle and send them there,
+so trips are short):
+
+| Scenario | Time | Reversals | Stalled of moving (unit-s) | Around | Stopped |
+| --- | --- | --- | --- | --- | --- |
+| Ten tanks through a gap (formation and group move alike) | 4.3 s | 0 | 4.9 of 19.4 | 0 | 9 |
+| Head-on pair | 5.6 s | 5 | 0.6 of 11.0 | 6 | 0 |
+| Three converging | 7.0 s | 15 | 0.9 of 19.1 | 11 | 0 |
+| Two groups of five crossing | 7.3 s | 0 | 0.9 of 25.9 | 2 | 9 |
+
+| Battle on Utapau, auto-move | Tick | Reversals | Stalled of moving (unit-s) | Around | Stopped |
+| --- | --- | --- | --- | --- | --- |
+| Ten T2-Bs | 0.41 ms | 1 | 3.0 of 6.2 | 0 | 9 |
+| Large | 1.61 ms | 1 | 1,028.5 of 1,356.9 | 0 | 442 |
+| AT-ATs | 0.45 ms | 0 | 16.1 of 35.3 | 0 | 17 |
+| Reference | 0.42 ms | 0 | 2.4 of 8.5 | 0 | 6 |
+
+Tried and left out: units of one order going around each other like units of different orders
+(their step 8 for all). It changed none of the scenarios but crossing groups (9.2 s, 125 ways
+around) and made the large battle worse (9,619 ways around, stalled 2,841 of 3,574 unit-s, 2.15 ms a
+tick).

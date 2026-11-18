@@ -72,6 +72,8 @@ void SimulationWorld::apply(const SimCommand& given)
         }
         return;
     }
+    // The units of one move order share its number (RouteColumns::orders); a stop or an attack ends it.
+    const auto move_order = command.kind == SimCommandKind::move ? next_move_order() : 0U;
     for (const auto id : command.entities)
     {
         const auto dense = dense_index(*this, id);
@@ -82,6 +84,7 @@ void SimulationWorld::apply(const SimCommand& given)
         }
         if (command.kind == SimCommandKind::move || command.kind == SimCommandKind::stop || command.kind == SimCommandKind::attack)
         {
+            route_.orders[*dense] = move_order;
             orders_.command_serials[*dense] = command.serial;
             orders_.standing[*dense].kind = StandingOrder::none;
             orders_.standing[*dense].engaging = false;

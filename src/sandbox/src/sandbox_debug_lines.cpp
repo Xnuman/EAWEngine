@@ -229,7 +229,8 @@ std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& v
     if (view.show_navigation && view.world != nullptr && ground.valid())
     {
         // Every recorded change of the selected ground units' routes (route_traces, oldest faint,
-        // newest bright), colored by what set it: a plan cyan, a share of a group route teal. The
+        // newest bright), colored by what set it: a plan cyan, a share of a group route teal, a way
+        // around a unit in the way orange. The
         // newest record also shows the stages of the search behind it: the 32-cell
         // chunk route (violet, large squares at its parts), the 16-cell one (pink, small squares),
         // and the cell path before smoothing (grey, crosses). Layers sit at different heights over
@@ -240,7 +241,7 @@ std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& v
         constexpr float raw_mark = 1.5F;
         const auto color_of = [](const TraceKind kind, const float alpha)
         {
-            return kind == TraceKind::plan ? Color{0.35F, 1.0F, 0.9F, alpha} : Color{0.3F, 0.8F, 0.55F, alpha};
+            return kind == TraceKind::plan ? Color{0.35F, 1.0F, 0.9F, alpha} : kind == TraceKind::shared ? Color{0.3F, 0.8F, 0.55F, alpha} : Color{1.0F, 0.6F, 0.2F, alpha};
         };
         for (const auto& entity : view.world->snapshot().entities)
         {

@@ -23,6 +23,7 @@ void SimulationWorld::MovementSystem::run(const View& view, const float dt)
     auto& ground = view.get<GroundState>();
     for (std::size_t index = 0; index < identity.ids.size(); ++index)
     {
+        route.blockers[index] = {};
         // A suspended locomotor holds the entity where it is; its orders wait.
         if (locomotor.suspended[index] != 0)
         {
@@ -128,23 +129,9 @@ void SimulationWorld::MovementSystem::move_over_ground(const View& view, const s
     // tick's movement carries on past reached waypoints, so corners do not slow a unit down.
     auto remaining = 0.0F;
     bool driven = false;
-    // An intermediate waypoint is passed once the one after it is in straight reach. A crowd keeps
-    // units away from a shared corner waypoint, so requiring each unit to touch it left groups
-    // circling there (found by the path budget test). Only this rule: passing a waypoint whose next
-    // line does not fit (because the footprint covers it, or the unit is beyond it) sent units at a
-    // passage's mouth back and forth between that line and their replanned route.
-    if (allowed != 0)
-    {
-        while (!path.empty())
-        {
-            const auto& after = path.size() > 1 ? path[path.size() - 2] : *target;
-            if (!ground_line_passable(ground.map, {position.x, position.y}, {after.x, after.y}, footing_of(view, index)))
-            {
-                break;
-            }
-            path.pop_back();
-        }
-    }
+    // Every waypoint is reached in turn: nothing pushes a unit off its route (movement-redesign
+    // branch), and a way around a unit (RouteColumns::blockers) has waypoints the ground alone would
+    // let it skip.
     while (target)
     {
         const auto waypoint = path.empty() ? *target : path.back();
