@@ -1124,3 +1124,8 @@ rewritten to describe the current state; the source document is noted in bracket
   two to four, halves offset diagonally), marked unverified. xml-object-tags.md: MaxJiggleDistance
   read as a likely arrival tolerance, MinimumPushReturnDistance left unexplained (no pushing
   observed).
+- Movement types recorded (compatibility-research.md, Movement classes, locomotors, and collision
+  classes): a survey of the stock FoC XML shows no single movement type; MovementClass (18 classes,
+  passability only), the locomotor token in the behavior lists (WALK_LOCOMOTOR for every ground
+  vehicle), and UnitCollisionClass combine. Tables of each and their common combinations; one
+  parameterized ground movement inferred.

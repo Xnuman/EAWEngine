@@ -505,6 +505,77 @@ vehicle, infantry, and land hero type with a speed; `None` for walkers such as E
 (birds, space-only types, projectiles) are treated as not walking. Spawned flyers start at the
 surface plus `Hover_Offset`. A corpus inference.
 
+### Movement classes, locomotors, and collision classes
+
+No single XML tag is a unit's movement type. Three independent ones combine, and none of them holds
+speed or turning (`Max_Speed`, `Max_Rate_Of_Turn`, and the acceleration tags are per unit). Counts
+are of the stock FoC objects (2026-11-18, one per object; repeats on team containers counted once).
+
+**`MovementClass`: where a unit may go.** `MovementClassTypeDefs.xml` defines each class only as the
+passability types it may enter; `Enum/MovementClassType.xml` numbers them 0 to 17.
+
+| # | Class | May enter | Stock users |
+| --- | --- | --- | --- |
+| 0 | Infantry | Clear, Shield, InfantryOnly | 134: infantry, squads, creatures, some vehicles |
+| 1 | InfantryNoShield | Clear, InfantryOnly | none |
+| 2 | Wheeled | Clear, Shield | 1: HAV Juggernaut |
+| 3 | WheeledNoShield | Clear | none |
+| 4 | Walker | Clear, Shield | 8: AT-ST, AT-AA, SPMAT, pod walkers, Scavenger droid, Night Sister, the Rancor ally |
+| 5 | WalkerNoShield | Clear | none |
+| 6 | Flying | everything but Impassable | 8: Snowspeeder, Y-Wing bombing, birds and flying creatures |
+| 7 | Tracked | Clear, Shield | 5: T4-B, MPTL, MZ-8, TIE Crawler, a story prop |
+| 8 | TrackedNoShield | Clear | none |
+| 9 | Hover | Clear, Water, Shield | 13: T2-B, Swamp Speeder, Skiff, Canderous, F9-TZ, MAL, M1, Scout Trooper, Geonosians |
+| 10 | HoverNoShield | Clear, Water | none |
+| 11 | LargeWalker | Clear, RebelWall, Shield | 2: the AT-ATs |
+| 12 | LargeWalkerNoShield | Clear, RebelWall | none |
+| 13 | Space | everything but Impassable | 81: space units, and Gallofree_Ground_Fly |
+| 14 | Lancet | everything but Obstacle and Impassable | 2: Lancet, Gallofree HTT |
+| 15 | Spotter | Clear, Shield, InfantryOnly, Water | 1: MPTL Spotter |
+| 16 | LargeHover | Clear, EmpireWall, Shield, Water | 1: Gargantuan |
+| 17 | BombingRun | everything | 3: the bombing runs |
+
+Wheeled, Walker, and Tracked enter the same ground and differ only in name; no stock unit uses a
+`NoShield` class. Ten non-infantry objects use `Infantry` (Bantha, Tauntaun, Rancor, Womp rat, and
+other creatures, and the Gas Collection Droid), so the class is passability, not the kind of unit.
+
+**Locomotor: how a unit moves.** A `_LOCOMOTOR` token in the `Behavior`, `LandBehavior`, or
+`SpaceBehavior` lists, not a tag of its own:
+
+| Locomotor | Objects | Who |
+| --- | --- | --- |
+| `WALK_LOCOMOTOR` | 115 | every ground vehicle and lone infantry: tanks, walkers, hovers, the Juggernaut |
+| `LAND_TEAM_CONTAINER_LOCOMOTOR` | 41 | land squad and company containers |
+| `LAND_TEAM_INFANTRY_LOCOMOTOR` | 37 | soldiers of a squad, slaves, civilians |
+| `SIMPLE_SPACE_LOCOMOTOR` | 59 | capital ships, frigates, corvettes |
+| `FIGHTER_LOCOMOTOR` | 34 | fighters and bombers, flying creatures |
+| `TEAM_LOCOMOTOR` | 8 | space squadron containers |
+| `FLYING_LOCOMOTOR` | 5 | Snowspeeder, Y-Wing bombing, landing cinematics |
+| `LANDBOMBER_LOCOMOTOR` | 3 | bombing runs |
+| `JETPACK_LOCOMOTOR` | 3 | Boba Fett, Dark Troopers II and III (`Secondary_Locomotor_Name`) |
+| `BIKE_LOCOMOTOR` | 1 | Scout Trooper |
+| `FLEET_LOCOMOTOR` | 1 | the galactic fleet |
+
+**`UnitCollisionClass`: who blocks or crushes whom.** Infantry 121, Vehicle 54, Large Vehicle 8
+(AT-ST, SPMAT, pod walkers, Dark Troopers, Destroyer droid), Giant Vehicle 9 (AT-ATs, Juggernaut,
+Gargantuan, F9-TZ, Rancors, Sarlacc, Night Sister), Bike 1, Landing Transport 10, Build Pad 6, and
+Low, Medium, and High Obstacle 3, 19, and 19 (props). Its rules between classes are unobserved.
+
+The common combinations (class, locomotor, collision class): Space, simple space, none 48; Infantry,
+walk, Infantry 45; Infantry, land team container, Infantry 41; Infantry, land team infantry,
+Infantry 30; Space, fighter, none 25; Infantry, walk, Vehicle 10 (the creatures); Hover, walk,
+Vehicle 8; Walker, walk, Large Vehicle 5; Tracked, walk, Vehicle 5; then single cases (Wheeled,
+LargeHover, and LargeWalker with Giant Vehicle).
+
+Inference: on land one locomotor moves every unit outside squads, so the original likely runs one
+ground movement with parameters (the class, the collision class, and the per-unit numbers such as
+speed, turn rate, acceleration, `MaxJiggleDistance`, and the formation tags) rather than one
+behavior per kind of vehicle. `Weather_Category` (Infantry, Walker, Hover, Flying, Tracked,
+LargeWalker, Speeder) follows the class closely but only selects weather effects. The engine reads
+`MovementClass` into a passability mask, makes an obstacle collision class a static obstacle, and
+keys on `FIGHTER_LOCOMOTOR`; the rest is unread
+([xml-object-tags.md](xml-object-tags.md#locomotors-and-movement-class)).
+
 ### Speed, turning, and acceleration fields
 
 - **`Max_Speed`** is read as world units per 30 Hz logic frame (x30 per second), provisional; the
