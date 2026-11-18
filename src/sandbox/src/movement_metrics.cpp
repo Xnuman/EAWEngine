@@ -71,7 +71,7 @@ std::string format_movement(const MovementMetrics& metrics, const SimulationWorl
     };
     using Kind = SimulationWorld::RouteTraceKind;
     return std::to_string(metrics.reversals) + " reversals, stalled " + seconds(metrics.stalled_ticks) + " of " + seconds(metrics.moving_ticks) + " unit-s moving | route changes: plan " +
-           changes(Kind::plan) + ", shared " + changes(Kind::shared) + ", repair " + changes(Kind::repair) + ", detour " + changes(Kind::detour) + ", frame " + changes(Kind::frame);
+           changes(Kind::plan) + ", shared " + changes(Kind::shared);
 }
 
 } // namespace eaw

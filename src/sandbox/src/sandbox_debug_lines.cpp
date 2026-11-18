@@ -193,9 +193,7 @@ std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& v
         using Kind = SimulationWorld::RoutePointKind;
         // Marker half-sizes (engine choices, for reading the overlay).
         constexpr float point_size = 3.0F;
-        constexpr float end_size = 6.0F;
         const Color own_leg{0.35F, 1.0F, 0.9F, 0.9F};
-        const Color frame_leg{0.35F, 0.55F, 1.0F, 0.8F};
         for (const auto& entity : view.world->snapshot().entities)
         {
             if (!view.show_navigation && !view.selection->contains(entity_key(entity.id)))
@@ -209,10 +207,9 @@ std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& v
             }
             const Pen pen{lines, ground.valid() && entity.follows_ground ? &ground : nullptr, 2.0F};
             auto from = entity.position;
-            bool past_target = false;
             for (const auto& point : points)
             {
-                pen.line(from, point.at, past_target ? frame_leg : own_leg);
+                pen.line(from, point.at, own_leg);
                 switch (point.kind)
                 {
                 case Kind::detour:
@@ -223,13 +220,6 @@ std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& v
                     break;
                 case Kind::target:
                     pen.square(point.at, point_size, {1.0F, 0.9F, 0.3F, 1.0F});
-                    past_target = true;
-                    break;
-                case Kind::frame_waypoint:
-                    pen.cross(point.at, point_size, false, frame_leg);
-                    break;
-                case Kind::final_slot:
-                    pen.square(point.at, end_size, frame_leg);
                     break;
                 }
                 from = point.at;
@@ -239,9 +229,8 @@ std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& v
     if (view.show_navigation && view.world != nullptr && ground.valid())
     {
         // Every recorded change of the selected ground units' routes (route_traces, oldest faint,
-        // newest bright), colored by what changed it: a plan cyan, a share of a group route teal, a
-        // repair leg yellow, a detour orange, the formation frame's route blue. The newest record of
-        // the unit and of its frame also show the stages of the search behind them: the 32-cell
+        // newest bright), colored by what set it: a plan cyan, a share of a group route teal. The
+        // newest record also shows the stages of the search behind it: the 32-cell
         // chunk route (violet, large squares at its parts), the 16-cell one (pink, small squares),
         // and the cell path before smoothing (grey, crosses). Layers sit at different heights over
         // the surface so they stay apart.
@@ -251,11 +240,7 @@ std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& v
         constexpr float raw_mark = 1.5F;
         const auto color_of = [](const TraceKind kind, const float alpha)
         {
-            return kind == TraceKind::plan     ? Color{0.35F, 1.0F, 0.9F, alpha}
-                   : kind == TraceKind::shared ? Color{0.3F, 0.8F, 0.55F, alpha}
-                   : kind == TraceKind::repair ? Color{1.0F, 0.9F, 0.3F, alpha}
-                   : kind == TraceKind::detour ? Color{1.0F, 0.55F, 0.15F, alpha}
-                                               : Color{0.35F, 0.55F, 1.0F, alpha};
+            return kind == TraceKind::plan ? Color{0.35F, 1.0F, 0.9F, alpha} : Color{0.3F, 0.8F, 0.55F, alpha};
         };
         for (const auto& entity : view.world->snapshot().entities)
         {
@@ -264,33 +249,18 @@ std::vector<VisualDebugLine> build_sandbox_debug_lines(const SandboxDebugView& v
                 continue;
             }
             const auto records = view.world->route_traces(entity.id);
-            const auto newest = [&](const bool frame)
-            {
-                const SimulationWorld::RouteTrace* found = nullptr;
-                for (const auto& record : records)
-                {
-                    if ((record.kind == TraceKind::frame) == frame)
-                    {
-                        found = &record;
-                    }
-                }
-                return found;
-            };
             for (std::size_t index = 0; index < records.size(); ++index)
             {
                 const auto& record = records[index];
                 const auto age = static_cast<float>(records.size() - 1U - index) / static_cast<float>(records.size());
                 Pen{lines, &ground, 2.5F}.path(record.route, color_of(record.kind, 1.0F - 0.75F * age), 2.0F, false);
             }
-            for (const auto* record : {newest(false), newest(true)})
+            if (!records.empty())
             {
-                if (record == nullptr)
-                {
-                    continue;
-                }
-                Pen{lines, &ground, 3.0F}.path(record->stages.raw, {0.75F, 0.75F, 0.75F, 0.7F}, raw_mark, false);
-                Pen{lines, &ground, 3.5F}.path(record->stages.fine, {1.0F, 0.45F, 0.8F, 0.9F}, fine_mark, true);
-                Pen{lines, &ground, 4.0F}.path(record->stages.coarse, {0.7F, 0.4F, 1.0F, 0.95F}, coarse_mark, true);
+                const auto& record = records.back();
+                Pen{lines, &ground, 3.0F}.path(record.stages.raw, {0.75F, 0.75F, 0.75F, 0.7F}, raw_mark, false);
+                Pen{lines, &ground, 3.5F}.path(record.stages.fine, {1.0F, 0.45F, 0.8F, 0.9F}, fine_mark, true);
+                Pen{lines, &ground, 4.0F}.path(record.stages.coarse, {0.7F, 0.4F, 1.0F, 0.95F}, coarse_mark, true);
             }
         }
     }

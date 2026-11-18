@@ -1101,3 +1101,14 @@ rewritten to describe the current state; the source document is noted in bracket
   without a game installation. Battle hashes unchanged. The baseline numbers are in
   group-movement-research.md: two groups of five crossing take 31.7 s (about 5 s alone); a T2-B
   probe showed the owner's deadlock, standing still with its heading flipping 10 degrees.
+- Branch movement-redesign (the owner's decision: redesign movement as a whole): from the baseline
+  tag with the movement measurements, ground movement is stripped to route planning (A* over the 16-
+  and 32-cell chunks), clearance, wall margins, and oriented footprints, plus the hard no-overlap
+  rule (keep_apart) and crushing. Removed: ground avoidance and the ORCA library, giving way and
+  giving way ahead, detours, repair legs, the arrival rules among others, formation frames, land
+  group slots and cohesion (a group order sends every unit to the point); space keeps its avoidance,
+  formations, and cohesion. Tests of removed behavior are removed (151 pass); two that test kept
+  behavior (route tracing over chunks, footprints through a gap) became tests of their own. All five
+  battle hashes change (the removed route columns were hashed): reference 0x7b84de93d99224c6, large
+  Utapau 0xf4eafde45822c642, Kuat fighters 0x44a0aee571affa51, Kuat capital 0xd3c0c7aae986e0e0,
+  AT-ATs 0xa1945a44269bd2d0.

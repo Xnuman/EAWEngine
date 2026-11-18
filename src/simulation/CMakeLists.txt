@@ -14,7 +14,6 @@ set(EAW_SIMULATION_HEADERS
     ${HEADERS_DIR}/component_pool.hpp
     ${HEADERS_DIR}/formation.hpp
     ${HEADERS_DIR}/ground_map.hpp
-    ${HEADERS_DIR}/orca.hpp
     ${HEADERS_DIR}/pathfinding.hpp
     ${HEADERS_DIR}/simulation.hpp
     ${HEADERS_DIR}/simulation_types.hpp
@@ -28,15 +27,12 @@ set(EAW_SIMULATION_SOURCES
     ${SOURCES_DIR}/combat.cpp
     ${SOURCES_DIR}/formation.cpp
     ${SOURCES_DIR}/ground_map.cpp
-    ${SOURCES_DIR}/orca.cpp
     ${SOURCES_DIR}/pathfinding.cpp
     ${SOURCES_DIR}/simulation.cpp
     ${SOURCES_DIR}/simulation_avoidance.cpp
     ${SOURCES_DIR}/simulation_behavior.cpp
     ${SOURCES_DIR}/simulation_combat.cpp
     ${SOURCES_DIR}/simulation_contact.cpp
-    ${SOURCES_DIR}/simulation_frames.cpp
-    ${SOURCES_DIR}/simulation_give_way_ahead.cpp
     ${SOURCES_DIR}/simulation_internal.hpp
     ${SOURCES_DIR}/simulation_locomotion.cpp
     ${SOURCES_DIR}/simulation_navigation.cpp

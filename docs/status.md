@@ -9,6 +9,11 @@ they describe.
 Numbers marked as engine choices or guesses are not the original's behavior; they wait for evidence
 or for the owner's judgment in play.
 
+**On the movement-redesign branch**, ground movement is stripped to route planning, clearance, and
+footprints, with no avoidance, giving way, detours, arrival rules among others, or land group
+movement ([pathfinding-design.md](pathfinding-design.md#the-movement-redesign-branch)); the
+descriptions of those systems below are the main branch's.
+
 ## Milestones
 
 - **M0, repository and research discipline: complete.** CMake/Visual Studio build, tests,

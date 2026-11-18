@@ -7,6 +7,29 @@ parallelizes the systems kept. The research behind it is
 [status.md](status.md), the open work in [roadmap.md](roadmap.md) (work order 2g). Section 4 states
 the design together with how it is built; section 5 says which steps are done.
 
+## The movement-redesign branch
+
+This branch starts a redesign of ground movement as a whole (the owner, 2026-11-18): adding runtime
+conditions to fix one behavior quirk at a time made the whole worse (the experiments in
+[group-movement-research.md](group-movement-research.md)). From the baseline (tag
+`baseline-2026-11-17`) and the movement measurements, it keeps only what the owner judged robust:
+
+1. **Route planning**: the grid A* over the 16-cell and 32-cell chunk grids (the refined layout,
+   4.2), with its route tracing for the debug overlay.
+2. **Ground and footprints**: wall margins, clearance per movement class and size, oriented
+   footprint rectangles (4.7), and the obstacles stamped into the ground; a destination moves to the
+   nearest place the unit's footprint fits the ground.
+
+Between units only the hard rule stays: a step never ends inside another unit (`keep_apart`), and
+crushers still run over what they crush. Removed until the new design, so the sections below that
+describe them are history on this branch: ground avoidance (ORCA, and the ORCA library), giving way
+and giving way ahead, detours, repair legs, the immediate re-plan's alternatives, the arrival rules
+among others (a unit arrives at its point or stays held), formation frames, group slots and group
+moves on land (every unit of a group order goes to the ordered point itself), and land group
+cohesion. Space ships keep their avoidance, formations, shared routes, and group cohesion. Squads
+keep their soldiers' slots around their team. The measurements of this state are in
+[group-movement-research.md](group-movement-research.md#the-movement-redesign-branch).
+
 ## 1. Why
 
 ### Gameplay

@@ -16,7 +16,6 @@
 #include "simulation/footprint.hpp"
 #include "simulation/formation.hpp"
 #include "simulation/ground_map.hpp"
-#include "simulation/orca.hpp"
 #include "simulation/pathfinding.hpp"
 #include "simulation/simulation_types.hpp"
 #include "simulation/spatial_grid.hpp"
@@ -648,18 +647,14 @@ private:
 class SimulationWorld final
 {
 public:
-    // What changed a ground unit's route (route tracing, and Stats::route_changes): a plan of its own,
-    // its part of a group's shared route, a repair leg back to its way, a detour around units, and its
-    // formation frame's route.
+    // What set a unit's route (route tracing, and Stats::route_changes): a plan of its own, or its part
+    // of a group's shared route (space).
     enum class RouteTraceKind : std::uint8_t
     {
         plan,
         shared,
-        repair,
-        detour,
-        frame,
     };
-    static constexpr std::size_t route_trace_kind_count = 5;
+    static constexpr std::size_t route_trace_kind_count = 2;
     struct Stats
     {
         std::uint64_t tick{};
@@ -764,8 +759,6 @@ public:
         detour,
         waypoint,
         target,
-        frame_waypoint,
-        final_slot,
     };
     struct RoutePoint
     {
@@ -950,9 +943,6 @@ private:
     template <class Data> static void plan_move(Data& data, std::size_t index, const Vector3& target);
     struct PathRequest;
     void apply_formation_move(const SimCommand& command);
-    // The ground members of a formation move on land (`movers`, their `slots` at the ordered point
-    // facing `facing`) as frames, one per part of the selection by distance (simulation_frames.cpp).
-    void form_frames(const SimCommand& command, std::span<const std::size_t> movers, std::span<const FormationSlot> slots, float facing);
     // Attack-move and guard commands: their standing orders, and the first move.
     void apply_standing_order(const SimCommand& command);
     // Speed this tick: the entity's own, or its group's when that is slower.
@@ -978,28 +968,13 @@ private:
     // A unit with a footprint rectangle (`body`, its half-width above zero) needs room for it at
     // `heading`; units keep `radius` apart.
     [[nodiscard]] Vector3 free_ground(const Vector3& at, float heading, float radius, const FootprintRect& body, std::uint32_t passable_types, std::optional<std::size_t> except);
-    // A destination's ground taken already: a slot an earlier member of the same order was placed in.
-    struct ReservedGround
-    {
-        Vector3 at;
-        float radius{};
-    };
     // Where the unit at `index` can end a move to `at` (the owner's model, 2026-11-15: the ordered
-    // point moves to the nearest place the unit fits): ground with room for the unit as a whole (a
-    // squad by its extent), off every standing unit but those of the order (`movers`, with their
-    // soldiers) and off `reserved` ground. `at` when it fits, or when nothing within free_ground_rings
+    // point moves to the nearest place the unit fits): ground with room for the unit as a whole, its
+    // footprint rectangle at the heading it arrives with (a squad by its extent). Other units do not
+    // count (movement-redesign branch). `at` when it fits, or when nothing within free_ground_rings
     // rings of its size does.
-    [[nodiscard]] Vector3 place_destination(const Vector3& at, std::size_t index, std::span<const std::size_t> movers, std::span<const ReservedGround> reserved);
-    [[nodiscard]] bool destination_free(float x, float y, std::size_t index, std::span<const std::size_t> movers, std::span<const ReservedGround> reserved);
-    // A group's destination (`slots`, one per entry of `movers`): the whole block shifted to the
-    // nearest place where all of it fits (block_shift_rings rings out), then each slot that still
-    // does not fit placed on its own (place_destination), beside the slots placed before it.
-    void place_block(std::vector<FormationSlot>& slots, std::span<const std::size_t> movers);
-    // A group move's destinations on the ground (one per entry of `movers`; the owner, 2026-11-16:
-    // the units' footprints packed as close to the ordered point as they fit, not a formation's
-    // spacing): members nearest the point first, each on the free point nearest it (rings of its
-    // size), and on that ring the one nearest the member, group_slot_gap apart.
-    [[nodiscard]] std::vector<Vector3> place_group(std::span<const std::size_t> movers, const Vector3& target);
+    [[nodiscard]] Vector3 place_destination(const Vector3& at, std::size_t index);
+    [[nodiscard]] bool destination_fits(float x, float y, std::size_t index);
     // Builds the occupancy grid for this tick if it is not built yet.
     void refresh_occupancy();
     // Whether a footprint (`body` facing `heading`, or the circle of `radius` without one) at (x, y)
@@ -1079,9 +1054,6 @@ private:
     // Whether the entity at `index` is a ground unit avoidance keeps apart on land: a footprint, on
     // the ground, not flying.
     template <class Data> [[nodiscard]] static bool ground_body(Data& data, std::size_t index) noexcept;
-    // Whether the entity at `index` belongs to a formation frame still on its way (it follows a moving
-    // slot: arrival and giving way among its members are the frame's business).
-    template <class Data> [[nodiscard]] static bool in_moving_frame(Data& data, std::size_t index) noexcept;
     // The radius the entity at `index` takes as a whole: a squad's extent, otherwise its footprint.
     template <class Data> [[nodiscard]] static float unit_radius(Data& data, std::size_t index) noexcept;
     // The room two avoidance agents keep between their positions, `a` at `a_at` and `b` at `b_at`, each
@@ -1124,8 +1096,6 @@ private:
         // The ground and the passability footprints stamp on it.
         ground,
         path_queue,
-        // Formation frames (docs/pathfinding-design.md, 4.3).
-        frames,
         projectiles,
         // The tick's deaths, impacts, shots, hardpoint deaths, and spins.
         events,
@@ -1255,36 +1225,6 @@ private:
             visit(footing_radii);
         }
     };
-    // A unit making way for a faster ally (docs/pathfinding-design.md, 4.4): the ally, the point it
-    // steps aside to, where it stood when asked (a standing unit returns there), the ticks it has
-    // given way, and whether it is on its way back.
-    struct GiveWay
-    {
-        bool operator==(const GiveWay&) const = default;
-        EntityId passer;
-        Vector3 aside;
-        Vector3 back;
-        std::uint32_t ticks{};
-        bool returning{};
-        // Ticks added to the limit: asked ahead, it waits for the passer to arrive first.
-        std::uint32_t grace{};
-    };
-    // Giving way ahead (pathfinding-design.md 4.4): an ally on a unit's route that could step aside,
-    // with the route's point beside it and the route's direction there.
-    struct AheadYield
-    {
-        bool operator==(const AheadYield&) const = default;
-        EntityId yielder;
-        Vector3 beside;
-        Vector2 heading;
-    };
-    // A unit's route scan: due when a route is set; the allies to ask as it comes near.
-    struct GiveWayAhead
-    {
-        bool operator==(const GiveWayAhead&) const = default;
-        bool scan{};
-        std::vector<AheadYield> yielders;
-    };
     struct RouteColumns
     {
         bool operator==(const RouteColumns&) const = default;
@@ -1301,32 +1241,6 @@ private:
         // Space ships: the point steered at this tick to pass a unit in the way (navigation's local
         // avoidance); recomputed every tick from the state, so not hashed.
         std::vector<std::optional<Vector3>> detours;
-        // Ground units: the velocity avoidance picked this tick where it differs from the one toward
-        // the next waypoint (navigation's ORCA); recomputed every tick from the state, so not hashed.
-        std::vector<std::optional<Vector2>> avoid_velocities;
-        // Ground units making way for an ally (hashed).
-        std::vector<std::optional<GiveWay>> give_ways;
-        // Where a ground unit last stopped at the end of a move (hashed): units that stopped at one
-        // destination are its crowd (goal_taken).
-        std::vector<std::optional<Vector3>> last_goals;
-        // On the last leg to the move target: the closest the unit has come to it, and the ticks since
-        // it last came closer by arrival_progress (hashed; goal_taken stops a unit that cannot get
-        // closer past a crowd of its allies).
-        std::vector<float> closest_approaches;
-        std::vector<std::uint32_t> stalled_ticks;
-        // Ticks a moving ground unit has been held up (slower than give_way_held_fraction of its speed),
-        // and whether its path is a detour around standing units (followed waypoint by waypoint; a
-        // straight line to a later one may run into them). Hashed.
-        std::vector<std::uint32_t> blocked_ticks;
-        // Ticks before a unit whose last ask to give way found no place asks again (a crowd that
-        // cannot part is not asked every tick). Hashed.
-        std::vector<std::uint32_t> ask_waits;
-        std::vector<std::uint8_t> detoured;
-        // Detours a unit planned around held movers since its route was set (at most
-        // mover_detour_limit; then it is held as by standing units). Hashed.
-        std::vector<std::uint8_t> mover_detours;
-        // Giving way ahead (GiveWayAhead).
-        std::vector<GiveWayAhead> ahead;
         template <class Visit> void for_each_column(Visit&& visit)
         {
             visit(move_targets);
@@ -1335,16 +1249,6 @@ private:
             visit(loiter_points);
             visit(remaining);
             visit(detours);
-            visit(avoid_velocities);
-            visit(give_ways);
-            visit(last_goals);
-            visit(closest_approaches);
-            visit(stalled_ticks);
-            visit(blocked_ticks);
-            visit(ask_waits);
-            visit(detoured);
-            visit(mover_detours);
-            visit(ahead);
         }
     };
     // Flight (pooled: flyers only, the entities whose recipe has a minimum speed above 0): the
@@ -1493,33 +1397,19 @@ private:
     {
         bool operator==(const GroupColumns&) const = default;
         static constexpr SimData data = SimData::group;
-        // Group cohesion (pooled: members of a formation group, joined by a formation move of more
-        // than one unit and left when the move ends, is broken off, or stalls): the group, the
+        // Group cohesion (pooled: members of a formation group in space, joined by a formation move of
+        // more than one ship and left when the move ends, is broken off, or stalls): the group, the
         // remaining route it last made progress at, ticks since then, and whether it waits this tick.
-        // In a group with a frame (FormationFrame): the member's slot as an offset in the frame
-        // (forward, right), where it stood in the frame when the order came (the slot it starts from,
-        // blending into its formation slot over the frame's forming distance), and the slot it was
-        // last sent to.
         std::vector<std::uint32_t> ids;
         std::vector<float> best_remaining;
         std::vector<std::uint32_t> stall_ticks;
         std::vector<std::uint8_t> waiting;
-        std::vector<float> ahead;
-        std::vector<float> aside;
-        std::vector<float> start_ahead;
-        std::vector<float> start_aside;
-        std::vector<std::optional<Vector3>> sent;
         template <class Visit> void for_each_column(Visit&& visit)
         {
             visit(ids);
             visit(best_remaining);
             visit(stall_ticks);
             visit(waiting);
-            visit(ahead);
-            visit(aside);
-            visit(start_ahead);
-            visit(start_aside);
-            visit(sent);
         }
     };
     // An obstacle's footprint on the ground (pooled: obstacles only) and whether it is stamped.
@@ -1624,7 +1514,6 @@ private:
         visit(SimData::squad_members, squad_members_);
         visit(SimData::ground, ground_);
         visit(SimData::path_queue, path_queue_);
-        visit(SimData::frames, frames_);
         visit(SimData::projectiles, projectiles_);
         visit(SimData::events, events_);
         visit(SimData::combat_random, combat_random_);
@@ -1762,9 +1651,6 @@ private:
         PathPoint shared_start;
         std::uint32_t mask{};
         std::size_t next_member{};
-        // A formation frame's route (its group; 0 for none): only the shared path is planned, from
-        // the frame, for the frame (FormationFrame::route).
-        std::uint32_t frame{};
     };
     // The world's resources (docs/ecs-design.md, 6.2): what exists once, each kind of data a struct of
     // its own, so a system names what it uses by type.
@@ -1798,35 +1684,6 @@ private:
         static constexpr SimData data = SimData::path_queue;
         std::deque<PathRequest> requests;
         std::uint32_t next_serial{1};
-    };
-    // A ground formation's frame (docs/pathfinding-design.md, 4.3; simulation_frames.cpp): the point
-    // and facing its members' slots move with, along the group's route at its slowest member's speed,
-    // waiting for members that fall behind; at the end of the route, the slots at the ordered point.
-    struct FormationFrame
-    {
-        bool operator==(const FormationFrame&) const = default;
-        std::uint32_t group{};
-        Vector3 position;
-        float facing{};
-        Vector3 target;
-        float target_facing{};
-        float speed{};
-        // The route ahead, the next waypoint last (as RouteColumns::paths); planned once.
-        std::vector<Vector3> route;
-        bool planned{};
-        bool arrived{};
-        std::uint32_t wait_ticks{};
-        // How far it has moved, and over how much of its way the members' slots blend from where they
-        // stood into the formation (the formation forms on the move).
-        float travelled{};
-        float forming{};
-    };
-    struct FormationFrames
-    {
-        bool operator==(const FormationFrames&) const = default;
-        static constexpr SimData data = SimData::frames;
-        // In creation order (ascending group).
-        std::vector<FormationFrame> list;
     };
     struct ProjectileState
     {
@@ -1891,7 +1748,6 @@ private:
     GroundState ground_;
     Avoidance avoidance_;
     PathQueue path_queue_;
-    FormationFrames frames_;
     ProjectileState projectiles_;
     TickEvents events_;
     SlotTable slots_;
@@ -2026,10 +1882,10 @@ private:
     class MovementSystem
     {
     public:
-        using View = SystemView<Read<IdentityColumns>, Write<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<ComponentPool<CombatColumns>>,
-                                Read<SteeringColumns>, Write<ComponentPool<GroupColumns>>, Write<ComponentPool<TurnClipColumns>>, Write<ComponentPool<WalkClipColumns>>,
-                                Write<ComponentPool<FlightColumns>>, Read<GroundState>, Read<Avoidance>, Write<PathQueue>, Read<ComponentPool<SquadColumns>>, Read<ComponentPool<CrushColumns>>,
-                                Read<Rules>, Read<Clock>, Read<OrderColumns>, Read<FormationFrames>>;
+        using View =
+            SystemView<Read<IdentityColumns>, Write<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<ComponentPool<CombatColumns>>,
+                       Read<SteeringColumns>, Write<ComponentPool<GroupColumns>>, Write<ComponentPool<TurnClipColumns>>, Write<ComponentPool<WalkClipColumns>>, Write<ComponentPool<FlightColumns>>,
+                       Read<GroundState>, Read<Avoidance>, Write<PathQueue>, Read<ComponentPool<SquadColumns>>, Read<ComponentPool<CrushColumns>>, Read<Rules>, Read<Clock>, Read<OrderColumns>>;
         void run(const View& view, float dt);
         // Moves planned again so far because the unit's planned line no longer fit (avoidance took it
         // off its line, or the ground changed).
@@ -2045,24 +1901,6 @@ private:
         // a ground unit on land against other ground units (not what it crushes), a space ship against
         // ships; units slide along each other instead of overlapping, and a wedged unit holds still.
         [[nodiscard]] Vector3 keep_apart(const View& view, std::size_t index, Vector3 step);
-        // A ground step along the velocity avoidance picked (RouteColumns::avoid_velocities), turning
-        // toward it and never into a unit; false, before turning or speeding up, when that step does
-        // not fit the ground (avoidance does not see walls): the unit then follows its route.
-        [[nodiscard]] bool avoid_step(const View& view, std::size_t index, Vector2 velocity, float dt);
-        // A unit giving way (RouteColumns::give_ways) steps toward the point aside, or back to where it
-        // stood, never into a unit; back there, or held by units in its way, it is done.
-        void give_way_step(const View& view, std::size_t index, float dt);
-        // Records where the unit stops at the end of a move (RouteColumns::last_goals), not at a
-        // formation slot on the way.
-        void record_stop(const View& view, std::size_t index);
-        // Whether the unit's destination is taken (or as good as reached: held for a while within its
-        // diameter of it): it heads for its last point and touches (within
-        // taken_goal_margin) a standing agent covering that point, or, having come no closer for
-        // arrival_stall_seconds, a standing agent of its owner nearer that point. It then stops where
-        // it is, the point closest to the goal where it overlaps no one (the owner, 2026-11-15).
-        [[nodiscard]] bool goal_taken(const View& view, std::size_t index);
-        // goal_taken's scratch: the agents at the goal.
-        std::vector<std::uint32_t> goal_query_;
         // One entity's ground movement this tick, along its route at move_speed (physical movement only:
         // where it goes is the behavior layer's).
         void move_over_ground(const View& view, std::size_t index, float dt);
@@ -2107,7 +1945,7 @@ private:
     public:
         using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<ComponentPool<FlightColumns>>,
                                 Read<ComponentPool<CombatColumns>>, Write<ComponentPool<GroupColumns>>, Read<GroundState>, Write<Avoidance>, Write<PathQueue>, Read<SlotTable>, Read<Clock>,
-                                Read<ComponentPool<SquadColumns>>, Read<MotionColumns>, Read<ComponentPool<CrushColumns>>, Read<Rules>, Read<ComponentPool<SquadMemberColumns>>, Write<FormationFrames>,
+                                Read<ComponentPool<SquadColumns>>, Read<MotionColumns>, Read<ComponentPool<CrushColumns>>, Read<Rules>, Read<ComponentPool<SquadMemberColumns>>,
                                 Read<ComponentPool<TurnClipColumns>>>;
         // Route requests under the search budget, remaining routes, group cohesion, and space and
         // ground avoidance, before movement.
@@ -2137,7 +1975,7 @@ private:
         // Works through queued path requests until the tick's search budget is spent.
         void process_path_queue(const View& view);
         // A formation frame's route (simulation_frames.cpp), for its largest member.
-        void plan_frame_route(const View& view, const PathRequest& request);
+
         // Plans a shared request's members until the tick's budget is spent; false when members remain.
         [[nodiscard]] bool plan_shared_route(const View& view, PathRequest& request, std::uint64_t spent_before, bool first_in_tick);
 
@@ -2187,47 +2025,11 @@ private:
         // Local avoidance of space ships: each steering ship's detour (RouteColumns::detours) around
         // the ships in its way.
         void plan_space_avoidance(const View& view);
-        // Ground avoidance on land (simulation_avoidance.cpp): each moving ground unit's velocity for
-        // the tick by ORCA against its nearest ground units (RouteColumns::avoid_velocities), from the
-        // state at the start of the tick, and the grid movement keeps them apart with.
-        void plan_ground_avoidance(const View& view);
-        // Giving way, before ground avoidance plans velocities: ends the giving way of units whose
-        // passer has passed (or is gone, stopped, or took too long), then asks the allies in each moving
-        // unit's way to step aside (RouteColumns::give_ways). From the state at the start of the tick.
-        void plan_giving_way(const View& view);
-        // Detours (docs/pathfinding-design.md, 4.4; the owner, 2026-11-15: a unit with an order reaches
-        // its destination or the closest point it can): a unit held up for detour_after_seconds plans
-        // a route around the standing units near it, as obstacles, and follows it; where even that
-        // way ends where it stands, it has reached the closest point and stops.
-        void plan_detours(const View& view);
-        // A unit that can no longer see the waypoint it heads for across its ground (avoidance pushed
-        // it around a corner) gets a short leg back to it, at most route_repairs_per_tick a tick.
-        void repair_routes(const View& view);
-        // Where the unit at `yielder` steps to let `passer` by, the passer at `from` heading `heading`
-        // and facing `passer_facing` (where it is now, or where its route passes the yielder: giving
-        // way ahead): the shortest free step out of its corridor in any of give_way_directions
-        // directions, or one a line of standing allies opens by stepping on the same way (shift_on).
-        // With `commit` its requests (and the chain's) go to requests_; without, it only answers
-        // whether it could. False when it found none; `chained`, when given, tells whether the place it
-        // found needs a lane of allies to step on.
-        [[nodiscard]] bool make_way(const View& view, std::size_t yielder, std::size_t passer, Vector2 heading, Vector2 from, Vector2 passer_facing, bool commit, bool* chained = nullptr);
-        // The chain's next link: the single ally in blockers_ steps on along `toward` to clear the last
-        // place of chain_; false when it cannot (more than one in the way, not one that may shift, no
-        // ground, or deeper than give_way_chain).
-        [[nodiscard]] bool shift_on(const View& view, std::size_t passer, Vector2 toward, std::uint32_t depth);
-        // The agents in the way of `unit` standing at `at` (not `passer`, counting the places chain_ has
-        // given its units), into blockers_.
-        void blockers_at(const View& view, std::size_t unit, std::size_t passer, Vector2 at);
-        // Whether the unit at `unit` has a free way from `from` to `to`: no agent nearer the line than
-        // their summed radii (nor nearer than it already is) but the chain's and blockers_.
-        [[nodiscard]] bool way_clear(const View& view, std::size_t unit, Vector2 from, Vector2 to);
-        // Whether the unit at `unit` may step on for `passer`'s chain: an ally standing, free to move,
-        // not giving way already, not in the chain.
-        [[nodiscard]] bool may_shift(const View& view, std::size_t unit, std::size_t passer) noexcept;
+        // Each ground unit's footprint (Avoidance::radii, bodies, reaches) and the grid keep_apart finds
+        // its neighbours in (simulation_avoidance.cpp).
+        void measure_ground_units(const View& view);
         // Each entity's avoidance radius and crush proxy (Avoidance::radii, crush_proxies).
         void measure_agents(const View& view);
-        // How long each unit on its last leg has made no progress (RouteColumns::stalled_ticks).
-        static void measure_arrival_progress(const View& view);
         // Whether the avoidance agent at `index` moves this tick (a target, not waiting, not held, not
         // giving way): the agents avoidance plans a velocity for.
         [[nodiscard]] static bool ground_steers(const View& view, std::size_t index) noexcept;
@@ -2236,7 +2038,7 @@ private:
         // Sets an entity's route from planned waypoints (the last is its destination).
         void set_route(const View& view, std::size_t index, const std::vector<PathPoint>& waypoints, float height);
         // Marks group members that are ahead of their group to wait this tick, and releases members
-        // that stopped making progress.
+        // that stopped making progress (groups form in space only on this branch).
         void update_group_cohesion(const View& view);
         // The refined layout, the owner's scheme: across the 76 stock land maps the path audit's
         // searches expand 0.12 of the plain search's nodes (0.035 before the first stretch is
@@ -2247,14 +2049,11 @@ private:
         // Route tracing (SimulationWorld::RouteTrace, simulation_route_trace.cpp): records per entity
         // (index, generation) and per formation frame (group), at most route_trace_depth each.
         std::map<std::pair<std::uint32_t, std::uint32_t>, std::deque<RouteTrace>> unit_traces_;
-        std::map<std::uint32_t, std::deque<RouteTrace>> frame_traces_;
         void record_route(const View& view, std::size_t index, RouteTraceKind kind, const PathTrace& stages);
-        void record_frame(const View& view, const FormationFrame& frame, const PathTrace& stages);
 
     public:
         void set_tracing(bool tracing);
         [[nodiscard]] const std::deque<RouteTrace>* unit_traces(EntityId id) const;
-        [[nodiscard]] const std::deque<RouteTrace>* frame_traces(std::uint32_t group) const;
 
     private:
         GridPathfinder pathfinder_{0, ChunkLayout::refined};
@@ -2267,49 +2066,10 @@ private:
         }
 
     private:
-        // Detours search the cells around a unit without chunks (standing units block cells the chunk
-        // graphs know nothing of), at most this many nodes (an engine choice).
-        static constexpr std::uint32_t detour_search_nodes = 16384;
-        GridPathfinder detour_pathfinder_{detour_search_nodes};
-        // The cells standing units block for a detour, and those marked for the current one (scratch).
-        std::vector<std::uint8_t> obstacle_cells_;
-        std::vector<std::uint32_t> marked_cells_;
-        std::vector<std::uint32_t> query_;
-        // Ground avoidance's scratch, one per chunk of units planned at once: the agents near a unit,
-        // its nearest neighbours (squared distance, dense index), and their ORCA lines.
-        struct AvoidanceScratch
-        {
-            std::vector<std::uint32_t> query;
-            std::vector<std::pair<float, std::uint32_t>> nearest;
-            std::vector<OrcaLine> lines;
-        };
-        std::vector<AvoidanceScratch> avoidance_scratch_;
-        // The ground units that steer this tick (dense indices, in order).
-        std::vector<std::uint32_t> steering_;
         // Where parallel parts run (not owned; none runs them serially, with the same results).
         JobSystem* jobs_{};
-        // Giving way's scratch: the requests of a tick (who steps aside, for whom, to where).
-        struct GiveWayRequest
-        {
-            std::uint32_t yielder{};
-            std::uint32_t passer{};
-            Vector3 aside;
-            // GiveWay::grace (asked ahead).
-            std::uint32_t grace{};
-        };
-        std::vector<GiveWayRequest> requests_;
-        // Giving way ahead (simulation_give_way_ahead.cpp): scans of new routes and asks as passers come
-        // near; whether a unit is an idle ally of `passer` (standing, may move), and whether it fights.
-        void give_way_ahead(const View& view);
-        void scan_ahead(const View& view, std::size_t passer);
-        [[nodiscard]] bool idle_ally(const View& view, std::size_t unit, std::size_t passer) const noexcept;
-        [[nodiscard]] bool fighting(const View& view, std::size_t unit) const noexcept;
-        std::vector<std::uint32_t> ahead_query_;
-        std::vector<std::uint32_t> room_query_;
-        // make_way's scratch: the chain of units stepping aside for one passer, and those in the way.
-        std::vector<GiveWayRequest> chain_;
-        std::vector<std::uint32_t> blockers_;
-        // Space avoidance's scratch: a ship's neighbours.
+        // Space avoidance's scratch: the units near a ship, and its neighbours among them.
+        std::vector<std::uint32_t> query_;
         std::vector<std::uint32_t> neighbours_;
     };
     NavigationSystem navigation_;
@@ -2319,10 +2079,9 @@ private:
     class BehaviorSystem
     {
     public:
-        using View =
-            SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Write<ComponentPool<CombatColumns>>, Write<OrderColumns>,
-                       Write<SteeringColumns>, Write<ComponentPool<GroupColumns>>, Write<ComponentPool<WalkClipColumns>>, Read<ComponentPool<FlightColumns>>, Read<GroundState>, Write<PathQueue>,
-                       Read<SlotTable>, Read<Rules>, Read<Clock>, Write<ComponentPool<SquadColumns>>, Write<ComponentPool<SquadMemberColumns>>, Write<FormationFrames>>;
+        using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Write<ComponentPool<CombatColumns>>,
+                                Write<OrderColumns>, Write<SteeringColumns>, Write<ComponentPool<GroupColumns>>, Write<ComponentPool<WalkClipColumns>>, Read<ComponentPool<FlightColumns>>,
+                                Read<GroundState>, Write<PathQueue>, Read<SlotTable>, Read<Rules>, Read<Clock>, Write<ComponentPool<SquadColumns>>, Write<ComponentPool<SquadMemberColumns>>>;
         // Every entity's steering intent for this tick, from its order, stance, and target; route
         // requests for new destinations.
         void run(const View& view, float dt);
@@ -2349,11 +2108,10 @@ private:
         // member is far behind its slot, narrows its slots to the ground's clearance, and sends its
         // members to their slots; a lagger that came no closer for the wait limit leaves, and an
         // arrived frame dissolves once its members stand in their slots.
-        void follow_frames(const View& view, float dt);
+
         // An arrived frame's members take its final slots by where they stand: the front ones the
         // front rank, left to right in each rank, among members of one footprint (a column out of a
         // narrow passage fans out into the block without crossing).
-        void take_final_slots(const View& view, const FormationFrame& frame, std::span<const std::pair<std::size_t, std::size_t>> members);
         // The grid of positions targets are chosen from this tick, and its query scratch.
         SpatialGrid grid_;
         std::vector<std::uint32_t> query_;

@@ -33,11 +33,6 @@ void SimulationWorld::MovementSystem::run(const View& view, const float dt)
             fly(view, index, dt);
             continue;
         }
-        if (route.give_ways[index] && ground.map.valid())
-        {
-            give_way_step(view, index, dt);
-            continue;
-        }
         // A walk played as clips that stops, or walks on to its stop, goes straight ahead.
         if (locomotor.movements[index]->walk_stop_parts > 0 && walk_straight(view, index, dt))
         {
@@ -140,37 +135,15 @@ void SimulationWorld::MovementSystem::move_over_ground(const View& view, const s
     // passage's mouth back and forth between that line and their replanned route.
     if (allowed != 0)
     {
-        // A detour around standing units is followed waypoint by waypoint, each passed once the unit
-        // is within a cell of it: a straight line on may run into the units it goes around.
-        const bool detour = route.detoured[index] != detour_none;
         while (!path.empty())
         {
             const auto& after = path.size() > 1 ? path[path.size() - 2] : *target;
-            if (detour ? std::hypot(path.back().x - position.x, path.back().y - position.y) > ground.map.spacing
-                       : !ground_line_passable(ground.map, {position.x, position.y}, {after.x, after.y}, footing_of(view, index)))
+            if (!ground_line_passable(ground.map, {position.x, position.y}, {after.x, after.y}, footing_of(view, index)))
             {
                 break;
             }
             path.pop_back();
-            if (detour)
-            {
-                route.detoured[index] = detour_under_way;
-            }
         }
-        if (path.empty())
-        {
-            route.detoured[index] = detour_none;
-        }
-    }
-    if (goal_taken(view, index))
-    {
-        record_stop(view, index);
-        target.reset();
-        return;
-    }
-    if (const auto& avoid = route.avoid_velocities[index]; avoid && avoid_step(view, index, *avoid, dt))
-    {
-        return;
     }
     while (target)
     {
@@ -228,7 +201,6 @@ void SimulationWorld::MovementSystem::move_over_ground(const View& view, const s
         }
         if (path.empty())
         {
-            record_stop(view, index);
             target.reset();
             return;
         }
@@ -239,17 +211,6 @@ void SimulationWorld::MovementSystem::move_over_ground(const View& view, const s
         {
             return;
         }
-    }
-}
-
-void SimulationWorld::MovementSystem::record_stop(const View& view, const std::size_t index)
-{
-    // Only where a move ends: a member of a formation on its way reaches its moving slot many times,
-    // and recorded there it made frame-mates mid-way look like the crowd at the destination.
-    if (!in_moving_frame(view, index))
-    {
-        auto& route = view.get<RouteColumns>();
-        route.last_goals[index] = route.move_targets[index];
     }
 }
 

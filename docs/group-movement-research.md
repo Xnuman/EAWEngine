@@ -297,3 +297,26 @@ What the numbers show:
   deadlock: from its 137th tick it stood at speed 0 while its heading flipped 10 degrees back and
   forth every few ticks; before that, moving, its heading also jumped 10 degrees back and forth.
 - The symmetric cases (head-on, three converging) resolve in this engine; the losses are in groups.
+
+## The movement-redesign branch
+
+The owner judged the combined fixes still bad to look at (units bumping into each other, headings
+swinging by 10 degrees all the time) and chose to redesign movement as a whole instead of fixing one
+issue at a time (2026-11-18). The branch `movement-redesign` keeps route planning, clearance, and
+footprints, and the hard no-overlap rule between units
+([pathfinding-design.md](pathfinding-design.md#the-movement-redesign-branch)). Its measurements, the
+floor a new design starts from (units that meet stop at contact and stay held):
+
+| Scenario | Time | Reversals | Stalled of moving (unit-s) |
+| --- | --- | --- | --- |
+| Ten tanks through a gap (formation and group move alike) | 60 s, 9 left moving | 3 | 497.5 of 544.2 |
+| Head-on pair | 60 s, both left moving | 0 | 116.1 of 120.0 |
+| Three converging | 7.6 s | 0 | 1.6 of 22.1 |
+| Two groups of five crossing | 60 s, 10 left moving | 0 | 577.3 of 600.0 |
+
+| Battle on Utapau, auto-move | Tick | Reversals | Stalled of moving (unit-s) |
+| --- | --- | --- | --- |
+| Ten T2-Bs | 0.40 ms | 4 | 529.7 of 540.3 |
+| Large | 2.78 ms | 154 | 7,353 of 10,095 |
+| AT-ATs | 0.45 ms | 9 | 576.2 of 640.1 |
+| Reference | 0.39 ms | 3 | 232.8 of 241.8 |

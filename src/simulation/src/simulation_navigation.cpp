@@ -27,11 +27,9 @@ void SimulationWorld::NavigationSystem::run(const View& view)
         process_path_queue(view);
     }
     measure_remaining_routes(route, placement);
-    measure_arrival_progress(view);
-    repair_routes(view);
     update_group_cohesion(view);
     plan_space_avoidance(view);
-    plan_ground_avoidance(view);
+    measure_ground_units(view);
 }
 
 SimulationWorld::NavigationSystem::PlannedRoute SimulationWorld::NavigationSystem::plan_route(const View& view, const std::size_t index, const Vector3& target, RouteScratch& scratch)
@@ -105,60 +103,11 @@ template <class Plan> void SimulationWorld::NavigationSystem::plan_batch(Plan&& 
     navigation_data_.freeze(false);
 }
 
-void SimulationWorld::NavigationSystem::repair_routes(const View& view)
-{
-    const auto& placement = view.get<PlacementColumns>();
-    const auto& ground = view.get<GroundState>();
-    auto& route = view.get<RouteColumns>();
-    if (!ground.map.has_passability())
-    {
-        return;
-    }
-    std::uint32_t repaired = 0;
-    for (std::size_t index = 0; index < placement.positions.size() && repaired < route_repairs_per_tick; ++index)
-    {
-        // Held up only: a unit moving on goes around a corner by its route as before.
-        if (!ground_steers(view, index) || in_moving_frame(view, index) || length(view.get<MotionColumns>().velocities[index]) >= travel_speed(view, index) * give_way_held_fraction)
-        {
-            continue;
-        }
-        auto& path = route.paths[index];
-        const auto& next = path.empty() ? *route.move_targets[index] : path.back();
-        const PathPoint here{placement.positions[index].x, placement.positions[index].y};
-        const auto footing = footing_of(view, index);
-        if (ground_line_passable(ground.map, here, {next.x, next.y}, footing))
-        {
-            continue;
-        }
-        // Pushed off its way (avoidance moved it aside around a corner): a short leg back to the
-        // waypoint it heads for, followed before it. Straight at it, it pressed against the wall
-        // for good, and the allies behind it waited (the owner's Kamino recording, 2026-11-16).
-        ++repaired;
-        const auto leg = route_scratch_.front().legs.find(navigation_data_, ground.map, here, {next.x, next.y}, footing);
-        ++path_searches;
-        path_expansions += leg.expanded;
-        if (leg.status != PathStatus::reached || leg.waypoints.size() < 2)
-        {
-            continue;
-        }
-        // The leg's last waypoint is the one it heads for: the rest, nearest last, on top of it.
-        for (auto waypoint = leg.waypoints.rbegin() + 1; waypoint != leg.waypoints.rend(); ++waypoint)
-        {
-            path.push_back({waypoint->x, waypoint->y, 0.0F});
-        }
-        record_route(view, index, RouteTraceKind::repair, leg.trace);
-    }
-}
-
 void SimulationWorld::NavigationSystem::set_route(const View& view, const std::size_t index, const std::vector<PathPoint>& waypoints, const float height)
 {
     auto& route = view.get<RouteColumns>();
     auto& path = route.paths[index];
     path.clear();
-    route.detoured[index] = detour_none;
-    route.mover_detours[index] = 0;
-    // A new route is scanned for allies standing on it (giving way ahead).
-    route.ahead[index] = {.scan = true};
     if (waypoints.empty())
     {
         route.move_targets[index].reset();
@@ -196,14 +145,14 @@ void SimulationWorld::NavigationSystem::process_path_queue(const View& view)
     while (!path_queue.requests.empty() && (first || spent < path_budget_per_tick))
     {
         auto& request = path_queue.requests.front();
-        if (request.frame == 0 && request.members.size() == 1)
+        if (request.members.size() == 1)
         {
             // The single-unit requests at the front of the queue, as one batch.
             batch_.clear();
             for (std::size_t queued = 0; queued < path_queue.requests.size() && batch_.size() < batch_limit(); ++queued)
             {
                 const auto& next = path_queue.requests[queued];
-                if (next.frame != 0 || next.members.size() != 1)
+                if (next.members.size() != 1)
                 {
                     break;
                 }
@@ -222,7 +171,7 @@ void SimulationWorld::NavigationSystem::process_path_queue(const View& view)
             while (!path_queue.requests.empty() && (first || spent < path_budget_per_tick))
             {
                 const auto& next = path_queue.requests.front();
-                if (next.frame != 0 || next.members.size() != 1)
+                if (next.members.size() != 1)
                 {
                     break;
                 }
@@ -245,15 +194,7 @@ void SimulationWorld::NavigationSystem::process_path_queue(const View& view)
             continue;
         }
         const auto before = path_expansions;
-        bool finished = true;
-        if (request.frame != 0)
-        {
-            plan_frame_route(view, request);
-        }
-        else
-        {
-            finished = plan_shared_route(view, request, spent, first);
-        }
+        const bool finished = plan_shared_route(view, request, spent, first);
         first = false;
         spent += path_expansions - before;
         if (!finished)
@@ -445,6 +386,70 @@ SimulationWorld::NavigationSystem::PlannedRoute SimulationWorld::NavigationSyste
         next = furthest + 1;
     }
     return planned;
+}
+
+void SimulationWorld::NavigationSystem::update_group_cohesion(const View& view)
+{
+    auto& identity = view.get<IdentityColumns>();
+    auto& placement = view.get<PlacementColumns>();
+    auto& route = view.get<RouteColumns>();
+    auto& group = view.get<ComponentPool<GroupColumns>>();
+    waiting_members = 0;
+    std::ranges::fill(group.columns.waiting, std::uint8_t{0});
+    // Furthest remaining route and largest footprint per group, in first-seen order. (Groups form in
+    // space only on this branch: a group order on land sends every unit to the point.)
+    struct GroupState
+    {
+        std::uint32_t id{};
+        float furthest{};
+        float largest_radius{};
+    };
+    std::vector<GroupState> groups;
+    for (std::size_t index = 0; index < identity.ids.size(); ++index)
+    {
+        const auto row = group.find(slot_of(view, index));
+        if (!row || !route.move_targets[index])
+        {
+            continue;
+        }
+        const auto id = group.columns.ids[*row];
+        auto found = std::ranges::find(groups, id, &GroupState::id);
+        if (found == groups.end())
+        {
+            groups.push_back({id, 0.0F, 0.0F});
+            found = groups.end() - 1;
+        }
+        found->furthest = std::max(found->furthest, route.remaining[index]);
+        found->largest_radius = std::max(found->largest_radius, placement.radii[index]);
+    }
+    for (std::size_t index = 0; index < identity.ids.size(); ++index)
+    {
+        // Rows are looked up per entity: a release swaps the pool's last row into its place.
+        const auto row = group.find(slot_of(view, index));
+        if (!row || !route.move_targets[index])
+        {
+            continue;
+        }
+        const auto& progress = *std::ranges::find(groups, group.columns.ids[*row], &GroupState::id);
+        const auto slack = cohesion_slack + 4.0F * progress.largest_radius;
+        if (route.remaining[index] + slack < progress.furthest)
+        {
+            group.columns.waiting[*row] = 1;
+            ++waiting_members;
+            continue;
+        }
+        // Progress is measured against the best remaining route reached so far.
+        if (route.remaining[index] + 0.5F < group.columns.best_remaining[*row])
+        {
+            group.columns.best_remaining[*row] = route.remaining[index];
+            group.columns.stall_ticks[*row] = 0;
+        }
+        else if (++group.columns.stall_ticks[*row] >= ticks_for(view, cohesion_stall_seconds))
+        {
+            leave_group(view, index);
+            ++released_members;
+        }
+    }
 }
 
 void SimulationWorld::NavigationSystem::plan_space_avoidance(const View& view)
@@ -698,8 +703,64 @@ void SimulationWorld::NavigationSystem::plan_space_avoidance(const View& view)
     }
 }
 
+std::size_t SimulationWorld::nearest_to_centroid(const PlacementColumns& placement, const std::span<const std::size_t> members)
+{
+    EAW_ASSERT_MSG(!members.empty(), "a group has members");
+    double cx = 0.0;
+    double cy = 0.0;
+    for (const auto member : members)
+    {
+        cx += placement.positions[member].x;
+        cy += placement.positions[member].y;
+    }
+    cx /= static_cast<double>(members.size());
+    cy /= static_cast<double>(members.size());
+    auto nearest = members.front();
+    auto best = std::numeric_limits<double>::max();
+    for (const auto member : members)
+    {
+        const auto distance = std::hypot(static_cast<double>(placement.positions[member].x) - cx, static_cast<double>(placement.positions[member].y) - cy);
+        if (distance < best)
+        {
+            best = distance;
+            nearest = member;
+        }
+    }
+    return nearest;
+}
+
 void SimulationWorld::apply_formation_move(const SimCommand& command)
 {
+    // On land (movement-redesign branch: group movement removed until the new design), every unit of
+    // a group order goes to the ordered point itself, on a route of its own.
+    if (ground_.map.valid())
+    {
+        for (const auto id : command.entities)
+        {
+            const auto dense = dense_index(*this, id);
+            if (!dense)
+            {
+                ++stale_references_;
+                continue;
+            }
+            if (locomotor_.max_speeds[*dense] <= 0.0F)
+            {
+                continue;
+            }
+            orders_.command_serials[*dense] = command.serial;
+            orders_.standing[*dense].kind = StandingOrder::none;
+            orders_.standing[*dense].engaging = false;
+            drop_target(*this, *dense);
+            locomotor_.speed_limits[*dense] = 0.0F;
+            auto goal = command.target;
+            if (ground_mover_.follows_ground[*dense] == 0)
+            {
+                goal.z = placement_.positions[*dense].z;
+            }
+            plan_move(*this, *dense, place_destination(goal, *dense));
+        }
+        return;
+    }
     std::vector<std::size_t> movers;
     std::vector<std::size_t> solos;
     std::vector<FormationMember> members;
@@ -750,21 +811,6 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
     }
     const auto facing = formation_facing(members, command.target);
     auto slots = formation_slots(members, command.target, facing);
-    if (command.kind == SimCommandKind::group_move && ground_.map.valid())
-    {
-        // On the ground a group move's members pack around the ordered point instead of keeping a
-        // formation's spacing (the owner, 2026-11-16: a Canderous company's FormationSpacing 2.75
-        // put its slots 169 units apart, half the group 200-350 units from the point).
-        const auto goals = place_group(movers, command.target);
-        for (std::size_t member = 0; member < movers.size(); ++member)
-        {
-            slots[member].position = goals[member];
-        }
-    }
-    else
-    {
-        place_block(slots, movers);
-    }
     if (command.kind == SimCommandKind::group_move)
     {
         // A group move (the default; the owner, 2026-11-15): each member from where it stands to its
@@ -790,30 +836,11 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
         }
         return;
     }
-    // On land, ground members of a group move as frames; the rest (and ships) plan routes per member.
-    std::vector<std::size_t> framed;
-    std::vector<FormationSlot> framed_slots;
+    // Ships plan routes per member.
     std::vector<std::size_t> routed;
     for (std::size_t member = 0; member < movers.size(); ++member)
     {
-        if (movers.size() > 1 && ground_.map.valid() && ground_mover_.follows_ground[movers[member]] != 0)
-        {
-            framed.push_back(movers[member]);
-            framed_slots.push_back(slots[member]);
-            drop_target(*this, movers[member]);
-        }
-        else
-        {
-            routed.push_back(member);
-        }
-    }
-    if (!framed.empty())
-    {
-        form_frames(command, framed, framed_slots, facing);
-    }
-    if (routed.empty())
-    {
-        return;
+        routed.push_back(member);
     }
     const auto group = routed.size() > 1 ? next_group_id_++ : 0U;
     if (next_group_id_ == 0)
@@ -889,88 +916,6 @@ void SimulationWorld::measure_remaining_routes(RouteColumns& route, const Placem
                 from = *waypoint;
             }
             route.remaining[index] = length + std::hypot(target->x - from.x, target->y - from.y);
-        }
-    }
-}
-
-// A formation advances together, as in Age of Empires II: a moving member more than the slack
-// ahead of its group's furthest moving member waits, so a group torn apart by a narrow passage or a
-// detour re-forms. A member that makes no progress for cohesion_stall_seconds while not waiting is
-// released from its group (it keeps its order), so one stuck unit cannot hold the others forever.
-void SimulationWorld::NavigationSystem::update_group_cohesion(const View& view)
-{
-    auto& identity = view.get<IdentityColumns>();
-    auto& placement = view.get<PlacementColumns>();
-    auto& route = view.get<RouteColumns>();
-    auto& group = view.get<ComponentPool<GroupColumns>>();
-    const auto& frames = view.get<FormationFrames>().list;
-    waiting_members = 0;
-    std::ranges::fill(group.columns.waiting, std::uint8_t{0});
-    // A group with a frame keeps together through its frame (simulation_frames.cpp); its members wait
-    // while the frame holds for members behind.
-    const auto framed = [&](const std::uint32_t id)
-    {
-        return std::ranges::find(frames, id, &FormationFrame::group) != frames.end();
-    };
-    for (std::size_t index = 0; index < identity.ids.size(); ++index)
-    {
-        if (const auto row = group.find(slot_of(view, index)))
-        {
-            const auto frame = std::ranges::find(frames, group.columns.ids[*row], &FormationFrame::group);
-            waiting_members += frame != frames.end() && frame->wait_ticks > 0 ? 1U : 0U;
-        }
-    }
-    // Furthest remaining route and largest footprint per progress, in first-seen order.
-    struct GroupState
-    {
-        std::uint32_t id{};
-        float furthest{};
-        float largest_radius{};
-    };
-    std::vector<GroupState> groups;
-    for (std::size_t index = 0; index < identity.ids.size(); ++index)
-    {
-        const auto row = group.find(slot_of(view, index));
-        if (!row || !route.move_targets[index] || framed(group.columns.ids[*row]))
-        {
-            continue;
-        }
-        const auto id = group.columns.ids[*row];
-        auto found = std::ranges::find(groups, id, &GroupState::id);
-        if (found == groups.end())
-        {
-            groups.push_back({id, 0.0F, 0.0F});
-            found = groups.end() - 1;
-        }
-        found->furthest = std::max(found->furthest, route.remaining[index]);
-        found->largest_radius = std::max(found->largest_radius, placement.radii[index]);
-    }
-    for (std::size_t index = 0; index < identity.ids.size(); ++index)
-    {
-        // Rows are looked up per entity: a release swaps the pool's last row into its place.
-        const auto row = group.find(slot_of(view, index));
-        if (!row || !route.move_targets[index] || framed(group.columns.ids[*row]))
-        {
-            continue;
-        }
-        const auto& progress = *std::ranges::find(groups, group.columns.ids[*row], &GroupState::id);
-        const auto slack = cohesion_slack + 4.0F * progress.largest_radius;
-        if (route.remaining[index] + slack < progress.furthest)
-        {
-            group.columns.waiting[*row] = 1;
-            ++waiting_members;
-            continue;
-        }
-        // Progress is measured against the best remaining route reached so far.
-        if (route.remaining[index] + 0.5F < group.columns.best_remaining[*row])
-        {
-            group.columns.best_remaining[*row] = route.remaining[index];
-            group.columns.stall_ticks[*row] = 0;
-        }
-        else if (++group.columns.stall_ticks[*row] >= ticks_for(view, cohesion_stall_seconds))
-        {
-            leave_group(view, index);
-            ++released_members;
         }
     }
 }

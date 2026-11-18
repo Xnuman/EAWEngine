@@ -1,10 +1,5 @@
 #pragma once
 
-// Shared constants and helpers of the simulation's implementation files (simulation.cpp: world
-// core; simulation_behavior.cpp: orders and behavior; simulation_navigation.cpp: routes;
-// simulation_locomotion.cpp: movement; simulation_combat.cpp: targeting, weapons, damage). Not part
-// of the public interface.
-
 #include "math/scalar.hpp"
 #include "simulation/simulation.hpp"
 
@@ -41,162 +36,40 @@ inline constexpr float clearance_minimum_limit = footing_buckets.back();
 inline constexpr std::uint32_t free_ground_rings = 24;
 // How far a group's whole block is shifted to fit before its slots are placed one by one: rings one
 // largest member's diameter apart, this many. An engine choice.
-inline constexpr std::uint32_t block_shift_rings = 8;
 // A group move's destinations keep this share of a member's radius free around it beyond contact, so
 // arriving units do not press against those already there. An engine choice.
-inline constexpr float group_slot_gap = 0.25F;
 // The occupancy grid's cells (an engine choice: a few vehicle footprints wide).
 inline constexpr float occupancy_cell_size = 32.0F;
 // The fastest separation pushes a flyer, in its radii per second: half a radius per tick at the old
 // 30 Hz. An engine choice.
 inline constexpr float separation_radii_per_second = 15.0F;
-// Ground avoidance (docs/pathfinding-design.md, 4.4): a unit avoids contact this far ahead with at
-// most this many of its nearest neighbours, found in a grid of this cell size; an avoidance velocity
-// closer than this share of the unit's speed to the one toward its waypoint is not used, so a unit
-// with nothing in its way follows its route exactly. Of two allies that both move, each takes the
-// other's share of their summed footprint areas, so the larger gives way less (an AT-AT next to
-// none against infantry). Engine choices.
-inline constexpr float avoidance_horizon_seconds = 1.0F;
-// How far (in the unit's radii, beyond its own footprint) a unit looks for neighbours to avoid and
-// allies to ask aside, at most: in a dense crowd only the nearest matter, and a second's travel
-// reached about 200 soldiers in each query (the large Utapau battle, 2026-11-15). An engine choice.
-inline constexpr float avoidance_reach_radii = 4.0F;
-inline constexpr std::size_t avoidance_neighbours = 10;
+// Ground units are measured into a grid of this cell size (world units) that keep_apart finds a
+// unit's neighbours in. An engine choice.
 inline constexpr float avoidance_cell_size = 32.0F;
-inline constexpr float avoidance_tolerance = 1.0e-3F;
-// How far to its right (radians) a unit that cannot go straight its way prefers to turn
-// (plan_ground_avoidance). An engine choice.
-inline constexpr float avoidance_keep_right = 0.15F;
-// Units this close to touching (world units) count as touching, not overlapping: sliding along each
-// other leaves them a rounding error inside, which ORCA would otherwise ask them to undo within a
-// tick. An engine choice (the hundredth separation tolerated).
-inline constexpr float contact_tolerance = 0.01F;
-// Giving way (plan_giving_way): an ally a moving unit would meet within this many seconds of its
-// travel steps aside, clearing the mover's footprint by this share of its own radius; it gives way at
-// most this long. A mover asks only when held up (slower last tick than the held share of its speed).
-// A unit gives way when it stands or is slower by nature than this share of the mover's speed,
-// whatever its size (the owner, 2026-11-15: slower allies give way to faster ones; companies of
-// other sizes did not give way while a larger unit never did). Engine choices.
-inline constexpr float give_way_lookahead_seconds = 1.0F;
-inline constexpr float give_way_margin = 0.25F;
-inline constexpr float give_way_seconds = 4.0F;
-// Giving way ahead (pathfinding-design.md 4.4): an ally on a unit's route is asked to step aside when
-// the unit is this long from it at its travel speed, and route scans run for this many units a tick
-// (engine choices).
-inline constexpr float give_way_ahead_seconds = 3.0F;
-inline constexpr std::uint32_t ahead_scans_per_tick = 8;
-// Route tracing keeps this many records per unit and per formation frame (debug drawing).
+// Route tracing keeps this many records per unit (debug drawing).
 inline constexpr std::size_t route_trace_depth = 8;
-inline constexpr float give_way_slower_fraction = 0.9F;
-inline constexpr float give_way_held_fraction = 0.5F;
-// Where a unit steps to give way: the shortest step out of the mover's corridor in this many
-// directions (sideways, diagonally, or back), not along directions closer to the corridor's than this
-// sine, nor farther than this many clearances; a line of standing allies opens a lane this many units
-// deep, each stepping on the same way. Engine choices.
-inline constexpr std::uint32_t give_way_directions = 16;
-inline constexpr float give_way_least_lateral = 0.2F;
-inline constexpr float give_way_max_shift = 3.0F;
-inline constexpr std::uint32_t give_way_chain = 3;
 // Route searches run this many at a time on the job system (each with its own search scratch, about
 // 16 bytes a ground cell for each of two pathfinders). Engine choice.
 inline constexpr std::size_t route_batch = 8;
 // Combat aims this many armed entities to a job (target choice and turret). Engine choice.
 inline constexpr std::size_t aim_grain = 8;
-// Ground avoidance plans this many steering units to a job. Engine choice, from the 500-unit
-// benchmark.
-inline constexpr std::size_t avoidance_grain = 4;
-// A unit whose ask found no place asks again after this long (asking every tick cost 2.5 ms a tick
-// in the 500-unit benchmark, nearly every ask failing in its crowds). Engine choice.
-inline constexpr float give_way_retry_seconds = 0.25F;
-// A moving unit that went this share of its speed along its way last tick asks no one (nothing held
-// it up or turned it aside). Engine choice.
-inline constexpr float give_way_unhindered_fraction = 0.95F;
-// How much nearer than contact a unit's way aside may pass another (rounding). Engine choice.
-inline constexpr float give_way_way_tolerance = 0.01F;
-// Detours (plan_detours): a unit held up this long plans around the standing units within the window
-// (world units beyond its own size), each blocking the cells within their summed radii. Engine
-// choices.
-inline constexpr float detour_after_seconds = 2.0F;
-// RouteColumns::detoured: no detour, a detour no waypoint of which is passed yet, one under way.
-inline constexpr std::uint8_t detour_none = 0;
-inline constexpr std::uint8_t detour_fresh = 1;
-inline constexpr std::uint8_t detour_under_way = 2;
-// Detours around held movers a unit plans for one route: a jam in passing dissolves within one or
-// two (the owner's Kamino recording); a crowd at the goal does not, and after these the unit is
-// held as by standing units (stopping where its way stays closed). An engine choice.
-inline constexpr std::uint8_t mover_detour_limit = 3;
-inline constexpr float detour_window = 300.0F;
-// A unit detours only when a standing unit is within this many summed radii of it (what holds it up).
-inline constexpr float detour_beside = 1.5F;
-// Detours planned a tick at most (a whole group held up at once plans over a few ticks). An engine
-// choice.
-inline constexpr std::uint32_t detours_per_tick = 4;
-// Route repairs (repair_routes) a tick, in entity order. An engine choice.
-inline constexpr std::uint32_t route_repairs_per_tick = 8;
-// A unit heading for its destination stops where it touches (within this share of their summed radii
-// beyond contact) a standing unit that covers the destination, or, having come no closer to it by the
-// progress distance (world units) for the stall time, a standing unit of its owner nearer the
-// destination than itself: the closest point to the goal where it overlaps no one, when units
-// already stand there (the owner, 2026-11-15; goal_taken). Engine choices.
-inline constexpr float taken_goal_margin = 0.25F;
-// Allies count as the crowd at a unit's destination when they stopped at destinations within this
-// many summed radii of it (goal_taken). An engine choice.
-inline constexpr float taken_goal_crowd = 6.0F;
-inline constexpr float arrival_progress = 0.5F;
-inline constexpr float arrival_stall_seconds = 1.0F;
-// A unit that came no closer for this long beside standing allies nearer its goal stops there even
-// when its goal is free (a hole among them it cannot reach); giving way, which takes about a second,
-// had its chance first. An engine choice.
-inline constexpr float arrival_give_up_seconds = 3.0F;
-// A unit that came no closer for the stall time within this share of its radius of its goal has
-// arrived (packed neighbours held formation members a few units short of their slots, and two units
-// sent to one point held each other off it). An engine choice.
-inline constexpr float arrival_reach_share = 2.0F;
 // Seconds between automatic target searches of an idle weapon, and between replans of an ordered
 // chase whose target is out of range (10 and 30 ticks at the old 30 Hz). Engine choices, not
 // measured from the original.
 inline constexpr float retarget_seconds = 1.0F / 3.0F;
 inline constexpr float chase_seconds = 1.0F;
-// A formation member waits while it is more than this much route ahead of its group's furthest
-// member (plus two footprint diameters), and leaves its group after this many seconds without
-// progress while not waiting. Engine choices.
+// A member of a group in space waits while it is more than this much route ahead of its group's
+// furthest member (plus two footprint diameters), and leaves its group after this many seconds
+// without progress while not waiting. Engine choices.
 inline constexpr float cohesion_slack = 30.0F;
 inline constexpr float cohesion_stall_seconds = 3.0F;
-// Following a slot (a squad's or a formation frame's; follow_slot): a member walks to its slot when it
-// stands more than the tolerance from it, and is sent again when its slot moved the reslot distance
-// from where it was sent; a member on a path it planned around a blockage keeps that path until its
-// slot moved the detour distance (sent again sooner, it walked back into the blockage every few ticks
-// of a moving frame). Engine choices.
+// Following a squad's slot (follow_slot): a soldier walks to its slot when it stands more than the
+// tolerance from it, and is sent again when its slot moved the reslot distance from where it was sent;
+// a soldier on a path it planned around a blockage keeps that path until its slot moved the detour
+// distance (sent again sooner, it walked back into the blockage every few ticks). Engine choices.
 inline constexpr float slot_follow_tolerance = 0.5F;
 inline constexpr float slot_reslot_distance = 4.0F;
 inline constexpr float slot_detour_distance = 40.0F;
-// Formation frames (docs/pathfinding-design.md, 4.3): a frame holds while a member stands more than
-// the leash (plus its footprint's diameter) from its slot, for at most the wait limit, after which
-// a lagger that came no closer leaves the group and goes on alone; it turns toward its route at the
-// turn rate and holds
-// its place while more than the hold angle off; an order splits a selection into frames where members
-// stand more than the split distance from every member of another part (single linkage). Engine
-// choices.
-inline constexpr float frame_leash = 30.0F;
-inline constexpr float frame_wait_seconds = 3.0F;
-// A frame holds for laggers at most this long at a stretch, then goes on (they still follow). An
-// engine choice.
-inline constexpr float frame_hold_seconds = 5.0F;
-// A frame moves at this share of its slowest member's speed, so members behind their slots catch
-// up; files in a narrow passage are this many footprint diameters apart. Engine choices.
-inline constexpr float frame_pace = 0.9F;
-inline constexpr float frame_file_spacing = 1.25F;
-inline constexpr float frame_turn_rate = 1.5F;
-inline constexpr float frame_turn_hold = 0.6F;
-inline constexpr float frame_split_distance = 400.0F;
-// A formation forms on the move: its members' slots blend from where they stood into the formation
-// over this much of the frame's way (all of it when shorter), so no member walks back to a gathering
-// point and the frame never waits for the block to form (the owner's report, 2026-11-15: companies
-// stood for seconds and gathered far from where some stood). A final slot on ground a member cannot
-// stand on moves to the nearest point it can, searched this many rings of its footprint out. Engine
-// choices.
-inline constexpr float frame_forming_distance = 150.0F;
-inline constexpr std::uint32_t frame_slot_rings = 6;
 // Path search nodes expanded per tick at most (about 2.5 ms in a Release build, the share of a frame
 // 30000 was at 30 Hz; halved for 60 Hz, the owner, 2026-11-15), always at least one request. An
 // engine choice; requests beyond it wait for the next tick in order.
@@ -674,19 +547,6 @@ template <class Data> bool SimulationWorld::can_crush(Data& data, const std::siz
 template <class Data> bool SimulationWorld::ground_body(Data& data, const std::size_t index) noexcept
 {
     return data.template get<PlacementColumns>().radii[index] > 0.0F && data.template get<GroundMoverColumns>().follows_ground[index] != 0 && !flies(data, index);
-}
-
-template <class Data> bool SimulationWorld::in_moving_frame(Data& data, const std::size_t index) noexcept
-{
-    const auto& groups = data.template get<ComponentPool<GroupColumns>>();
-    const auto row = groups.find(slot_of(data, index));
-    if (!row)
-    {
-        return false;
-    }
-    const auto& frames = data.template get<FormationFrames>().list;
-    const auto frame = std::ranges::find(frames, groups.columns.ids[*row], &FormationFrame::group);
-    return frame != frames.end() && !frame->arrived;
 }
 
 template <class Data> float SimulationWorld::unit_radius(Data& data, const std::size_t index) noexcept

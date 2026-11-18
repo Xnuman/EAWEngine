@@ -281,16 +281,6 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn, const EntityId
     route_.loiter_points.emplace_back();
     route_.remaining.push_back(0.0F);
     route_.detours.emplace_back();
-    route_.avoid_velocities.emplace_back();
-    route_.give_ways.emplace_back();
-    route_.last_goals.emplace_back();
-    route_.closest_approaches.push_back(std::numeric_limits<float>::max());
-    route_.stalled_ticks.push_back(0);
-    route_.blocked_ticks.push_back(0);
-    route_.ask_waits.push_back(0);
-    route_.detoured.push_back(0);
-    route_.mover_detours.push_back(0);
-    route_.ahead.emplace_back();
     placement_.pitches.push_back(0.0F);
     motion_.speeds.push_back(0.0F);
     motion_.starts.push_back(spawn.position);
@@ -528,37 +518,6 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
         }
         hasher.add(route_.pending[index]);
         hasher.add(motion_.velocities[index]);
-        const auto& give_way = route_.give_ways[index];
-        hasher.add(give_way.has_value());
-        if (give_way)
-        {
-            hasher.add(give_way->passer);
-            hasher.add(give_way->aside);
-            hasher.add(give_way->back);
-            hasher.add(give_way->ticks);
-            hasher.add(give_way->returning);
-            hasher.add(give_way->grace);
-        }
-        hasher.add(route_.last_goals[index].has_value());
-        if (route_.last_goals[index])
-        {
-            hasher.add(*route_.last_goals[index]);
-        }
-        hasher.add(route_.closest_approaches[index]);
-        hasher.add(route_.stalled_ticks[index]);
-        hasher.add(route_.blocked_ticks[index]);
-        hasher.add(route_.ask_waits[index]);
-        hasher.add(route_.detoured[index]);
-        hasher.add(route_.mover_detours[index]);
-        const auto& ahead = route_.ahead[index];
-        hasher.add(ahead.scan);
-        hasher.add(ahead.yielders.size());
-        for (const auto& yielder : ahead.yielders)
-        {
-            hasher.add(yielder.yielder);
-            hasher.add(yielder.beside);
-            hasher.add(yielder.heading);
-        }
         hasher.add(route_.loiter_points[index].has_value());
         if (route_.loiter_points[index])
         {
@@ -573,37 +532,7 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
             hasher.add(group_.columns.ids[*row]);
             hasher.add(group_.columns.best_remaining[*row]);
             hasher.add(group_.columns.stall_ticks[*row]);
-            hasher.add(group_.columns.ahead[*row]);
-            hasher.add(group_.columns.aside[*row]);
-            hasher.add(group_.columns.start_ahead[*row]);
-            hasher.add(group_.columns.start_aside[*row]);
-            const auto& sent = group_.columns.sent[*row];
-            hasher.add(sent.has_value());
-            if (sent)
-            {
-                hasher.add(*sent);
-            }
         }
-    }
-    hasher.add(frames_.list.size());
-    for (const auto& frame : frames_.list)
-    {
-        hasher.add(frame.group);
-        hasher.add(frame.position);
-        hasher.add(frame.facing);
-        hasher.add(frame.target);
-        hasher.add(frame.target_facing);
-        hasher.add(frame.speed);
-        hasher.add(frame.route.size());
-        for (const auto& waypoint : frame.route)
-        {
-            hasher.add(waypoint);
-        }
-        hasher.add(frame.planned);
-        hasher.add(frame.arrived);
-        hasher.add(frame.wait_ticks);
-        hasher.add(frame.travelled);
-        hasher.add(frame.forming);
     }
     hasher.subject = StateSubject::combat;
     for (std::size_t index = 0; index < count; ++index)
@@ -923,22 +852,6 @@ std::vector<SimulationWorld::RoutePoint> SimulationWorld::route_points(const Ent
         points.push_back({*waypoint, RoutePointKind::waypoint});
     }
     points.push_back({*route_.move_targets[*dense], RoutePointKind::target});
-    // A formation frame's member: its slot now, then the frame's way on to its slot at the end.
-    if (const auto row = group_.find(slot_of(*this, *dense)))
-    {
-        if (const auto frame = std::ranges::find(frames_.list, group_.columns.ids[*row], &FormationFrame::group); frame != frames_.list.end() && !frame->arrived)
-        {
-            for (auto waypoint = frame->route.rbegin(); waypoint != frame->route.rend(); ++waypoint)
-            {
-                points.push_back({*waypoint, RoutePointKind::frame_waypoint});
-            }
-            const auto ahead = group_.columns.ahead[*row];
-            const auto aside = group_.columns.aside[*row];
-            const auto forward_x = std::cos(frame->target_facing);
-            const auto forward_y = std::sin(frame->target_facing);
-            points.push_back({{frame->target.x + forward_x * ahead + forward_y * aside, frame->target.y + forward_y * ahead - forward_x * aside, frame->target.z}, RoutePointKind::final_slot});
-        }
-    }
     return points;
 }
 
@@ -1092,145 +1005,33 @@ Vector3 SimulationWorld::free_ground(const Vector3& at, const float heading, con
     return found ? Vector3{found->x, found->y, at.z} : at;
 }
 
-bool SimulationWorld::destination_free(const float x, const float y, const std::size_t index, const std::span<const std::size_t> movers, const std::span<const ReservedGround> reserved)
+bool SimulationWorld::destination_fits(const float x, const float y, const std::size_t index)
 {
     const auto radius = unit_radius(*this, index);
     const auto mask = ground_mover_.passable_types[index];
+    if (mask == 0)
+    {
+        return true;
+    }
     // A unit with a footprint rectangle needs room for it, turned the way it arrives (from where it
     // stands), besides its footing; a squad the rectangle bounding its soldiers (without one, its circle).
     const auto* squad = squads_.find(slot_of(*this, index), &SquadColumns::states);
     const auto& body = squad != nullptr ? squad->body : placement_.bodies[index];
     const bool shaped = body.half_width > 0.0F && (squad != nullptr || radius == placement_.radii[index]);
-    if (mask != 0 && !ground_stands(ground_.map, {x, y}, Footing(mask, clearance_of(mask), shaped ? ground_mover_.footing_radii[index] : radius)))
+    if (!ground_stands(ground_.map, {x, y}, Footing(mask, clearance_of(mask), shaped ? ground_mover_.footing_radii[index] : radius)))
     {
         return false;
     }
-    if (mask != 0 && shaped)
+    if (!shaped)
     {
-        const auto& from = placement_.positions[index];
-        const auto arriving = std::hypot(x - from.x, y - from.y) > 1.0e-3F ? std::atan2(y - from.y, x - from.x) : placement_.headings[index];
-        if (!ground_rectangle_fits(ground_.map, footprint_center_at(body, {x, y, 0.0F}, arriving), arriving, body.half_length, body.half_width, mask))
-        {
-            return false;
-        }
+        return true;
     }
-    if (std::ranges::any_of(reserved,
-                            [&](const ReservedGround& taken)
-                            {
-                                return std::hypot(taken.at.x - x, taken.at.y - y) < taken.radius + radius;
-                            }))
-    {
-        return false;
-    }
-    // Standing units only (moving ones are leaving), and not the units of this order or their soldiers.
-    const auto moving_with = [&](const std::size_t other)
-    {
-        auto unit = other;
-        if (const auto* member = squad_members_.find(slot_of(*this, other), &SquadMemberColumns::states))
-        {
-            if (const auto team = dense_index(*this, member->squad))
-            {
-                unit = *team;
-            }
-        }
-        return std::ranges::find(movers, unit) != movers.end();
-    };
     const auto& from = placement_.positions[index];
     const auto arriving = std::hypot(x - from.x, y - from.y) > 1.0e-3F ? std::atan2(y - from.y, x - from.x) : placement_.headings[index];
-    return !overlaps_unit(x, y, arriving, radius, shaped ? body : FootprintRect{},
-                          [&](const std::uint32_t other)
-                          {
-                              return !route_.move_targets[other] && !moving_with(other);
-                          });
+    return ground_rectangle_fits(ground_.map, footprint_center_at(body, {x, y, 0.0F}, arriving), arriving, body.half_length, body.half_width, mask);
 }
 
-void SimulationWorld::place_block(std::vector<FormationSlot>& slots, const std::span<const std::size_t> movers)
-{
-    if (!ground_.map.valid() || slots.empty())
-    {
-        return;
-    }
-    // The whole block first: at the ordered point, else shifted by the nearest offset (rings of the
-    // largest member's size) at which every ground member's slot fits.
-    float largest = 0.0F;
-    for (const auto index : movers)
-    {
-        largest = std::max(largest, unit_radius(*this, index));
-    }
-    const auto fits = [&](const float dx, const float dy)
-    {
-        for (std::size_t member = 0; member < movers.size(); ++member)
-        {
-            const auto index = movers[member];
-            if (ground_mover_.follows_ground[index] != 0 && unit_radius(*this, index) > 0.0F && !destination_free(slots[member].position.x + dx, slots[member].position.y + dy, index, movers, {}))
-            {
-                return false;
-            }
-        }
-        return true;
-    };
-    if (largest > 0.0F)
-    {
-        if (const auto offset = nearest_free_point({}, 2.0F * largest, block_shift_rings, fits))
-        {
-            for (auto& slot : slots)
-            {
-                slot.position.x += offset->x;
-                slot.position.y += offset->y;
-            }
-        }
-    }
-    // Then each slot that still does not fit, beside those placed before it.
-    std::vector<ReservedGround> reserved;
-    for (std::size_t member = 0; member < movers.size(); ++member)
-    {
-        const auto index = movers[member];
-        slots[member].position = place_destination(slots[member].position, index, movers, reserved);
-        reserved.push_back({slots[member].position, unit_radius(*this, index)});
-    }
-}
-
-std::vector<Vector3> SimulationWorld::place_group(const std::span<const std::size_t> movers, const Vector3& target)
-{
-    std::vector<std::size_t> order(movers.size());
-    std::iota(order.begin(), order.end(), std::size_t{0});
-    std::ranges::sort(order,
-                      [&](const std::size_t left, const std::size_t right)
-                      {
-                          const auto left_distance = distance_xy(placement_.positions[movers[left]], target);
-                          const auto right_distance = distance_xy(placement_.positions[movers[right]], target);
-                          if (left_distance != right_distance)
-                          {
-                              return left_distance < right_distance;
-                          }
-                          return identity_.ids[movers[left]] < identity_.ids[movers[right]];
-                      });
-    std::vector<Vector3> goals(movers.size(), target);
-    std::vector<ReservedGround> reserved;
-    for (const auto member : order)
-    {
-        const auto index = movers[member];
-        const auto radius = unit_radius(*this, index);
-        if (ground_mover_.follows_ground[index] == 0 || !(radius > 0.0F))
-        {
-            continue;
-        }
-        const Vector2 here{placement_.positions[index].x, placement_.positions[index].y};
-        const auto found = nearest_free_point_toward(target, 2.0F * radius * (1.0F + group_slot_gap), free_ground_rings, here,
-                                                     [&](const float x, const float y)
-                                                     {
-                                                         return destination_free(x, y, index, movers, reserved);
-                                                     });
-        if (found)
-        {
-            goals[member] = {found->x, found->y, target.z};
-        }
-        reserved.push_back({goals[member], radius * (1.0F + group_slot_gap)});
-    }
-    return goals;
-}
-
-Vector3 SimulationWorld::place_destination(const Vector3& at, const std::size_t index, const std::span<const std::size_t> movers, const std::span<const ReservedGround> reserved)
+Vector3 SimulationWorld::place_destination(const Vector3& at, const std::size_t index)
 {
     const auto radius = unit_radius(*this, index);
     if (!ground_.map.valid() || ground_mover_.follows_ground[index] == 0 || !(radius > 0.0F))
@@ -1240,7 +1041,7 @@ Vector3 SimulationWorld::place_destination(const Vector3& at, const std::size_t 
     const auto found = nearest_free_point(at, 2.0F * radius, free_ground_rings,
                                           [&](const float x, const float y)
                                           {
-                                              return destination_free(x, y, index, movers, reserved);
+                                              return destination_fits(x, y, index);
                                           });
     return found ? Vector3{found->x, found->y, at.z} : at;
 }

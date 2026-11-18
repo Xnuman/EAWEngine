@@ -156,17 +156,14 @@ Selected units show their remaining route, moving or held (on space maps in 3D),
 point marked by what it is (`SimulationWorld::route_points`):
 - the unit's own legs in cyan, each waypoint a cross;
 - an avoidance detour point (a ship steering around a unit in its way) an orange diagonal cross;
-- the move target (a formation member's slot now) a yellow square;
-- a formation frame's way on in dim blue, its waypoints crosses, and the member's slot at the end a
-  larger blue square.
+- the move target a yellow square.
 
 While the navigation overlay is on, the simulation records every change to a ground unit's route
-(`SimulationWorld::set_route_tracing`, `route_traces`; up to 8 per unit and per formation frame, not
-part of the state hash), and the overlay draws those of the selected ground units:
-- each recorded route, oldest faint and newest bright, colored by what changed it: a plan of its own
-  cyan, its share of a group's shared route teal, a repair leg back to its way yellow, a detour around
-  units orange, its formation frame's route blue;
-- for the newest record of the unit and of its frame, the stages of the search behind it: the 32-cell
+(`SimulationWorld::set_route_tracing`, `route_traces`; up to 8 per unit, not part of the state
+hash), and the overlay draws those of the selected ground units:
+- each recorded route, oldest faint and newest bright, colored by what set it: a plan of its own
+  cyan, its share of a group's shared route teal;
+- for the newest record, the stages of the search behind it: the 32-cell
   chunk route (violet, large squares at its parts' representative cells), the 16-cell chunk route
   (pink, small squares), and the cell path before smoothing (grey, crosses).
 
@@ -304,8 +301,8 @@ How smoothly ground units move is measured in two places ([group-movement-resear
   least 10 degrees one way undone within a second, the visible turning left and right; steering
   wobble below half a thousandth of a radian a tick is ignored), the **stalled** unit-seconds (ordered
   to move but under a twentieth of top speed) out of all unit-seconds moving, and the **route
-  changes** by what made them: a plan (an order or a re-plan), a share of a group route, a repair leg
-  back to the route, a detour around units, and a formation frame's route. Squad soldiers are left
+  changes** by what made them: a plan (an order or a re-plan), or a share of a group's shared route
+  (space). Squad soldiers are left
   out (they follow their team). The thresholds are engine choices for the measure
   (`sandbox/movement_metrics.hpp`); route changes are counted by the simulation
   (`SimulationWorld::Stats::route_changes`), never hashed.
