@@ -746,10 +746,11 @@ void test_blocked_units_go_around()
             "two units of different orders meeting head-on must go around each other to their points (" + std::to_string(off_a) + " and " + std::to_string(off_b) + " off)");
 }
 
-void test_same_order_stops_at_arrived()
+void test_pair_forms_up()
 {
-    // Two tanks of one order sent to one point: the first arrives; the second stops where it meets the
-    // first (a unit of its own order that arrived) and ends its move there, without overlapping it.
+    // Two tanks of one order sent to one point form up (the owner's group order): the one with the
+    // shorter route leads to the point, the other stands beside it, a slot's pitch away (radius 14,
+    // spacing 0.5: 42), facing the same way; neither ends its move at the other.
     eaw::SimulationWorld world(1.0 / 30.0);
     world.set_ground(open_ground(80));
     const auto a = spawn_blocking_tank(world, {300.0F, 400.0F, 0.0F}, 0.0F);
@@ -763,9 +764,75 @@ void test_same_order_stops_at_arrived()
     const auto& entities = world.snapshot().entities;
     const auto first = std::hypot(entities[0].position.x - point.x, entities[0].position.y - point.y);
     const auto second = std::hypot(entities[1].position.x - point.x, entities[1].position.y - point.y);
-    require(first < 5.0F && second > 20.0F && second < 80.0F && world.stats().blocked_stops == 1, "a unit must end its move at a unit of its own order that arrived (" + std::to_string(first) +
-                                                                                                      " and " + std::to_string(second) + " from the point, " +
-                                                                                                      std::to_string(world.stats().blocked_stops) + " stopped)");
+    require(first < 5.0F && std::abs(second - 42.0F) < 5.0F && std::abs(entities[1].position.x - point.x) < 5.0F && world.stats().blocked_stops == 0,
+            "two units of one order must form up side by side (" + std::to_string(first) + " and " + std::to_string(second) + " from the point, " + std::to_string(world.stats().blocked_stops) +
+                " stopped)");
+}
+
+void test_cluster_slots()
+{
+    // The owner's group formation (pathfinding-design.md, the group order), facing +X, the leader's
+    // slot at the origin; members of radius 10 and spacing 0.5 (pitch 30), standing in a column
+    // behind the leader (y spread so their order across the facing is known).
+    constexpr float pitch = 30.0F;
+    const auto members_of = [](const std::size_t count)
+    {
+        std::vector<eaw::FormationMember> members;
+        for (std::size_t index = 0; index < count; ++index)
+        {
+            members.push_back(
+                {.id = {static_cast<std::uint32_t>(index), 1}, .position = {-100.0F - 40.0F * static_cast<float>(index), static_cast<float>(index), 0.0F}, .radius = 10.0F, .spacing = 0.5F});
+        }
+        return members;
+    };
+    const auto near = [](const eaw::Vector3& at, const float x, const float y)
+    {
+        return std::abs(at.x - x) < 1.0e-3F && std::abs(at.y - y) < 1.0e-3F;
+    };
+    // Two: side by side (the second stands to the leader's left, +Y), or one behind the other.
+    auto slots = eaw::cluster_slots(members_of(2), {}, 0.0F);
+    require(near(slots[0].position, 0.0F, 0.0F) && near(slots[1].position, 0.0F, pitch), "two units must stand side by side");
+    slots = eaw::cluster_slots(members_of(2), {}, 0.0F, true);
+    require(near(slots[1].position, -pitch, 0.0F), "two units in a column must stand one behind the other");
+    // Three: two in front, one behind in the gap (chessboard).
+    slots = eaw::cluster_slots(members_of(3), {}, 0.0F);
+    require(near(slots[0].position, 0.0F, 0.0F) && near(slots[1].position, 0.0F, pitch) && near(slots[2].position, -pitch, 0.5F * pitch),
+            "three units must stand two in front and one behind in the gap");
+    // Four: two rows of two, one behind another.
+    slots = eaw::cluster_slots(members_of(4), {}, 0.0F);
+    require(near(slots[2].position, -pitch, 0.0F) && near(slots[3].position, -pitch, pitch), "four units must stand in two rows of two, one behind another");
+    // Five: three in front, two behind in the gaps.
+    slots = eaw::cluster_slots(members_of(5), {}, 0.0F);
+    require(near(slots[3].position, -pitch, 0.5F * pitch) && near(slots[4].position, -pitch, 1.5F * pitch), "five units must stand three in front and two behind in the gaps");
+    // Seven: clusters of four and three; every slot at least a pitch from every other.
+    slots = eaw::cluster_slots(members_of(7), {}, 0.0F);
+    for (std::size_t a = 0; a < slots.size(); ++a)
+    {
+        for (std::size_t b = a + 1; b < slots.size(); ++b)
+        {
+            require(std::hypot(slots[a].position.x - slots[b].position.x, slots[a].position.y - slots[b].position.y) >= pitch - 1.0e-3F, "formation slots must keep a pitch apart");
+        }
+    }
+    // The second cluster stands behind the first (where its members stand).
+    require(slots[4].position.x < slots[2].position.x && slots[6].position.x < slots[2].position.x, "the second cluster must stand behind the first");
+}
+
+void test_touching_unit_moves_along()
+{
+    // A tank touching another one beside it (the other turned across, its length reaching the first's
+    // side, a little ahead of it) drives on along it: a step that does not take it deeper into the
+    // other is not refused (the owner's model: units stop before contact, never inside one another).
+    eaw::SimulationWorld world(1.0 / 30.0);
+    world.set_ground(open_ground(80));
+    const auto mover = spawn_blocking_tank(world, {300.0F, 400.0F, 0.0F}, 0.0F);
+    (void)spawn_blocking_tank(world, {301.0F, 370.0F, 0.0F}, eaw::half_pi);
+    world.submit({.kind = eaw::SimCommandKind::move, .entities = {mover}, .target = {600.0F, 400.0F, 0.0F}});
+    for (int tick = 0; tick < 300; ++tick)
+    {
+        world.step();
+    }
+    const auto at = world.snapshot().entities.front().position;
+    require(at.x > 550.0F, "a unit touching another beside it must drive on along it; it stands at " + std::to_string(at.x) + ", " + std::to_string(at.y));
 }
 
 void test_path_budget()
@@ -1504,6 +1571,7 @@ const ModuleRegistrar registrar("navigation", {
                                                   {"test_turning_and_separation", &test_turning_and_separation},
                                                   {"test_formations", &test_formations},
                                                   {"test_formation_teams", &test_formation_teams},
+                                                  {"test_cluster_slots", &test_cluster_slots},
                                                   {"test_clearance", &test_clearance},
                                                   {"test_chunks", &test_chunks},
                                                   {"test_parallel_avoidance", &test_parallel_avoidance},
@@ -1513,7 +1581,8 @@ const ModuleRegistrar registrar("navigation", {
                                                   {"test_footprints_through_gap", &test_footprints_through_gap},
                                                   {"test_destination_from_last_leg", &test_destination_from_last_leg},
                                                   {"test_blocked_units_go_around", &test_blocked_units_go_around},
-                                                  {"test_same_order_stops_at_arrived", &test_same_order_stops_at_arrived},
+                                                  {"test_pair_forms_up", &test_pair_forms_up},
+                                                  {"test_touching_unit_moves_along", &test_touching_unit_moves_along},
                                                   {"test_space_avoidance", &test_space_avoidance},
                                                   {"test_space_crowds", &test_space_crowds},
                                                   {"test_movement_profiles", &test_movement_profiles},

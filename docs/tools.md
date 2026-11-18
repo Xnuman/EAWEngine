@@ -300,7 +300,8 @@ How smoothly ground units move is measured in two places ([group-movement-resear
 - Every headless battle prints a `Movement:` line after `Paths:`: the **reversals** (a turn of at
   least 10 degrees one way undone within a second, the visible turning left and right; steering
   wobble below half a thousandth of a radian a tick is ignored), the **stalled** unit-seconds (ordered
-  to move but under a twentieth of top speed) out of all unit-seconds moving, and the **route
+  to move but under a twentieth of top speed) out of all unit-seconds moving, the **frozen** units
+  (ordered to move but not moved at all for 5 seconds, each episode once), and the **route
   changes** by what made them: a plan (an order or a re-plan), a share of a group's shared route
   (space), or a way around a unit that blocked it; then the moves **stopped at units** (ended at a
   unit of the same order that arrived, or with no way around one of another order). Squad soldiers

@@ -354,3 +354,17 @@ into their own group's tanks, and two of one order blocking each other both end 
 units of the same order as obstacles as well, crossing groups take 7.3 s (2 ways around, the 9 stops
 arrivals). The passage, the head-on pair, and the four battles do not change (the battles need no
 way around).
+
+The group order's baseline (the owner's rules only, tag `baseline-2026-11-19`):
+
+| Scenario or battle | Time or tick | Ways around | Frozen | Note |
+| --- | --- | --- | --- | --- |
+| Ten tanks through a gap (formation) | 60 s, 5 left moving | 3,512 | 5 | frozen at the gap |
+| Head-on pair | 5.6 s | 6 | 0 | |
+| Three converging | 6.2 s | 5 | 0 | |
+| Two groups of five crossing | 13.7 s | 133 | 0 | |
+| Utapau, six T2-Bs, auto-move | 0.41 ms | 3,599 | 2 | |
+| Utapau, four T4-Bs, auto-move | 0.46 ms | 3,241 | 1 | |
+| Utapau, ten T2-Bs, auto-move | 0.53 ms | 1 | 0 | |
+| Utapau AT-ATs | 0.57 ms | 3,597 | 1 | |
+| Large Utapau | 2.23 ms | 11,847 | 16 | |

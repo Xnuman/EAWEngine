@@ -106,6 +106,35 @@ Built: steps 6 to 8, with these engine choices:
 The measurements are in
 [group-movement-research.md](group-movement-research.md#the-movement-redesign-branch).
 
+### The group order (the owner's rules, 2026-11-18): the baseline
+
+The owner's rules as given, without the experiments that followed them (tag
+`baseline-2026-11-19`). An order to several ground units forms a formation (`formation_move`,
+`group_move`, and a `move` of more than one unit on land; Solo units and units that do not walk the
+ground move on their own):
+
+1. Every member's route to the ordered point is planned (the budgeted queue, `plan_formation`).
+2. Members are ranked by route length: priorities from 1, the shortest first, the leader. The
+   leader's route end (placed for it, steps 3 to 5) is its slot, the direction of its last leg the
+   formation's facing.
+3. The layout (`cluster_slots`): two units side by side, or in a column when the second does not fit
+   beside; more split into the fewest clusters of at most 5, as even as possible (the owner's rule A;
+   rule 5 never applies), each a chunk of the priority order; a cluster's front row takes its first
+   half (rounded up), the back row the rest, one behind another or in the gaps; within a row members
+   take the slots by where they stand across the facing; further clusters keep the direction their
+   members stand in from the first, packed clear of it. Slots are `pitch_of` apart (footprint
+   diameter times one plus `FormationSpacing`).
+4. Each slot is fitted to the ground facing the formation's way, and each member's route to the point
+   has its last leg turned to its slot (a search when the straight line is blocked).
+5. The group moves at its slowest member's speed. Priority among units of one order: a unit waits
+   for a higher-priority unit still on its way, and goes around one that arrived and any of lower
+   priority; units of its order are obstacles to that search (the owner: rare by design).
+
+Measured with the freeze count: the passage formation freezes at the gap (5 frozen), and groups
+whose members' ways cross freeze (six T2-Bs, four T4-Bs, the AT-AT battle; 16 in the large battle):
+units turning in place swing into group-mates, and a way around that grazes a group-mate is planned
+again every tick.
+
 ## 1. Why
 
 ### Gameplay

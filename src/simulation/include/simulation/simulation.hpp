@@ -945,6 +945,10 @@ private:
     void remove_entities(std::vector<std::size_t> dense);
     // Requests a route to `target` (queued for the search budget when it needs a search).
     template <class Data> static void plan_move(Data& data, std::size_t index, const Vector3& target);
+    // Starts a move to `target` (plan_move without the request): the unit holds still with its target
+    // set; returns the serial its request must carry, or 0 when it needs no search (it heads straight
+    // for its target).
+    template <class Data> static std::uint32_t begin_move(Data& data, std::size_t index, const Vector3& target);
     struct PathRequest;
     void apply_formation_move(const SimCommand& command);
     // Attack-move and guard commands: their standing orders, and the first move.
@@ -1250,6 +1254,9 @@ private:
         std::vector<std::uint32_t> orders;
         // The unit this one stopped at in the last tick (none when it was not blocked).
         std::vector<EntityId> blockers;
+        // Its priority in its group order's formation (1 the leader, then 2, 3, ...; 0 outside one):
+        // who waits for whom among units of one order.
+        std::vector<std::uint32_t> priorities;
         template <class Visit> void for_each_column(Visit&& visit)
         {
             visit(move_targets);
@@ -1260,6 +1267,7 @@ private:
             visit(detours);
             visit(orders);
             visit(blockers);
+            visit(priorities);
         }
     };
     // Flight (pooled: flyers only, the entities whose recipe has a minimum speed above 0): the
@@ -1662,6 +1670,12 @@ private:
         PathPoint shared_start;
         std::uint32_t mask{};
         std::size_t next_member{};
+        // A group order on land (plan_formation): each member's FormationSpacing, then, as they are
+        // planned, its route to the ordered point and that route's length.
+        bool formation{};
+        std::vector<float> spacings;
+        std::vector<std::vector<PathPoint>> routes;
+        std::vector<float> lengths;
     };
     // The world's resources (docs/ecs-design.md, 6.2): what exists once, each kind of data a struct of
     // its own, so a system names what it uses by type.
@@ -1989,6 +2003,14 @@ private:
         void process_path_queue(const View& view);
         // Plans a shared request's members until the tick's budget is spent; false when members remain.
         [[nodiscard]] bool plan_shared_route(const View& view, PathRequest& request, std::uint64_t spent_before, bool first_in_tick);
+        // A group order on land (the owner's, docs/pathfinding-design.md): every member's route to the
+        // ordered point until the tick's budget is spent (false when members remain), then the
+        // formation (form_up).
+        [[nodiscard]] bool plan_formation(const View& view, PathRequest& request, std::uint64_t spent_before, bool first_in_tick);
+        // Ranks the planned members of `request` by route length (priorities from 1, the shortest
+        // first: the leader), lays the formation out from the leader's arrival (cluster_slots), fits
+        // each slot to the ground, and gives each member its route with the last leg turned to its slot.
+        void form_up(const View& view, PathRequest& request);
 
         // A route planned but not yet given (route searches run in batches, docs/ecs-design.md 7.5):
         // its waypoints, or none at all (no ground data: the unit heads straight for its goal), and

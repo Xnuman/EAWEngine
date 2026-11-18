@@ -84,4 +84,18 @@ struct FormationSlot
 // the target's.
 [[nodiscard]] std::vector<FormationSlot> formation_slots(std::span<const FormationMember> members, Vector3 target, float facing);
 
+// The owner's group formation on land (docs/pathfinding-design.md, the group order): one slot per
+// member, in member order, the members given in priority order (the first is the leader, whose slot
+// is `leader_slot`; `facing` is its arrival's direction). Two members stand side by side (the second
+// on the side where it stands across the facing), or one behind the other with `two_in_column`.
+// More split into the fewest clusters of at most max_cluster_size, as even as possible (the larger
+// first), each a chunk of the priority order: its front row takes the first half (rounded up), the
+// back row the rest, one behind another when the rows are as long, in the gaps (chessboard) when not;
+// within a row members take the slots in the order they stand across the facing. The first cluster's
+// front row holds the leader; each further cluster keeps the direction its members' centroid lies in
+// from the first cluster's (behind when none), at the nearest distance clear of the clusters placed
+// before it. Slots are `pitch_of` apart (the cluster's largest footprint and spacing).
+inline constexpr std::size_t max_cluster_size = 5;
+[[nodiscard]] std::vector<FormationSlot> cluster_slots(std::span<const FormationMember> members, Vector3 leader_slot, float facing, bool two_in_column = false);
+
 } // namespace eaw

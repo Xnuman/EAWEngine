@@ -1171,3 +1171,17 @@ rewritten to describe the current state; the source document is noted in bracket
   7.0 s, 4 reversals instead of 15); crossing groups now stop halfway (2.2 s, all ten ended: ways
   around lead into units of the own order); with same-order units as obstacles too they take 7.3 s,
   a question for the owner. Battle hashes unchanged (no battle needs a way around).
+- Group order, the owner's rules as given (branch group-order-baseline, tag baseline-2026-11-19; the
+  owner asked for this state apart from the experiments that followed on movement-redesign): a move
+  of several ground units forms up (cluster_slots: two side by side or in a column, clusters of at
+  most 5 split evenly, rows in priority order); members ranked by route length into priorities; the
+  leader's arrival sets the facing; slots fitted to the ground; each member's last leg turned to its
+  slot; the group at its slowest member's speed; a unit waits for a higher-priority group-mate on
+  its way, else goes around; group-mates are obstacles to ways around. The movement measurements
+  count frozen units (not moved at all for 5 seconds while ordered to move). Measured: the passage
+  formation and groups whose ways cross freeze (recorded in group-movement-research.md). Tests:
+  test_cluster_slots, test_pair_forms_up (replaces test_same_order_stops_at_arrived),
+  test_touching_unit_moves_along. Hashes (new hashed priorities and request fields; space movement
+  unchanged): reference 0xf2bf375f99ee11ba -> 0xfe16b86963cf1cfc, large Utapau 0xd8cae913d2401356 ->
+  0xae7002e127608090, Kuat fighters 0x3c1998f3f3a33611 -> 0x3200606ae3e5bd51, Kuat capital
+  0x195a3e582287f460 -> 0xd44c596127f887e0, AT-ATs 0x597947f00d8bc53c -> 0xcc7c665918325507.
