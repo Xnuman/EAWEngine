@@ -1112,3 +1112,13 @@ rewritten to describe the current state; the source document is noted in bracket
   battle hashes change (the removed route columns were hashed): reference 0x7b84de93d99224c6, large
   Utapau 0xf4eafde45822c642, Kuat fighters 0x44a0aee571affa51, Kuat capital 0xd3c0c7aae986e0e0,
   AT-ATs 0xa1945a44269bd2d0.
+
+## 2026-11-18
+
+- Group formations of the retail game recorded (compatibility-research.md, Group moves of vehicles):
+  the owner's 28 screenshots of slot markers (2 to 13 units) and observations: slots assigned at the
+  destination when ordered, nearer units in front, loose movement before formation, no shoving,
+  ragged arrival, no turn to a common facing. The row inference is replaced by halving (clusters of
+  two to four, halves offset diagonally), marked unverified. xml-object-tags.md: MaxJiggleDistance
+  read as a likely arrival tolerance, MinimumPushReturnDistance left unexplained (no pushing
+  observed).

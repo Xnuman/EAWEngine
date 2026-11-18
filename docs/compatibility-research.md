@@ -595,7 +595,35 @@ name only. Observations that would decide: groups of 4, 6, 7, 9, and 15 T2-Bs (6
 rows from hexagonal packing; 7 and 15 show the split), a mixed group of vehicles and infantry, and
 the order of the tanks through a narrow passage.
 
-The engine: final slots go to members by how far forward they stand, as observed
+More observations by the owner (28 screenshots of the slot markers shown when an order is given,
+groups of 2 to 13 squads, T2-Bs, and T4-Bs, 2026-11-18):
+
+- Slots are assigned at the destination when the order is given. The facing points from the group
+  toward the clicked point, and the slot layout keeps its shape and turns with the facing (seven
+  T2-Bs ordered four ways). A slot marker's size follows its unit's footprint; a mixed group
+  (eight T2-Bs and five T4-Bs) forms one layout of thirteen slots, not one per type.
+- Shapes by count: 2 side by side across the facing; 3 a triangle, two in front and one behind; 4 a
+  2 by 2 square; 5 a triangle of three and a pair; 6 two triangles; 7 a triangle and a square; 10
+  two blocks of five, each a triangle and a pair. The parts of a layout stand offset diagonally:
+  one ahead of the other and to one side.
+- Which part leads is not fixed (with seven the smaller part, the triangle, leads the square; with
+  five the larger part, the triangle, leads the pair), and units nearer the destination take the front slots; priorities
+  (`FormationOrder`) do not strictly order them: infantry is not always placed before tanks.
+- Units move toward their slots loosely: movement comes before keeping the formation. No shoving
+  was reproduced: units do not move into other units and stop before contact.
+- Arrived groups stand ragged, and arrived units keep the heading they arrived with; they do not
+  turn to a common facing afterwards.
+
+Inference, unverified, replacing the row rule above: every count seen fits halving. Two to four
+units make one cluster (a pair, a triangle, a square); a larger group splits into the floor and
+the ceiling of half its count, the halves placed offset diagonally, and each half splits the same
+way (5 = 3 + 2, 7 = 3 + 4, 10 = (3 + 2) + (3 + 2), 13 perhaps (3 + 3) + (3 + 4)). The "three in
+front and two behind" of five above is the same triangle and pair. Unobserved: how units are
+matched to slots (the nearest unit per slot or a cost over the group), which side the rear half
+stands on, and what `FormationSpacing` changes (slots of T2-Bs at 1.5 and T4-Bs at 1 both nearly
+touch). Groups of 8 and 9, and two groups of different spacing side by side, would test the rule.
+
+The engine on the main branch (removed on the `movement-redesign` branch): final slots go to members by how far forward they stand, as observed
 (`take_final_slots`). It lays a group out in rows of the ceiling of the square root of twice the
 count, centered (an engine choice: five stand four and one), splits a selection into formations only
 by distance (`frame_split_distance`, 400), and keeps the formation through narrow places, sending a

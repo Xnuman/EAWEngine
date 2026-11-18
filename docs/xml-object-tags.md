@@ -468,8 +468,8 @@ These tags set how an object moves (speed, turning, acceleration, flight attitud
 | `Fine_Tune_Occupied_Passability` | structures 14 | false/No only | Finer occupied-cell passability (name); never enabled in stock. |
 | `OccupationStyle` | units 134, containers 41, props 3 (178) | 1x1 only | Occupation grid style (name). Single value. |
 | `UnitCollisionClass` | units 131, props 45, containers 41, structures 32, projectile 1 (250; 2 repeats) | Infantry 123, Vehicle 54, Medium Obstacle 20, High Obstacle 19, Landing Transport 10, Giant Vehicle 9, Large Vehicle 8, Build Pad 6, Low Obstacle 3, Bike 1 | Collision category deciding who blocks or pushes whom (name, data). Engine: an "obstacle" class makes the object a static obstacle. |
-| `MaxJiggleDistance` | vehicles 16, others 13 (29) | 0..6 | How far a unit drifts when nudged at rest (name). |
-| `MinimumPushReturnDistance` | units 98, props 2 (100; 2 repeats) | 10, 60, 100 | Distance beyond which a pushed unit returns to its spot (name). GameConstants RepushDistance 6.0. |
+| `MaxJiggleDistance` | vehicles 16, others 13 (29) | 0..6 | How far a unit may drift from its spot (name). The values follow mobility (data): 6 hover units (T2-B, swamp speeder, F9-TZ), 5 tanks and the AT-ST, 3.5 and 2 some infantry and heroes, 0 heavy and deploying units (Juggernaut, MZ-8, HTT, mobile defense units). No unit was seen pushed at rest in the retail game (the owner, 2026-11-18), and arrived groups stand ragged; an arrival tolerance around a slot fits both (inference). |
+| `MinimumPushReturnDistance` | units 98, props 2 (100; 2 repeats) | 10, 60, 100 | Distance beyond which a pushed unit returns to its spot (name); 100 vehicles, 10 infantry (data). GameConstants RepushDistance 6.0. Unexplained: no pushing was reproduced in the retail game (the owner, 2026-11-18). |
 
 #### Crushing
 
