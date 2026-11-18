@@ -1005,47 +1005,6 @@ Vector3 SimulationWorld::free_ground(const Vector3& at, const float heading, con
     return found ? Vector3{found->x, found->y, at.z} : at;
 }
 
-bool SimulationWorld::destination_fits(const float x, const float y, const std::size_t index)
-{
-    const auto radius = unit_radius(*this, index);
-    const auto mask = ground_mover_.passable_types[index];
-    if (mask == 0)
-    {
-        return true;
-    }
-    // A unit with a footprint rectangle needs room for it, turned the way it arrives (from where it
-    // stands), besides its footing; a squad the rectangle bounding its soldiers (without one, its circle).
-    const auto* squad = squads_.find(slot_of(*this, index), &SquadColumns::states);
-    const auto& body = squad != nullptr ? squad->body : placement_.bodies[index];
-    const bool shaped = body.half_width > 0.0F && (squad != nullptr || radius == placement_.radii[index]);
-    if (!ground_stands(ground_.map, {x, y}, Footing(mask, clearance_of(mask), shaped ? ground_mover_.footing_radii[index] : radius)))
-    {
-        return false;
-    }
-    if (!shaped)
-    {
-        return true;
-    }
-    const auto& from = placement_.positions[index];
-    const auto arriving = std::hypot(x - from.x, y - from.y) > 1.0e-3F ? std::atan2(y - from.y, x - from.x) : placement_.headings[index];
-    return ground_rectangle_fits(ground_.map, footprint_center_at(body, {x, y, 0.0F}, arriving), arriving, body.half_length, body.half_width, mask);
-}
-
-Vector3 SimulationWorld::place_destination(const Vector3& at, const std::size_t index)
-{
-    const auto radius = unit_radius(*this, index);
-    if (!ground_.map.valid() || ground_mover_.follows_ground[index] == 0 || !(radius > 0.0F))
-    {
-        return at;
-    }
-    const auto found = nearest_free_point(at, 2.0F * radius, free_ground_rings,
-                                          [&](const float x, const float y)
-                                          {
-                                              return destination_fits(x, y, index);
-                                          });
-    return found ? Vector3{found->x, found->y, at.z} : at;
-}
-
 void SimulationWorld::reserve_clearance(const std::uint32_t passable_types, const float radius)
 {
     if (!ground_.map.valid() || ground_.map.passability.size() != ground_.map.heights.size() || passable_types == 0 || !(radius > 0.0F))

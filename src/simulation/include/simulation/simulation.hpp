@@ -968,13 +968,13 @@ private:
     // A unit with a footprint rectangle (`body`, its half-width above zero) needs room for it at
     // `heading`; units keep `radius` apart.
     [[nodiscard]] Vector3 free_ground(const Vector3& at, float heading, float radius, const FootprintRect& body, std::uint32_t passable_types, std::optional<std::size_t> except);
-    // Where the unit at `index` can end a move to `at` (the owner's model, 2026-11-15: the ordered
-    // point moves to the nearest place the unit fits): ground with room for the unit as a whole, its
-    // footprint rectangle at the heading it arrives with (a squad by its extent). Other units do not
-    // count (movement-redesign branch). `at` when it fits, or when nothing within free_ground_rings
-    // rings of its size does.
-    [[nodiscard]] Vector3 place_destination(const Vector3& at, std::size_t index);
-    [[nodiscard]] bool destination_fits(float x, float y, std::size_t index);
+    // Where the unit at `index` can end a move to `at` arriving from `from` (the owner's design,
+    // docs/pathfinding-design.md, the new movement of a single unit, steps 3 to 5): ground with room
+    // for the unit as a whole, its footprint rectangle turned the way the last leg from `from` points
+    // (a squad by its extent). Other units do not count. `at` when it fits, or when nothing within
+    // free_ground_rings rings of its size does. Reads the state only.
+    template <class Data> [[nodiscard]] static Vector3 place_destination(Data& data, const Vector3& at, std::size_t index, Vector2 from);
+    template <class Data> [[nodiscard]] static bool destination_fits(Data& data, float x, float y, std::size_t index, Vector2 from);
     // Builds the occupancy grid for this tick if it is not built yet.
     void refresh_occupancy();
     // Whether a footprint (`body` facing `heading`, or the circle of `radius` without one) at (x, y)
@@ -1974,8 +1974,6 @@ private:
     private:
         // Works through queued path requests until the tick's search budget is spent.
         void process_path_queue(const View& view);
-        // A formation frame's route (simulation_frames.cpp), for its largest member.
-
         // Plans a shared request's members until the tick's budget is spent; false when members remain.
         [[nodiscard]] bool plan_shared_route(const View& view, PathRequest& request, std::uint64_t spent_before, bool first_in_tick);
 
@@ -2000,12 +1998,16 @@ private:
             // Short legs onto and off a shared path search at most this many nodes.
             GridPathfinder legs{4096};
         };
-        // The route of the unit at `index` to `target`: a full search from where it stands. Reads the
-        // state only.
+        // The route of the unit at `index` to `target`: a full search from where it stands, its end
+        // placed where the unit fits (place_route_end). Reads the state only.
         [[nodiscard]] PlannedRoute plan_route(const View& view, std::size_t index, const Vector3& target, RouteScratch& scratch);
         // The route of a member of `request` onto its shared path and off it to `goal` (a full search
         // where that fails). Reads the state only.
         [[nodiscard]] PlannedRoute plan_member(const View& view, const PathRequest& request, std::size_t index, const Vector3& goal, RouteScratch& scratch);
+        // Moves the end of `planned` to where the unit at `index` fits, turned the way its last leg
+        // points (place_destination), with a leg to it: straight when the ground allows, else searched
+        // from the last leg's start. Reads the state only.
+        void place_route_end(const View& view, std::size_t index, PlannedRoute& planned, RouteScratch& scratch);
         // Gives the unit at `index` its planned route and counts its searches.
         void give_route(const View& view, std::size_t index, const Vector3& goal, const PlannedRoute& planned);
         // Plans batch_ (up to route_batch units, their footings prepared) at once on the job system,

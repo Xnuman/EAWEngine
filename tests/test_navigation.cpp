@@ -655,6 +655,47 @@ void test_footprints_through_gap()
     }
 }
 
+void test_destination_from_last_leg()
+{
+    // A dead-end corridor three cells wide (x 135 to 165) runs down from y 205 to the map's edge, walls
+    // at columns 13 and 17. A long unit (a rectangle 64 along by 16 across) beside the corridor's
+    // bottom is ordered into it: the straight line to the point crosses the corridor, where the unit
+    // does not fit, but its route enters the corridor lengthwise, and the arrival direction comes from
+    // the route's last leg (pathfinding-design.md, the new movement of a single unit, steps 3 to 5),
+    // so the point stays where it was ordered.
+    eaw::GroundMap ground;
+    ground.width = 30;
+    ground.height = 30;
+    ground.spacing = 10.0F;
+    ground.heights.assign(900, 0.0F);
+    ground.passability.assign(900, eaw::passability::clear);
+    for (std::uint32_t y = 0; y <= 20; ++y)
+    {
+        ground.passability[y * 30 + 13] = eaw::passability::steep;
+        ground.passability[y * 30 + 17] = eaw::passability::steep;
+    }
+    eaw::SimulationWorld world(1.0 / 30.0);
+    world.set_ground(ground);
+    const auto id = test_spawn(world, {.type_name = "Platform",
+                                       .position = {260.0F, 40.0F, 0.0F},
+                                       .max_speed = 30.0F,
+                                       .follows_ground = true,
+                                       .passable_types = eaw::passability::clear,
+                                       .radius = 20.0F,
+                                       .body = {.half_length = 32.0F, .half_width = 8.0F},
+                                       .turn_rate = 8.0F});
+    require(id.ok(), "test spawn must succeed");
+    const eaw::Vector3 target{150.0F, 100.0F, 0.0F};
+    world.submit({.kind = eaw::SimCommandKind::move, .entities = {*id}, .target = target});
+    for (int tick = 0; tick < 1200; ++tick)
+    {
+        world.step();
+    }
+    const auto at = world.snapshot().entities.front().position;
+    require(std::hypot(at.x - target.x, at.y - target.y) < 5.0F,
+            "a unit must keep a destination it fits turned the way its route arrives; it stands at " + std::to_string(at.x) + ", " + std::to_string(at.y));
+}
+
 void test_path_budget()
 {
     // A 200x200 field with a wall across x = 100 open only at rows 180-185, so every route detours.
@@ -1398,6 +1439,7 @@ const ModuleRegistrar registrar("navigation", {
                                                   {"test_path_budget", &test_path_budget},
                                                   {"test_route_tracing_chunks", &test_route_tracing_chunks},
                                                   {"test_footprints_through_gap", &test_footprints_through_gap},
+                                                  {"test_destination_from_last_leg", &test_destination_from_last_leg},
                                                   {"test_space_avoidance", &test_space_avoidance},
                                                   {"test_space_crowds", &test_space_crowds},
                                                   {"test_movement_profiles", &test_movement_profiles},

@@ -49,7 +49,44 @@ SimulationWorld::NavigationSystem::PlannedRoute SimulationWorld::NavigationSyste
     planned.partials = found.status == PathStatus::partial ? 1U : 0U;
     planned.waypoints = std::move(found.waypoints);
     planned.trace = std::move(found.trace);
+    place_route_end(view, index, planned, scratch);
     return planned;
+}
+
+void SimulationWorld::NavigationSystem::place_route_end(const View& view, const std::size_t index, PlannedRoute& planned, RouteScratch& scratch)
+{
+    auto& waypoints = planned.waypoints;
+    if (waypoints.empty())
+    {
+        return;
+    }
+    const auto& here = view.get<PlacementColumns>().positions[index];
+    const auto from = waypoints.size() > 1 ? waypoints[waypoints.size() - 2] : PathPoint{here.x, here.y};
+    const auto end = waypoints.back();
+    const auto placed = place_destination(view, Vector3{end.x, end.y, 0.0F}, index, from);
+    const PathPoint to{placed.x, placed.y};
+    if (to == end)
+    {
+        return;
+    }
+    const auto& ground = view.get<GroundState>();
+    const auto footing = footing_of(view, index);
+    if (ground_line_passable(ground.map, from, to, footing))
+    {
+        waypoints.back() = to;
+        return;
+    }
+    // The placed end lies off the last leg's straight line (behind a corner): a short search to it.
+    // Its last leg may arrive turned otherwise than the fit was tested for (shortcut: the fit is not
+    // tested again; test it at the new leg's heading if units end in walls).
+    auto leg = scratch.legs.find(navigation_data_, ground.map, from, to, footing);
+    planned.searches += 1;
+    planned.expansions += leg.expanded;
+    if (leg.status == PathStatus::reached && !leg.waypoints.empty())
+    {
+        waypoints.pop_back();
+        waypoints.insert(waypoints.end(), leg.waypoints.begin(), leg.waypoints.end());
+    }
 }
 
 void SimulationWorld::NavigationSystem::give_route(const View& view, const std::size_t index, const Vector3& goal, const PlannedRoute& planned)
@@ -757,7 +794,7 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
             {
                 goal.z = placement_.positions[*dense].z;
             }
-            plan_move(*this, *dense, place_destination(goal, *dense));
+            plan_move(*this, *dense, goal);
         }
         return;
     }

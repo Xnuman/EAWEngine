@@ -130,7 +130,7 @@ void SimulationWorld::apply(const SimCommand& given)
             locomotor_.speed_limits[*dense] = 0.0F;
             if (locomotor_.max_speeds[*dense] > 0.0F)
             {
-                plan_move(*this, *dense, place_destination(command.target, *dense));
+                plan_move(*this, *dense, command.target);
             }
             break;
         case SimCommandKind::stop:

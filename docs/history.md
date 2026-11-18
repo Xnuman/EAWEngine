@@ -1139,3 +1139,11 @@ rewritten to describe the current state; the source document is noted in bracket
   moves at least as fast) or a new route (inside the chunk, then with the chunk marked blocked, else
   stop). Group behavior deliberately left out; the whole-chunk mark and a tie-break between two
   blocked units are to be tried.
+- Single-unit movement, steps 1 to 5 (movement-redesign branch): the destination is placed after the
+  route search, inside the search's job (place_route_end): the footprint is tested turned the way
+  the route's last leg arrives instead of the straight line from the unit, and a moved end gets a
+  straight leg or a short search. place_destination and destination_fits became read-only templates
+  over the system view. New test test_destination_from_last_leg (a long unit into a dead-end
+  corridor from the side; the old rule put it outside at 230, 100). Hashes: reference
+  0x7b84de93d99224c6 -> 0xacafabe83b502d25, large Utapau 0xf4eafde45822c642 -> 0x7b271f9612206d1d,
+  AT-ATs 0xa1945a44269bd2d0 -> 0x3935648b19513d0a; space unchanged; movement scenarios unchanged.

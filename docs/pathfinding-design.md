@@ -57,6 +57,13 @@ mark, the cells under the blocker only, is the alternative if whole chunks close
 destinations), and whether two units of different orders that block each other need a tie-break
 (one waits, the other plans around) or settle without one.
 
+Built: steps 1 to 5. The route search places its own end (`place_route_end`, in the search's job):
+the fit (`place_destination`) is tested turned the way the leg from the route's second-to-last point
+points, and a moved end gets a straight leg when the ground allows, else a search of at most 4,096
+nodes from that point (the shared-leg pathfinder, not bounded to the last chunk; when it fails the
+end stays unmoved). The fit is not tested again for the searched leg's own direction (a shortcut).
+Steps 6 to 8 are next.
+
 Open (engine choices to be named when built): what "blocked" means (contact at the end of a step
 by `keep_apart`, or a contact ahead within some distance), what "moving" means for the blocker (its
 speed above a fraction of its top speed), and whether a waiting unit decides again every tick.
