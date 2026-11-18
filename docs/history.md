@@ -1129,3 +1129,6 @@ rewritten to describe the current state; the source document is noted in bracket
   passability only), the locomotor token in the behavior lists (WALK_LOCOMOTOR for every ground
   vehicle), and UnitCollisionClass combine. Tables of each and their common combinations; one
   parameterized ground movement inferred.
+- Movement types in the base game added to the same section: EAW has classes 0 to 13 (FoC appends
+  Lancet, Spotter, LargeHover, BombingRun and the InfantryOnly and Impassable types); EAW's Infantry
+  enters the same ground as the vehicle classes; the same eleven locomotors in both games.

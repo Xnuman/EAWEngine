@@ -539,6 +539,15 @@ Wheeled, Walker, and Tracked enter the same ground and differ only in name; no s
 `NoShield` class. Ten non-infantry objects use `Infantry` (Bantha, Tauntaun, Rancor, Womp rat, and
 other creatures, and the Gas Collection Droid), so the class is passability, not the kind of unit.
 
+The base game (EAW's own `Data/XML`, 366 files) has classes 0 to 13 with the same numbers; FoC
+appends Lancet, Spotter, LargeHover, and BombingRun (14 to 17) and the passability types
+`InfantryOnly` and `Impassable`. In EAW, `Infantry` is `Clear | Shield`, the same ground as Wheeled,
+Walker, and Tracked, so infantry and vehicles differ there only by collision class and per-unit
+numbers; `Flying` and `Space` lack the FoC types. EAW's users: Infantry 74, Space 47 (its two
+bombing runs among them, which FoC moved to BombingRun), Hover 7, Flying 6, Walker 4, Tracked 3,
+LargeWalker 2; Wheeled is unused (the Juggernaut is FoC's). The same eleven locomotors exist in
+both games (FoC adds none), and EAW's collision classes are FoC's without Landing Transport.
+
 **Locomotor: how a unit moves.** A `_LOCOMOTOR` token in the `Behavior`, `LandBehavior`, or
 `SpaceBehavior` lists, not a tag of its own:
 
