@@ -30,6 +30,37 @@ cohesion. Space ships keep their avoidance, formations, shared routes, and group
 keep their soldiers' slots around their team. The measurements of this state are in
 [group-movement-research.md](group-movement-research.md#the-movement-redesign-branch).
 
+### The new movement of a single unit (the owner's, 2026-11-18)
+
+The owner's description, with the decisions taken on the points raised (2026-11-18). Group behavior
+is deliberately left out for now: every unit of an order moves by these rules on its own.
+
+1. The unit is ordered to a point.
+2. Its route is planned by the A* over the 16-cell and 32-cell chunks, to the ordered point (the
+   search ends at the nearest reachable place when the point cannot be reached).
+3. The direction of the route's last leg is the direction the unit will stand in at the point.
+4. The unit's footprint rectangle, turned that way, is tested at the point.
+5. When it does not fit, the point moves to the nearest place where it fits, and the last leg is
+   replaced by one to that place (a small A* inside the last chunk when the straight line to it is
+   blocked). The unit so arrives already facing that direction, without turning at the end.
+6. The unit follows its route around walls and obstacles, repairing the route when it leaves it.
+   Local movement here means walls and obstacles only: units do not steer around other units.
+7. A unit blocked by another unit stops.
+8. When the blocker belongs to another order:
+   - the unit waits when the blocker is moving and its top speed is at least the blocked unit's;
+   - otherwise it plans a new route: first an A* inside its current 32-cell chunk around the
+     blocker; when that finds none, an A* from where it stands to its destination with its current
+     chunk marked blocked; when that finds none either, the unit stops (the order ends there).
+
+To try: marking the whole current chunk blocked in the second search (the owner's choice; a finer
+mark, the cells under the blocker only, is the alternative if whole chunks close corridors or
+destinations), and whether two units of different orders that block each other need a tie-break
+(one waits, the other plans around) or settle without one.
+
+Open (engine choices to be named when built): what "blocked" means (contact at the end of a step
+by `keep_apart`, or a contact ahead within some distance), what "moving" means for the blocker (its
+speed above a fraction of its top speed), and whether a waiting unit decides again every tick.
+
 ## 1. Why
 
 ### Gameplay

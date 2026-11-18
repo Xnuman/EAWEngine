@@ -1132,3 +1132,10 @@ rewritten to describe the current state; the source document is noted in bracket
 - Movement types in the base game added to the same section: EAW has classes 0 to 13 (FoC appends
   Lancet, Spotter, LargeHover, BombingRun and the InfantryOnly and Impassable types); EAW's Infantry
   enters the same ground as the vehicle classes; the same eleven locomotors in both games.
+- The owner's description of the new movement of a single unit recorded (pathfinding-design.md,
+  movement-redesign branch): route by the chunk A*, the arrival direction from the route's last leg,
+  the footprint fitted there or moved to the nearest place it fits, route following around walls and
+  obstacles only, a stop when blocked by a unit, and for a blocker of another order a wait (when it
+  moves at least as fast) or a new route (inside the chunk, then with the chunk marked blocked, else
+  stop). Group behavior deliberately left out; the whole-chunk mark and a tie-break between two
+  blocked units are to be tried.
