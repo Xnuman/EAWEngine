@@ -610,7 +610,6 @@ void SimulationWorld::NavigationSystem::form_up(const View& view, PathRequest& r
 {
     auto& route = view.get<RouteColumns>();
     const auto& placement = view.get<PlacementColumns>();
-    const auto& ground = view.get<GroundState>();
     // The live members by route length (ties to the lower id): the priority order.
     std::vector<std::size_t> ranked;
     for (std::size_t member = 0; member < request.members.size(); ++member)
@@ -667,38 +666,37 @@ void SimulationWorld::NavigationSystem::form_up(const View& view, PathRequest& r
             slots = cluster_slots(members, leader_slot, facing, true);
         }
     }
-    auto& scratch = route_scratch_.front();
+    // The formation moves as a whole (step B): its anchor travels the leader's route from where the
+    // leader stands; each member keeps its slot's offset from the leader's (its slot fitted to the
+    // ground facing the formation's way) and follows it (follow_formations).
+    const auto& locomotor = view.get<LocomotorColumns>();
+    const PathPoint right{forward.y, -forward.x};
+    LandFormation formation{.order = route.orders[leader], .speed = std::numeric_limits<float>::max()};
+    formation.route.push_back({placement.positions[leader].x, placement.positions[leader].y});
+    formation.route.insert(formation.route.end(), leader_route.begin(), leader_route.end());
     for (std::size_t rank = 0; rank < ranked.size(); ++rank)
     {
         const auto member = ranked[rank];
         const auto dense = *dense_index(view, request.members[member]);
-        auto waypoints = std::move(request.routes[member]);
         route.pending[dense] = 0;
         route.priorities[dense] = static_cast<std::uint32_t>(rank + 1U);
-        if (rank > 0)
-        {
-            // Its slot, fitted to the ground facing the formation's way, reached by turning the last
-            // leg of its route to the point: straight when the ground allows, else searched.
-            const auto slot = place_destination(view, slots[rank].position, dense, behind(slots[rank].position));
-            const PathPoint to{slot.x, slot.y};
-            const auto& here = placement.positions[dense];
-            const auto from = waypoints.size() > 1 ? waypoints[waypoints.size() - 2] : PathPoint{here.x, here.y};
-            const auto footing = footing_of(view, dense);
-            if (!waypoints.empty() && ground_line_passable(ground.map, from, to, footing))
-            {
-                waypoints.back() = to;
-            }
-            else
-            {
-                auto found = scratch.route.find(navigation_data_, ground.map, {here.x, here.y}, to, footing);
-                ++path_searches;
-                path_expansions += found.expanded;
-                waypoints = std::move(found.waypoints);
-            }
-        }
-        set_route(view, dense, waypoints, request.group_target.z);
+        route.paths[dense].clear();
+        route.move_targets[dense].reset();
+        const auto slot = rank == 0 ? leader_slot : place_destination(view, slots[rank].position, dense, behind(slots[rank].position));
+        const PathPoint from_leader{slot.x - leader_slot.x, slot.y - leader_slot.y};
+        formation.members.push_back(request.members[member]);
+        formation.offsets.push_back({dot(from_leader, forward), dot(from_leader, right)});
+        formation.sent.emplace_back();
+        formation.speed = std::min(formation.speed, locomotor.max_speeds[dense]);
         record_route(view, dense, RouteTraceKind::plan, {});
     }
+    auto& formations = view.get<LandFormations>().list;
+    std::erase_if(formations,
+                  [&](const LandFormation& other)
+                  {
+                      return other.order == formation.order;
+                  });
+    formations.push_back(std::move(formation));
 }
 
 SimulationWorld::NavigationSystem::PlannedRoute SimulationWorld::NavigationSystem::plan_member(const View& view, const PathRequest& request, const std::size_t index, const Vector3& goal,

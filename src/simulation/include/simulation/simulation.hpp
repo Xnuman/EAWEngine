@@ -677,6 +677,8 @@ public:
         // Path requests waiting for the per-tick search budget, and formation routes planned on one
         // shared path.
         std::size_t queued_paths{};
+        // Group orders' formations on land still on their way.
+        std::size_t land_formations{};
         std::uint64_t shared_routes{};
         // Changes to ground units' routes by what made them (RouteTraceKind; a formation frame's route
         // counts once per frame), the measure of route churn (docs/group-movement-research.md).
@@ -1104,6 +1106,8 @@ private:
         // The ground and the passability footprints stamp on it.
         ground,
         path_queue,
+        // Group orders' formations on land on their way.
+        land_formations,
         projectiles,
         // The tick's deaths, impacts, shots, hardpoint deaths, and spins.
         events,
@@ -1533,6 +1537,7 @@ private:
         visit(SimData::squad_members, squad_members_);
         visit(SimData::ground, ground_);
         visit(SimData::path_queue, path_queue_);
+        visit(SimData::land_formations, land_formations_);
         visit(SimData::projectiles, projectiles_);
         visit(SimData::events, events_);
         visit(SimData::combat_random, combat_random_);
@@ -1773,6 +1778,31 @@ private:
     GroundState ground_;
     Avoidance avoidance_;
     PathQueue path_queue_;
+    // A group order's formation on land on its way (the owner's design, docs/pathfinding-design.md,
+    // group movement as a whole, step B): the route its anchor travels (the leader's, from where the
+    // leader stood to its slot), how far along it the anchor is, the group's speed, and its members
+    // in priority order with their offsets (forward, right) from the anchor in the formation's frame
+    // and the slot each was last sent to (follow_slot); and the units of other orders it is passing
+    // (its members move freely, along its route, until they are behind it: the owner, 2026-11-19).
+    struct LandFormation
+    {
+        bool operator==(const LandFormation&) const = default;
+        std::uint32_t order{};
+        std::vector<PathPoint> route;
+        float travelled{};
+        float speed{};
+        std::vector<EntityId> members;
+        std::vector<Vector2> offsets;
+        std::vector<std::optional<Vector3>> sent;
+        std::vector<EntityId> passing;
+    };
+    struct LandFormations
+    {
+        bool operator==(const LandFormations&) const = default;
+        static constexpr SimData data = SimData::land_formations;
+        std::vector<LandFormation> list;
+    };
+    LandFormations land_formations_;
     ProjectileState projectiles_;
     TickEvents events_;
     SlotTable slots_;
@@ -1970,8 +2000,8 @@ private:
     {
     public:
         using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<ComponentPool<FlightColumns>>,
-                                Read<ComponentPool<CombatColumns>>, Write<ComponentPool<GroupColumns>>, Read<GroundState>, Write<Avoidance>, Write<PathQueue>, Read<SlotTable>, Read<Clock>,
-                                Read<ComponentPool<SquadColumns>>, Read<MotionColumns>, Read<ComponentPool<CrushColumns>>, Read<Rules>, Read<ComponentPool<SquadMemberColumns>>,
+                                Read<ComponentPool<CombatColumns>>, Write<ComponentPool<GroupColumns>>, Read<GroundState>, Write<Avoidance>, Write<PathQueue>, Write<LandFormations>, Read<SlotTable>,
+                                Read<Clock>, Read<ComponentPool<SquadColumns>>, Read<MotionColumns>, Read<ComponentPool<CrushColumns>>, Read<Rules>, Read<ComponentPool<SquadMemberColumns>>,
                                 Read<ComponentPool<TurnClipColumns>>>;
         // Route requests under the search budget, remaining routes, group cohesion, and space and
         // ground avoidance, before movement.
@@ -2140,9 +2170,10 @@ private:
     class BehaviorSystem
     {
     public:
-        using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Write<ComponentPool<CombatColumns>>,
-                                Write<OrderColumns>, Write<SteeringColumns>, Write<ComponentPool<GroupColumns>>, Write<ComponentPool<WalkClipColumns>>, Read<ComponentPool<FlightColumns>>,
-                                Read<GroundState>, Write<PathQueue>, Read<SlotTable>, Read<Rules>, Read<Clock>, Write<ComponentPool<SquadColumns>>, Write<ComponentPool<SquadMemberColumns>>>;
+        using View =
+            SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Write<ComponentPool<CombatColumns>>, Write<OrderColumns>,
+                       Write<SteeringColumns>, Write<ComponentPool<GroupColumns>>, Write<ComponentPool<WalkClipColumns>>, Read<ComponentPool<FlightColumns>>, Read<GroundState>, Write<PathQueue>,
+                       Read<SlotTable>, Read<Rules>, Read<Clock>, Write<ComponentPool<SquadColumns>>, Write<ComponentPool<SquadMemberColumns>>, Write<LandFormations>>;
         // Every entity's steering intent for this tick, from its order, stance, and target; route
         // requests for new destinations.
         void run(const View& view, float dt);
@@ -2165,6 +2196,15 @@ private:
         // behind and, under a standing order, while its members fight.
         void pursue_squad_target(const View& view, std::size_t index);
         void follow_squads(const View& view);
+        // Moves each land formation's anchor along its route at the group's speed (held while the
+        // leader is more than formation_leash_radii of its radii behind it) and sends its members to
+        // their slots on it (follow_slot); a member away from its slot drives at its own top speed
+        // to catch up, one in it at the group's (the owner, 2026-11-18). While it passes a unit of
+        // another order that blocked one of its members, each member heads for the point on the route
+        // at its own distance behind the anchor instead of its slot, until that unit is behind the
+        // formation's last member (the owner, 2026-11-19: free movement until passed). A formation
+        // ends when its anchor arrived and its members did, or none is left under its order.
+        void follow_formations(const View& view, float dt);
         // Formation frames (simulation_frames.cpp): each frame advances along its route unless a
         // member is far behind its slot, narrows its slots to the ground's clearance, and sends its
         // members to their slots; a lagger that came no closer for the wait limit leaves, and an

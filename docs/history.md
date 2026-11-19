@@ -1204,3 +1204,18 @@ rewritten to describe the current state; the source document is noted in bracket
   member not in its slot catches up at its own top speed. Hashes: reference 0x25dff7f5de654a0b ->
   0x0ac40ac399fbe3f1, large Utapau 0x3d6f30b055a97bd9 -> 0xbcae1b0b31723485, AT-ATs
   0x86d689dc50a995ca -> 0x6f28bde6a042d960; space unchanged.
+- Step B, first slice, committed as a checkpoint: a group order makes a moving formation
+  (LandFormation: an anchor on the leader's route at the group's speed, held while the leader lags;
+  slots turning with the route; the owner's catch-up rule; members re-sent when their slot moves or
+  once a second when stopped short of it); the contact test refuses only a step that deepens an
+  overlap; the owner's rule for passing a unit of another order (free movement until it is behind
+  the last member) is built and does not work yet. The headless battle's auto-move gave all units,
+  both sides, one order (one formation of 260 units); it now gives one order per owner. A scenario
+  of ten tanks passing three idle ones is added; scenarios wait for formations on their way
+  (Stats::land_formations). A group on its own now works (passage formation 5 frozen to 0, six T2-Bs
+  2 to 0); formations meeting other units do not. The owner chose to replace the unit layer with
+  ORCA with priorities next. Hashes (the per-owner auto-move and the formation state): reference
+  0x0ac40ac399fbe3f1 -> 0x47dcff53df7dff04, large Utapau 0xbcae1b0b31723485 -> 0xb2cd15d9aad40664,
+  Kuat capital 0xd44c596127f887e0 -> 0x1f32afd55ff1ac69, AT-ATs 0x6f28bde6a042d960 ->
+  0x164453ea7bc193ed; Kuat fighters unchanged. Leftover: the sandbox's --auto-move still gives one
+  order to every mobile unit.

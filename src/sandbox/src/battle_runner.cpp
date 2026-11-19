@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <chrono>
 #include <iostream>
+#include <map>
 #include <numeric>
 #include <optional>
 #include <string>
@@ -139,21 +140,21 @@ BattleRun run_once(const BattleMapAsset& asset, const std::string& map_name, con
         }
         else if (options.auto_move && !auto_move_sent && tick >= 2)
         {
-            // Once the spawns have applied: every mobile unit (a squad by its team), in id order, moves
-            // to the center.
+            // Once the spawns have applied: every mobile unit (a squad by its team) moves to the center,
+            // one order per owner (as each player orders its own units), in owner and id order.
             auto_move_sent = true;
-            std::vector<EntityId> movers;
+            std::map<std::uint32_t, std::vector<EntityId>> movers;
             for (const auto& entity : world.snapshot().entities)
             {
                 if (entity.max_speed > 0.0F && !entity.squad.valid())
                 {
-                    movers.push_back(entity.id);
+                    movers[entity.owner].push_back(entity.id);
                 }
             }
-            std::ranges::sort(movers);
-            if (!movers.empty())
+            for (auto& [owner, ids] : movers)
             {
-                if (const auto submitted = battle.submit({.order = BattleOrder::move, .entities = std::move(movers), .point = center}); !submitted)
+                std::ranges::sort(ids);
+                if (const auto submitted = battle.submit({.order = BattleOrder::move, .entities = std::move(ids), .point = center}); !submitted)
                 {
                     log_warning("battle", submitted.error());
                 }

@@ -175,6 +175,29 @@ proposal models the group:
   fine as long as its behavior is correct and it performs. The order of work: A route cost (built),
   B the moving formation, C folding into a trail in narrow places, D alignment and arrival.
 
+Step B, first slice (a checkpoint, 2026-11-19): the group layer is built. A group order makes a
+`LandFormation`: its anchor travels the leader's route at the slowest member's speed and holds while
+the leader is more than `formation_leash_radii` of its radii behind; members follow slots that turn
+with the route (`follow_formations`), at their own top speed while away from their slot and at the
+group's within `formation_in_slot_radii` of it (the owner's catch-up rule); a member is sent again
+when its slot moved, or once a `formation_retry_seconds` while it stands short of a slot that did not
+move. The contact test refuses only a step that makes an overlap deeper (a rectangle that turned may
+overlap a neighbor; the old test then refused every step leaning toward it, the freeze of the
+baseline). The owner's rule for passing units (2026-11-19): a formation that a unit of another order
+blocks moves freely until that unit is behind its last member; members then head for the route
+beyond the unit, in the formation's front-to-back order. For two formations meeting, the owner's
+rule is that every unit goes through the other's gaps (a zipper: both spread, one shifts by a pitch;
+not built).
+
+Measured (group-movement-research.md): a group on its own works (the passage formation and groups
+around their destination: 0 frozen); a formation meeting other units does not (crossing groups and
+passing standing units stay stuck; two armies sent to one point fight for the same slots). The unit
+layer (stop at contact, wait or search a way around, retry) fails wherever units interact: its
+searches plan a still picture of moving units, slots and route points lie under units, and it has
+only go and stop. Next (the owner's decision, 2026-11-19): replace the unit layer with ORCA, the
+avoidance effort shared by priority (a higher priority takes less of it), the chosen velocity
+smoothed against wobble, and the hard no-overlap rule kept as a last check; the group layer stays.
+
 
 ## 1. Why
 

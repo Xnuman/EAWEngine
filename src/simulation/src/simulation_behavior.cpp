@@ -282,6 +282,164 @@ void SimulationWorld::BehaviorSystem::run(const View& view, const float dt)
         }
     }
     follow_squads(view);
+    follow_formations(view, dt);
+}
+
+void SimulationWorld::BehaviorSystem::follow_formations(const View& view, const float dt)
+{
+    auto& placement = view.get<PlacementColumns>();
+    auto& locomotor = view.get<LocomotorColumns>();
+    auto& route = view.get<RouteColumns>();
+    auto& formations = view.get<LandFormations>().list;
+    const auto retry_ticks = std::max<std::uint64_t>(1, ticks_for(view, formation_retry_seconds));
+    // The anchor's place and heading `travelled` along a route (its last leg's heading at the end).
+    const auto anchor_at = [](const std::vector<PathPoint>& points, const float travelled)
+    {
+        auto left = travelled;
+        PathPoint at = points.front();
+        auto heading = 0.0F;
+        for (std::size_t point = 1; point < points.size(); ++point)
+        {
+            const auto leg = points[point] - points[point - 1];
+            const auto length = eaw::length(leg);
+            if (length <= 0.0F)
+            {
+                continue;
+            }
+            heading = std::atan2(leg.y, leg.x);
+            if (left <= length)
+            {
+                at = points[point - 1] + leg * (left / length);
+                return std::pair{at, heading};
+            }
+            left -= length;
+            at = points[point];
+        }
+        return std::pair{at, heading};
+    };
+    // How far along a route the point nearest `point` lies.
+    const auto progress_of = [](const std::vector<PathPoint>& points, const PathPoint point)
+    {
+        auto best = std::numeric_limits<float>::max();
+        auto progress = 0.0F;
+        auto along = 0.0F;
+        for (std::size_t index = 1; index < points.size(); ++index)
+        {
+            const auto leg = points[index] - points[index - 1];
+            const auto length = eaw::length(leg);
+            const auto t = length > 0.0F ? std::clamp(dot(point - points[index - 1], leg) / (length * length), 0.0F, 1.0F) : 0.0F;
+            const auto distance = eaw::length(point - (points[index - 1] + leg * t));
+            if (distance < best)
+            {
+                best = distance;
+                progress = along + t * length;
+            }
+            along += length;
+        }
+        return progress;
+    };
+    std::erase_if(formations,
+                  [&](LandFormation& formation)
+                  {
+                      auto total = 0.0F;
+                      for (std::size_t point = 1; point < formation.route.size(); ++point)
+                      {
+                          total += length(formation.route[point] - formation.route[point - 1]);
+                      }
+                      // The anchor moves on unless the leader (still under the order) lags behind it.
+                      const auto leader = dense_index(view, formation.members.front());
+                      const bool leading = leader && route.orders[*leader] == formation.order;
+                      const auto here = anchor_at(formation.route, formation.travelled).first;
+                      const bool lags = leading && length(PathPoint{placement.positions[*leader].x, placement.positions[*leader].y} - here) > formation_leash_radii * placement.radii[*leader];
+                      if (!lags)
+                      {
+                          formation.travelled = std::min(total, formation.travelled + formation.speed * dt);
+                      }
+                      const auto [anchor, facing] = anchor_at(formation.route, formation.travelled);
+                      const PathPoint forward{std::cos(facing), std::sin(facing)};
+                      const PathPoint right{forward.y, -forward.x};
+                      // Units of other orders that blocked a member join the passing list; one leaves it
+                      // when it is gone or behind the formation's last member along the route.
+                      auto rearmost = std::numeric_limits<float>::max();
+                      for (const auto id : formation.members)
+                      {
+                          const auto dense = dense_index(view, id);
+                          if (!dense || route.orders[*dense] != formation.order)
+                          {
+                              continue;
+                          }
+                          rearmost = std::min(rearmost, progress_of(formation.route, {placement.positions[*dense].x, placement.positions[*dense].y}));
+                          const auto blocker = dense_index(view, route.blockers[*dense]);
+                          if (blocker && route.orders[*blocker] != formation.order && std::ranges::find(formation.passing, route.blockers[*dense]) == formation.passing.end())
+                          {
+                              formation.passing.push_back(route.blockers[*dense]);
+                          }
+                      }
+                      std::erase_if(formation.passing,
+                                    [&](const EntityId id)
+                                    {
+                                        const auto dense = dense_index(view, id);
+                                        return !dense || progress_of(formation.route, {placement.positions[*dense].x, placement.positions[*dense].y}) + placement.radii[*dense] < rearmost;
+                                    });
+                      const bool free = !formation.passing.empty();
+                      // Free: members head for the route beyond the furthest unit passed, in the
+                      // formation's front-to-back order, the front row its depth beyond it (the route
+                      // was planned without units, so its points beside or under them are covered).
+                      auto beyond = formation.travelled;
+                      if (free)
+                      {
+                          auto depth = 0.0F;
+                          for (const auto& offset : formation.offsets)
+                          {
+                              depth = std::max(depth, -offset.x);
+                          }
+                          for (const auto id : formation.passing)
+                          {
+                              const auto dense = *dense_index(view, id);
+                              beyond = std::max(beyond, progress_of(formation.route, {placement.positions[dense].x, placement.positions[dense].y}) + placement.radii[dense] + depth);
+                          }
+                          beyond = std::min(beyond, total);
+                      }
+                      bool any = false;
+                      bool settled = formation.travelled >= total;
+                      for (std::size_t member = 0; member < formation.members.size(); ++member)
+                      {
+                          const auto dense = dense_index(view, formation.members[member]);
+                          if (!dense || route.orders[*dense] != formation.order)
+                          {
+                              continue;
+                          }
+                          any = true;
+                          const auto& offset = formation.offsets[member];
+                          const auto& at = placement.positions[*dense];
+                          // Free: on the route at its distance behind the anchor; else its slot.
+                          const auto point = free ? anchor_at(formation.route, std::clamp(beyond + offset.x, 0.0F, total)).first : anchor + forward * offset.x + right * offset.y;
+                          Vector3 slot{point.x, point.y, at.z};
+                          // A slot on ground the unit cannot stand on: the anchor instead (as squads do).
+                          if (!stands_at(view, *dense, slot.x, slot.y))
+                          {
+                              slot = {anchor.x, anchor.y, at.z};
+                          }
+                          // Sent to its slot when the slot moved since; a member that ended its move short
+                          // of a slot that did not move tries again once every formation_retry_seconds
+                          // (every tick, a member blocked by a unit searched a way around every tick;
+                          // never, a stopped leader held its formation's anchor for good).
+                          const auto away = std::hypot(slot.x - at.x, slot.y - at.y);
+                          auto& sent = formation.sent[member];
+                          const auto reslot = route.paths[*dense].empty() ? slot_reslot_distance : slot_detour_distance;
+                          const bool retry = !route.move_targets[*dense] && route.pending[*dense] == 0 && (view.get<Clock>().tick + member) % retry_ticks == 0;
+                          if (away > slot_follow_tolerance && (!sent || std::hypot(sent->x - slot.x, sent->y - slot.y) > reslot || retry))
+                          {
+                              route.move_targets[*dense] = slot;
+                              route.paths[*dense].clear();
+                              route.pending[*dense] = 0;
+                              sent = slot;
+                          }
+                          locomotor.speed_limits[*dense] = away <= formation_in_slot_radii * placement.radii[*dense] ? formation.speed : 0.0F;
+                          settled = settled && !route.move_targets[*dense];
+                      }
+                      return !any || settled;
+                  });
 }
 
 void SimulationWorld::apply_standing_order(const SimCommand& command)

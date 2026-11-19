@@ -172,6 +172,15 @@ Vector3 SimulationWorld::MovementSystem::keep_apart(const View& view, const std:
         to_x = there.x - here.x;
         to_y = there.y - here.y;
         apart = std::hypot(to_x, to_y);
+        if (land)
+        {
+            // Deeper means more overlap than before the step: a unit already inside another's room (a
+            // rectangle that turned swings its corners out) may still move along it or away from it.
+            // The tolerance (world units) keeps rounding from counting as deeper; an engine choice.
+            constexpr float deeper_tolerance = 1.0e-3F;
+            const auto overlap_before = std::max(0.0F, agent_room(view, index, here, other, there) + margin - apart);
+            return room - std::sqrt(apart_squared) > overlap_before + deeper_tolerance;
+        }
         return apart > 0.0F && candidate.x * to_x + candidate.y * to_y > 0.0F;
     };
     if (land)

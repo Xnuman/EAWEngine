@@ -53,6 +53,14 @@ inline constexpr float blocker_moving_fraction = 0.05F;
 // unit of its order still on its way (the owner, 2026-11-18: in a squeeze the lower priority waits
 // early, so the higher one passes without touching it). An engine choice.
 inline constexpr float priority_wait_margin = 0.5F;
+// A formation's anchor waits while its leader is more than this many of its radii from it, and a
+// member within this many of its radii of its slot counts as in it (keeps the group's speed).
+// Engine choices.
+inline constexpr float formation_leash_radii = 4.0F;
+inline constexpr float formation_in_slot_radii = 1.0F;
+// A formation member that ended its move short of a slot that did not move tries again this often.
+// An engine choice.
+inline constexpr float formation_retry_seconds = 1.0F;
 // Route tracing keeps this many records per unit (debug drawing).
 inline constexpr std::size_t route_trace_depth = 8;
 // Route searches run this many at a time on the job system (each with its own search scratch, about

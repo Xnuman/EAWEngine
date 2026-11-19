@@ -368,3 +368,18 @@ The group order's first build (the owner's formation rules with priorities, 2026
 | Utapau, four T4-Bs, auto-move | 60 s | 3,241 | 1 | one unit frozen |
 | Utapau AT-ATs | 0.47 ms | 3,597 | 21 | one unit frozen |
 | Large Utapau | 2.6 ms | 13,451 | 454 | |
+
+Step B's first slice (the moving formation, the overlap-growth contact test, the retry, free
+passing; headless battles give one order per owner since this change):
+
+| Scenario or battle | Time or tick | Ways around | Frozen | Note |
+| --- | --- | --- | --- | --- |
+| Ten tanks through a gap (formation) | 5.8 s | 8 | 0 | baseline: 5 frozen |
+| Head-on pair | 5.6 s | 8 | 0 | |
+| Three converging | 7.8 s | 13 | 0 | 15 reversals (baseline 4) |
+| Ten tanks past three idle tanks (new) | 60 s, 3 left moving | 1,684 | 3 | free passing fails |
+| Two groups of five crossing | 60 s, 2 left moving | 25 | 0 | 478 ended at units |
+| Utapau, six T2-Bs, auto-move | 0.38 ms | 24 | 0 | baseline: 2 frozen |
+| Utapau, ten T2-Bs, auto-move | 0.45 ms | 72 | 0 | |
+| Utapau AT-ATs (two orders) | 0.53 ms | 3,588 | 1 | |
+| Large Utapau (two orders, one point) | 3.17 ms | 28,838 | 50 | two armies' slots overlap |

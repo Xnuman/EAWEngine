@@ -397,6 +397,7 @@ SimulationWorld::Stats SimulationWorld::stats() const noexcept
             .partial_paths = navigation_.partial_paths,
             .path_expansions = navigation_.path_expansions,
             .queued_paths = path_queue_.requests.size(),
+            .land_formations = land_formations_.list.size(),
             .shared_routes = navigation_.shared_routes,
             .route_changes = navigation_.route_changes,
             .shots_fired = combat_counters_.shots_fired,
@@ -702,6 +703,26 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
         for (const auto length : request.lengths)
         {
             hasher.add(length);
+        }
+    }
+    for (const auto& formation : land_formations_.list)
+    {
+        hasher.add(formation.order);
+        hasher.add(formation.travelled);
+        hasher.add(formation.speed);
+        hasher.add(formation.route.size());
+        for (const auto& point : formation.route)
+        {
+            hasher.add(point);
+        }
+        for (std::size_t member = 0; member < formation.members.size(); ++member)
+        {
+            hasher.add(formation.members[member]);
+            hasher.add(formation.offsets[member]);
+        }
+        for (const auto passing : formation.passing)
+        {
+            hasher.add(passing);
         }
     }
     hasher.subject = StateSubject::projectiles;

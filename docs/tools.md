@@ -232,7 +232,7 @@ frame runs, without rendering. It is the determinism check and the simulation be
 
 | Option | Effect |
 | --- | --- |
-| `--map <ted>`, `--spawn`, `--auto-move`, `--no-scripts`, `--game`, `--mod` | As in the sandbox; `--map` or `--replay` is required. |
+| `--map <ted>`, `--spawn`, `--auto-move`, `--no-scripts`, `--game`, `--mod` | As in the sandbox; `--map` or `--replay` is required. `--auto-move` gives one order per owner. |
 | `--ticks <n>` | Ticks to run (1 to 100,000,000; default 6000, or the replayed log's end). |
 | `--tick-rate <hz>` | Ticks per second (1 to 1000, default 60; a replay runs at its recording's rate). |
 | `--workers <n>` | Job system workers (0 to 256; default the hardware threads less one; 0 runs the jobs on the battle's own thread). |
@@ -312,8 +312,9 @@ How smoothly ground units move is measured in two places ([group-movement-resear
 - `EAWEngine movement-scenarios` needs no game installation. On generated flat ground (80 x 80
   cells, 10 units apart) it runs, with tanks roughly like a T2-B (an approximation, not converted XML
   values), ten tanks through a one-tank gap in a wall as a formation and as a group move, a head-on
-  pair, three tanks converging on one point, and two groups of five crossing. Each runs until every
-  tank stopped, or 60 seconds, and prints its time, the measurements above, blocked moves, and the
+  pair, three tanks converging on one point, ten tanks as a group past three idle tanks in their way,
+  and two groups of five crossing. Each runs until every tank stopped and no formation is still on
+  its way, or 60 seconds, and prints its time, the measurements above, blocked moves, and the
   state hash. The runs repeat exactly, so a movement change is compared line by line with the
   baseline in [group-movement-research.md](group-movement-research.md#baseline).
 

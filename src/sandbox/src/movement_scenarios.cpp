@@ -126,6 +126,17 @@ std::vector<Scenario> scenarios()
                  world.submit({.kind = SimCommandKind::move, .entities = {spawn_tank(world, recipe, from, angle + pi)}, .target = to});
              }
          }},
+        {"passing standing units", false,
+         [](SimulationWorld& world, const RecipeId recipe)
+         {
+             // Three idle tanks of no order stand across the way of a group of ten (the owner's rule:
+             // a formation moves freely past a unit until it is behind it).
+             for (const float y : {350.0F, 400.0F, 450.0F})
+             {
+                 (void)spawn_tank(world, recipe, {450.0F, y, 0.0F}, half_pi);
+             }
+             world.submit({.kind = SimCommandKind::group_move, .entities = spawn_block(world, recipe, {250.0F, 400.0F, 0.0F}, 10, 0.0F), .target = {650.0F, 400.0F, 0.0F}});
+         }},
         {"crossing groups", false,
          [](SimulationWorld& world, const RecipeId recipe)
          {
@@ -165,7 +176,9 @@ int run_movement_scenarios()
             {
                 moving += entity.moving ? 1U : 0U;
             }
-            if (moving == 0 && ticks > 0)
+            // Done when nothing moves and no formation is still on its way (between its members'
+            // tries a formation may have none moving).
+            if (moving == 0 && world.stats().land_formations == 0 && ticks > 0)
             {
                 ++ticks;
                 break;
