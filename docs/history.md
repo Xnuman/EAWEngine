@@ -1219,3 +1219,20 @@ rewritten to describe the current state; the source document is noted in bracket
   Kuat capital 0xd44c596127f887e0 -> 0x1f32afd55ff1ac69, AT-ATs 0x6f28bde6a042d960 ->
   0x164453ea7bc193ed; Kuat fighters unchanged. Leftover: the sandbox's --auto-move still gives one
   order to every mobile unit.
+
+## 2026-11-20
+
+- The reflection library `rti` and the rest of the `ecs` library, ported from the owner's Singe
+  engine at their request, reflection as the base of type registration: type names from the
+  compiler's signature, a registry of type descriptions (properties with metadata, constructors,
+  parents, vector element access), `Variant` (owning or referring), ordering by before/after lists
+  into turns, and `EAW_RTI_REGISTRATION` static blocks kept by whole-archive linking (the owner's
+  choice). The ecs part: generational entities in a slot table, archetypes of 16 KiB chunks with a
+  column per component, commands applied in process() in the order entities were first changed,
+  iterate, access, and init views with Singe's modifiers, systems with their views and before/after
+  order, singletons, and a world snapshot of reflected copies. Changes from Singe for determinism
+  and the project's rules: slot order and creation order instead of hash maps, no exceptions, no
+  base class for components or singletons, components up to 128. Libraries only, no tests (the
+  owner's scope); a temporary program built and ran one world (entities, systems in turns, a
+  snapshot applied to a second world) and was removed. The simulation does not use it yet; hashes
+  unchanged.

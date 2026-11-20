@@ -90,6 +90,8 @@ Every library and executable has its own directory and `CMakeLists.txt`.
 | --- | --- | --- |
 | `src/math` | `eaw_math` | Vectors, quaternions, matrices, transforms: plain scalar float code, row-vector convention, no dependencies. The only math types in the project. |
 | `src/core` | `eaw_core` | The foundation (`include/core/`): error handling (`Status`, `Result`, fatal errors), the log, string utilities, whole-file I/O, and CRC-32. No graphics, platform, or file-format code. |
+| `src/rti` | `rti` | Reflection (after Singe's rti): type ids by name, type descriptions with properties, constructors, metadata, and parents, `Variant`, before/after ordering into turns, and `EAW_RTI_REGISTRATION` blocks. A library holding such blocks is linked with `$<LINK_LIBRARY:WHOLE_ARCHIVE,...>`. Depends only on `eaw_core`. |
+| `src/ecs` | `ecs` | Entities, components, archetypes in chunks, views (iterate, access, init), systems in turns, singletons, worlds and snapshots (after Singe's ecs), types registered through `rti`. Not yet used by the simulation. |
 | `src/jobs` | `eaw_jobs` | The job system ([docs/ecs-design.md](docs/ecs-design.md), section 7): jobs on fibers over worker threads plus the creating thread, counters as the only synchronization, lock-free queues, no OS mutexes; deterministic `parallel_for` (chunks from the count and a grain, never the worker count). Created by an executable and passed explicitly. Depends only on `eaw_core`. |
 | `src/vfs` | `eaw_vfs` | The layered virtual file system (loose files and MEG archives in the original's precedence, mods above game data), virtual-path normalization, and installation discovery. Depends only on `eaw_core`. |
 | `src/assets` | `eaw_assets` | The game asset layer, shared by the engine and the tools: the XML object database and schema, game object and spawn catalogs, map object layout, legacy material and ALO naming rules, the engine-native `Model`, `Skeleton`, `Animation`, and `ParticleEffect` with their loaders, pose sampling, the particle fidelity rules, and the `ResourceManager` with `AssetCache` (typed loading and caching with hot-reload dependencies). Depends on the render contract for vertex data. Above formats and the VFS; no graphics API. |
@@ -416,7 +418,10 @@ the game asset layer turns that data into the engine-native resource the engine 
   - the crash handlers' settings (`platform/crash_handler`);
   - the Tracy profiler client in profiling builds (`core/profile.hpp`);
   - the texture identity counter that keeps decoded textures distinct across scene builds
-    (`scene_materials`).
+    (`scene_materials`);
+  - the reflection registries: type names and type descriptions (`rti/type`, `rti/type_info`),
+    filled by `EAW_RTI_REGISTRATION` blocks at static initialization;
+  - the ECS component table (`ecs/component`), component ids in first-use order.
 
   A new one is added to this list, never introduced silently.
 - Strong enums and types where confusion is plausible; checked conversions at binary-format and API
