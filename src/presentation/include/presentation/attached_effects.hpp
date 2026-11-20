@@ -6,11 +6,12 @@
 
 #include "render/visual_frame.hpp"
 #include "simulation/simulation.hpp"
-#include "simulation/simulation_types.hpp"
 #include "battle/object_types.hpp"
 #include "presentation/entity_look.hpp"
 #include "presentation/particle_effects.hpp"
 #include "presentation/visual_rig.hpp"
+
+#include "junk/entity_id.hpp"
 
 #include <cstdint>
 #include <span>

@@ -129,9 +129,13 @@ void SimulationWorld::MovementSystem::move_over_ground(const View& view, const s
     // tick's movement carries on past reached waypoints, so corners do not slow a unit down.
     auto remaining = 0.0F;
     bool driven = false;
-    // Every waypoint is reached in turn: nothing pushes a unit off its route (movement-redesign
-    // branch), and a way around a unit (RouteColumns::blockers) has waypoints the ground alone would
-    // let it skip.
+    // Every waypoint is reached in turn, and a way around a unit (RouteColumns::blockers) has waypoints
+    // the ground alone would let it skip. Avoidance (plan_ground_avoidance) may take it off the way
+    // for a tick; it plans again when its way back no longer fits the ground.
+    if (const auto& avoid = route.avoid_velocities[index]; avoid && avoid_step(view, index, *avoid, dt))
+    {
+        return;
+    }
     while (target)
     {
         const auto waypoint = path.empty() ? *target : path.back();

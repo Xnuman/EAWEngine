@@ -1,4 +1,4 @@
-#include "simulation/formation.hpp"
+#include "navigation/formation.hpp"
 
 #include "math/scalar.hpp"
 

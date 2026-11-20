@@ -1,4 +1,4 @@
-#include "simulation/clearance.hpp"
+#include "navigation/clearance.hpp"
 
 #include <algorithm>
 #include <cmath>

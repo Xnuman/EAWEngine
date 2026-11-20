@@ -4,7 +4,7 @@
 // and placement under the cursor.
 
 #include "render/visual_camera.hpp"
-#include "simulation/ground_map.hpp"
+#include "navigation/ground_map.hpp"
 
 #include <cstdint>
 #include <optional>

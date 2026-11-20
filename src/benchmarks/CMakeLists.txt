@@ -29,4 +29,4 @@ target_sources(EAWBenchmarks
     ${EAW_BENCHMARKS_SOURCES}
 )
 
-target_link_libraries(EAWBenchmarks PRIVATE eaw_jobs eaw_presentation eaw_simulation)
+target_link_libraries(EAWBenchmarks PRIVATE eaw_jobs eaw_presentation simulation)

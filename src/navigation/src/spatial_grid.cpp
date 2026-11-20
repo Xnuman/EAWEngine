@@ -1,6 +1,8 @@
-#include "simulation/spatial_grid.hpp"
+#include "navigation/spatial_grid.hpp"
 
 #include "core/status.hpp"
+
+#include "math/vector.hpp"
 
 #include <algorithm>
 #include <cmath>

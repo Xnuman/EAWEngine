@@ -3,6 +3,7 @@
 
 #include "jobs/job_system.hpp"
 #include "simulation/formation.hpp"
+#include "simulation/orca.hpp"
 
 #include <algorithm>
 #include <array>
@@ -835,6 +836,40 @@ void test_touching_unit_moves_along()
     require(at.x > 550.0F, "a unit touching another beside it must drive on along it; it stands at " + std::to_string(at.x) + ", " + std::to_string(at.y));
 }
 
+void test_orca()
+{
+    const auto alone = eaw::orca_velocity({}, 5.0F, {10.0F, 0.0F});
+    require(std::fabs(alone.x - 5.0F) < 1.0e-5F && alone.y == 0.0F, "without neighbours ORCA must keep the preferred direction at top speed");
+
+    eaw::Vector2 first{0.0F, 0.0F};
+    eaw::Vector2 second{20.0F, 0.1F};
+    eaw::Vector2 first_velocity{2.0F, 0.0F};
+    eaw::Vector2 second_velocity{-2.0F, 0.0F};
+    constexpr float reach = 2.0F;
+    constexpr float step = 0.1F;
+    float closest = 100.0F;
+    for (int tick = 0; tick < 200; ++tick)
+    {
+        const std::array first_lines{eaw::orca_line(second - first, first_velocity - second_velocity, reach, 2.0F, step, 0.5F, first_velocity)};
+        const std::array second_lines{eaw::orca_line(first - second, second_velocity - first_velocity, reach, 2.0F, step, 0.5F, second_velocity)};
+        first_velocity = eaw::orca_velocity(first_lines, 2.0F, {2.0F, 0.0F});
+        second_velocity = eaw::orca_velocity(second_lines, 2.0F, {-2.0F, 0.0F});
+        first += first_velocity * step;
+        second += second_velocity * step;
+        closest = std::min(closest, eaw::length(second - first));
+    }
+    require(closest >= reach * 0.99F && first.x > 30.0F && second.x < -10.0F, "units meeting head-on must pass each other without touching");
+
+    std::vector<eaw::OrcaLine> hemmed;
+    for (int side = 0; side < 6; ++side)
+    {
+        const auto angle = static_cast<float>(side) * std::numbers::pi_v<float> / 3.0F;
+        hemmed.push_back(eaw::orca_line({std::cos(angle) * 1.9F, std::sin(angle) * 1.9F}, {}, reach, 2.0F, step, 1.0F, {}));
+    }
+    const auto squeezed = eaw::orca_velocity(hemmed, 3.0F, {3.0F, 0.0F});
+    require(eaw::is_finite(squeezed) && eaw::length(squeezed) <= 3.0F + 1.0e-4F, "a hemmed-in unit must still get a velocity within its top speed");
+}
+
 void test_path_budget()
 {
     // A 200x200 field with a wall across x = 100 open only at rows 180-185, so every route detours.
@@ -1577,6 +1612,7 @@ const ModuleRegistrar registrar("navigation", {
                                                   {"test_parallel_avoidance", &test_parallel_avoidance},
                                                   {"test_ground_footprints", &test_ground_footprints},
                                                   {"test_path_budget", &test_path_budget},
+                                                  {"test_orca", &test_orca},
                                                   {"test_route_tracing_chunks", &test_route_tracing_chunks},
                                                   {"test_footprints_through_gap", &test_footprints_through_gap},
                                                   {"test_destination_from_last_leg", &test_destination_from_last_leg},

@@ -1,4 +1,4 @@
-#include "simulation/ground_map.hpp"
+#include "navigation/ground_map.hpp"
 
 #include "core/string_utils.hpp"
 

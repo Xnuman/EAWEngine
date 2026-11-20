@@ -4,9 +4,9 @@
 // fully ordered open list make the same request on the same ground return the same waypoints.
 
 #include "math/vector.hpp"
-#include "simulation/chunk_graph.hpp"
-#include "simulation/clearance.hpp"
-#include "simulation/ground_map.hpp"
+#include "navigation/chunk_graph.hpp"
+#include "navigation/clearance.hpp"
+#include "navigation/ground_map.hpp"
 
 #include <cstdint>
 #include <deque>

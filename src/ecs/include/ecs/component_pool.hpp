@@ -22,7 +22,8 @@
 
 namespace eaw {
 
-template <class Columns> class ComponentPool final
+template <typename Columns>
+class ComponentPool final
 {
 public:
     using ColumnsType = Columns;
@@ -39,24 +40,28 @@ public:
 
     // The member's value in `column` (a column of Columns), or nullptr when the entity of `slot`
     // lacks the component.
-    template <class Value> [[nodiscard]] const Value* find(const std::uint32_t slot, std::vector<Value> Columns::* column) const noexcept
+    template <typename Value>
+    [[nodiscard]] const Value* find(const std::uint32_t slot, std::vector<Value> Columns::* column) const noexcept
     {
         const auto row = find(slot);
         return row ? &(columns.*column)[*row] : nullptr;
     }
-    template <class Value> [[nodiscard]] Value* find(const std::uint32_t slot, std::vector<Value> Columns::* column) noexcept
+    template <typename Value>
+    [[nodiscard]] Value* find(const std::uint32_t slot, std::vector<Value> Columns::* column) noexcept
     {
         const auto row = find(slot);
         return row ? &(columns.*column)[*row] : nullptr;
     }
     // The same for a member of the pool (asserts that the entity has the component).
-    template <class Value> [[nodiscard]] const Value& get(const std::uint32_t slot, std::vector<Value> Columns::* column) const
+    template <typename Value>
+    [[nodiscard]] const Value& get(const std::uint32_t slot, std::vector<Value> Columns::* column) const
     {
         const auto* value = find(slot, column);
         EAW_ASSERT_MSG(value != nullptr, "the entity lacks the pooled component it is read for");
         return *value;
     }
-    template <class Value> [[nodiscard]] Value& get(const std::uint32_t slot, std::vector<Value> Columns::* column)
+    template <typename Value>
+    [[nodiscard]] Value& get(const std::uint32_t slot, std::vector<Value> Columns::* column)
     {
         auto* value = find(slot, column);
         EAW_ASSERT_MSG(value != nullptr, "the entity lacks the pooled component it is read for");

@@ -13,21 +13,25 @@
 
 namespace eaw {
 
-template <class T> struct Read
+template <typename T>
+struct Read
 {
     using Type = T;
     static constexpr bool writes = false;
 };
 
-template <class T> struct Write
+template <typename T>
+struct Write
 {
     using Type = T;
     static constexpr bool writes = true;
 };
 
-template <class... Accesses> class SystemView final
+template <typename... Accesses>
+class SystemView final
 {
-    template <class Access> using Pointer = std::conditional_t<Access::writes, typename Access::Type*, const typename Access::Type*>;
+    template <typename Access>
+    using Pointer = std::conditional_t<Access::writes, typename Access::Type*, const typename Access::Type*>;
 
 public:
     using AccessList = std::tuple<Accesses...>;
@@ -35,14 +39,16 @@ public:
     explicit SystemView(Pointer<Accesses>... data) noexcept : data_{data...}
     {}
 
-    template <class T> [[nodiscard]] auto& get() const noexcept
+    template <typename T>
+    [[nodiscard]] auto& get() const noexcept
     {
         static_assert(index_of<T>() < sizeof...(Accesses), "the system's view does not declare this data (once) as Read or Write");
         return *std::get<index_of<T>()>(data_);
     }
 
 private:
-    template <class T> static constexpr std::size_t index_of() noexcept
+    template <typename T>
+    static constexpr std::size_t index_of() noexcept
     {
         constexpr std::array<bool, sizeof...(Accesses)> matches{std::is_same_v<typename Accesses::Type, T>...};
         std::size_t found = sizeof...(Accesses);

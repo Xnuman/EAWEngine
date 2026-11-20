@@ -7,7 +7,9 @@
 // walker no longer makes every trooper's query a walker's); a query reports such an item once, from
 // the first cell where its cells and the query's meet.
 
-#include "simulation/simulation_types.hpp"
+#include "junk/entity_id.hpp"
+
+#include "math/vector.hpp"
 
 #include <cstdint>
 #include <span>

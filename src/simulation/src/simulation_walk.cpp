@@ -304,12 +304,12 @@ bool SimulationWorld::MovementSystem::turn_as_clips(const View& view, const std:
         }
         // The scale of the clips' nominal rates that ends the turn exactly on the way.
         plan.scale = 1.0F;
-        plan.scale = plan.angle / std::max(turn_point(view, index, total()).turned, 1.0e-6F);
+        plan.scale = plan.angle / std::max(turnPoint(view, index, total()).turned, 1.0e-6F);
     }
     const auto length = total();
     plan.elapsed = std::min(plan.elapsed + dt, length);
     auto& heading = placement.headings[index];
-    heading = wrap_angle(plan.start + plan.way * std::min(turn_point(view, index, plan.elapsed).turned, plan.angle));
+    heading = wrap_angle(plan.start + plan.way * std::min(turnPoint(view, index, plan.elapsed).turned, plan.angle));
     if (plan.elapsed >= length)
     {
         heading = wrap_angle(plan.start + plan.way * plan.angle);

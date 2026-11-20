@@ -4,7 +4,7 @@
 // cell for a movement class, and what a unit may stand on.
 
 #include "math/vector.hpp"
-#include "simulation/ground_map.hpp"
+#include "navigation/ground_map.hpp"
 
 #include <algorithm>
 #include <array>

@@ -1,16 +1,6 @@
-#pragma once
-
-// Basic value types shared by the simulation's headers (positions are eaw_math vectors).
-
-#include "math/vector.hpp"
-
-#include <compare>
 #include <cstdint>
+#include <compare>
 
-namespace eaw {
-
-// Generation-checked entity reference. Generation 0 is never issued, so a default id is invalid and a
-// destroyed entity's id never aliases a later entity in the same slot.
 struct EntityId
 {
     std::uint32_t index{};
@@ -24,5 +14,3 @@ struct EntityId
     // By index, then generation: the order deterministic sorts of ids use.
     friend constexpr auto operator<=>(const EntityId&, const EntityId&) = default;
 };
-
-} // namespace eaw

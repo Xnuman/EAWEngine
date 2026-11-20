@@ -3,8 +3,9 @@
 // Formation layout for group move orders: ranked rows of slots facing the direction of travel,
 // centered on the ordered point. Deterministic: the same members and target give the same slots.
 
-#include "simulation/footprint.hpp"
-#include "simulation/simulation_types.hpp"
+#include "navigation/footprint.hpp"
+
+#include "junk/entity_id.hpp"
 
 #include <cstdint>
 #include <span>

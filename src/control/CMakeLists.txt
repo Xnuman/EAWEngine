@@ -32,4 +32,4 @@ target_sources(eaw_control
     ${EAW_CONTROL_SOURCES}
 )
 
-target_link_libraries(eaw_control PUBLIC eaw_render_contract eaw_simulation)
+target_link_libraries(eaw_control PUBLIC eaw_render_contract simulation navigation)

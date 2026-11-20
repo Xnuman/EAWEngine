@@ -14,17 +14,6 @@
 
 namespace eaw {
 
-// Positions on an entity are given in its own frame: x forward (along its heading), y to its
-// left, z up, in world units.
-struct LocalPoint
-{
-    float forward{};
-    float left{};
-    float up{};
-
-    friend bool operator==(const LocalPoint&, const LocalPoint&) = default;
-};
-
 // A turret that carries the entity's own weapon (XML Turret_Bone_Name): it turns toward the
 // entity's target at `rate` radians per second, at most `yaw_limit` either side of the hull's
 // facing; the weapon fires only while it points at its victim (within turret_aim_tolerance). A

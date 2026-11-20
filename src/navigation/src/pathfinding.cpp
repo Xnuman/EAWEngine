@@ -1,4 +1,4 @@
-#include "simulation/pathfinding.hpp"
+#include "navigation/pathfinding.hpp"
 
 #include "core/fatal_error.hpp"
 

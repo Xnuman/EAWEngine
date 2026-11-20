@@ -1,4 +1,4 @@
-#include "simulation/chunk_graph.hpp"
+#include "navigation/chunk_graph.hpp"
 
 #include <algorithm>
 #include <cmath>

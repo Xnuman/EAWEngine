@@ -1,59 +1,49 @@
-# eaw_simulation: the deterministic tactical simulation: entity ids, structure-of-arrays
-# components, fixed-step ticks, commands, and snapshots. No graphics, platform, or file access.
+project(simulation)
 
-add_library(eaw_simulation STATIC)
+
+add_library(simulation STATIC)
 
 set(HEADERS_DIR "include/simulation")
 set(SOURCES_DIR "src")
 
-set(EAW_SIMULATION_HEADERS
-    ${HEADERS_DIR}/chunk_graph.hpp
-    ${HEADERS_DIR}/clearance.hpp
+set(SIMULATION_HEADERS
     ${HEADERS_DIR}/combat.hpp
-    ${HEADERS_DIR}/footprint.hpp
-    ${HEADERS_DIR}/component_pool.hpp
-    ${HEADERS_DIR}/formation.hpp
-    ${HEADERS_DIR}/ground_map.hpp
-    ${HEADERS_DIR}/pathfinding.hpp
     ${HEADERS_DIR}/simulation.hpp
-    ${HEADERS_DIR}/simulation_types.hpp
-    ${HEADERS_DIR}/spatial_grid.hpp
     ${HEADERS_DIR}/system_view.hpp
 )
 
-set(EAW_SIMULATION_SOURCES
-    ${SOURCES_DIR}/chunk_graph.cpp
-    ${SOURCES_DIR}/clearance.cpp
+set(SIMULATION_SOURCES
     ${SOURCES_DIR}/combat.cpp
-    ${SOURCES_DIR}/formation.cpp
-    ${SOURCES_DIR}/ground_map.cpp
-    ${SOURCES_DIR}/pathfinding.cpp
     ${SOURCES_DIR}/simulation.cpp
-    ${SOURCES_DIR}/simulation_avoidance.cpp
     ${SOURCES_DIR}/simulation_behavior.cpp
     ${SOURCES_DIR}/simulation_combat.cpp
     ${SOURCES_DIR}/simulation_contact.cpp
     ${SOURCES_DIR}/simulation_internal.hpp
     ${SOURCES_DIR}/simulation_locomotion.cpp
-    ${SOURCES_DIR}/simulation_navigation.cpp
     ${SOURCES_DIR}/simulation_route_trace.cpp
     ${SOURCES_DIR}/simulation_schedule.cpp
     ${SOURCES_DIR}/simulation_squads.cpp
     ${SOURCES_DIR}/simulation_walk.cpp
-    ${SOURCES_DIR}/spatial_grid.cpp
 )
 
-source_group("" FILES ${EAW_SIMULATION_HEADERS} ${EAW_SIMULATION_SOURCES})
+source_group("" FILES ${SIMULATION_HEADERS} ${SIMULATION_SOURCES})
 
-target_sources(eaw_simulation
+target_sources(simulation
   PUBLIC
-    FILE_SET "eaw_simulation_headers"
+    FILE_SET "simulation_headers"
       TYPE HEADERS
       BASE_DIRS "include/"
-      FILES ${EAW_SIMULATION_HEADERS}
+      FILES ${SIMULATION_HEADERS}
   PRIVATE
-    ${EAW_SIMULATION_SOURCES}
+    ${SIMULATION_SOURCES}
 )
 
 # eaw_core only for Status/Result and fatal errors; the simulation reads no files.
-target_link_libraries(eaw_simulation PUBLIC eaw_core eaw_jobs eaw_math)
+target_link_libraries(simulation
+  PUBLIC
+    ecs
+     eaw_core
+     eaw_jobs
+     eaw_math
+     junk
+     navigation)

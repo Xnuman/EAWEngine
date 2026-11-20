@@ -281,6 +281,7 @@ Result<EntityId> SimulationWorld::spawn(const EntitySpawn& spawn, const EntityId
     route_.loiter_points.emplace_back();
     route_.remaining.push_back(0.0F);
     route_.detours.emplace_back();
+    route_.avoid_velocities.emplace_back();
     placement_.pitches.push_back(0.0F);
     motion_.speeds.push_back(0.0F);
     motion_.starts.push_back(spawn.position);
@@ -525,6 +526,11 @@ void SimulationWorld::hash_state(StateHasher& hasher) const noexcept
         hasher.add(route_.orders[index]);
         hasher.add(route_.blockers[index]);
         hasher.add(route_.priorities[index]);
+        hasher.add(route_.avoid_velocities[index].has_value());
+        if (route_.avoid_velocities[index])
+        {
+            hasher.add(*route_.avoid_velocities[index]);
+        }
         hasher.add(motion_.velocities[index]);
         hasher.add(route_.loiter_points[index].has_value());
         if (route_.loiter_points[index])
@@ -1237,7 +1243,7 @@ void SimulationWorld::PublishSystem::publish(const View& view)
         if (turning_as_clips(view, index))
         {
             const auto& plan = turn_clips.get(slot_of(view, index), &TurnClipColumns::plans);
-            const auto point = turn_point(view, index, plan.elapsed);
+            const auto point = turnPoint(view, index, plan.elapsed);
             auto& entity = snapshot.entities.back();
             entity.turn_clip = point.clip;
             entity.turn_left = plan.way > 0.0F;

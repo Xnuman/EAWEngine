@@ -4,7 +4,8 @@
 // entity's frame, and the measures every unit-against-unit spacing test shares.
 
 #include "math/vector.hpp"
-#include "simulation/combat.hpp"
+
+#include "junk/local_point.hpp"
 
 #include <cmath>
 

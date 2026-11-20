@@ -1,22 +1,21 @@
 // Navigation: route requests, the per-tick search budget, shared formation routes, and group
 // cohesion.
 
-#include "simulation_internal.hpp"
-
 #include "math/scalar.hpp"
+#include "math/vector.hpp"
+
 #include "core/profile.hpp"
+
 #include "jobs/parallel.hpp"
+
+#include "navigation/ecs/systems/navigation_system.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
 #include <utility>
 
-namespace eaw {
-
-using namespace simulation_detail;
-
-void SimulationWorld::NavigationSystem::run(const View& view)
+void NavigationSystem::run(const View& view)
 {
     auto& placement = view.get<PlacementColumns>();
     auto& locomotor = view.get<LocomotorColumns>();
@@ -31,9 +30,13 @@ void SimulationWorld::NavigationSystem::run(const View& view)
     update_group_cohesion(view);
     plan_space_avoidance(view);
     measure_ground_units(view);
+    {
+        EAW_PROFILE_ZONE("ground avoidance");
+        plan_ground_avoidance(view);
+    }
 }
 
-SimulationWorld::NavigationSystem::PlannedRoute SimulationWorld::NavigationSystem::plan_route(const View& view, const std::size_t index, const Vector3& target, RouteScratch& scratch)
+NavigationSystem::PlannedRoute NavigationSystem::plan_route(const View& view, const std::size_t index, const eaw::Vector3& target, RouteScratch& scratch)
 {
     const auto& placement = view.get<PlacementColumns>();
     const auto& ground = view.get<GroundState>();
@@ -54,7 +57,7 @@ SimulationWorld::NavigationSystem::PlannedRoute SimulationWorld::NavigationSyste
     return planned;
 }
 
-void SimulationWorld::NavigationSystem::place_route_end(const View& view, const std::size_t index, PlannedRoute& planned, RouteScratch& scratch)
+void NavigationSystem::place_route_end(const View& view, const std::size_t index, PlannedRoute& planned, RouteScratch& scratch)
 {
     auto& waypoints = planned.waypoints;
     if (waypoints.empty())
@@ -96,7 +99,7 @@ void SimulationWorld::NavigationSystem::place_route_end(const View& view, const 
 // one that arrived or stopped (group behavior is left out for now, so units of one order never go
 // around each other). A unit of another order: the unit waits while the blocker drives on at least
 // as fast as it can, and otherwise goes around it, ending its move when no way around is found.
-void SimulationWorld::NavigationSystem::resolve_blocks(const View& view)
+void NavigationSystem::resolve_blocks(const View& view)
 {
     auto& route = view.get<RouteColumns>();
     const auto& identity = view.get<IdentityColumns>();
@@ -146,7 +149,7 @@ void SimulationWorld::NavigationSystem::resolve_blocks(const View& view)
     }
 }
 
-bool SimulationWorld::NavigationSystem::plan_around(const View& view, const std::size_t index, const std::size_t blocker)
+bool NavigationSystem::plan_around(const View& view, const std::size_t index, const std::size_t blocker)
 {
     auto& route = view.get<RouteColumns>();
     const auto& ground = view.get<GroundState>().map;
@@ -269,7 +272,7 @@ bool SimulationWorld::NavigationSystem::plan_around(const View& view, const std:
     return true;
 }
 
-void SimulationWorld::NavigationSystem::give_route(const View& view, const std::size_t index, const Vector3& goal, const PlannedRoute& planned)
+void NavigationSystem::give_route(const View& view, const std::size_t index, const Vector3& goal, const PlannedRoute& planned)
 {
     auto& route = view.get<RouteColumns>();
     path_searches += planned.searches;
@@ -285,12 +288,13 @@ void SimulationWorld::NavigationSystem::give_route(const View& view, const std::
     record_route(view, index, planned.shared ? RouteTraceKind::shared : RouteTraceKind::plan, planned.trace);
 }
 
-std::size_t SimulationWorld::NavigationSystem::batch_limit() const noexcept
+std::size_t NavigationSystem::batch_limit() const noexcept
 {
     return jobs_ != nullptr ? route_batch : 1;
 }
 
-template <class Plan> void SimulationWorld::NavigationSystem::plan_batch(Plan&& plan)
+template <typename Plan>
+void NavigationSystem::plan_batch(Plan&& plan)
 {
     planned_.assign(batch_.size(), PlannedRoute{});
     navigation_data_.freeze(true);
@@ -320,7 +324,7 @@ template <class Plan> void SimulationWorld::NavigationSystem::plan_batch(Plan&& 
     navigation_data_.freeze(false);
 }
 
-void SimulationWorld::NavigationSystem::set_route(const View& view, const std::size_t index, const std::vector<PathPoint>& waypoints, const float height)
+void NavigationSystem::set_route(const View& view, const std::size_t index, const std::vector<PathPoint>& waypoints, const float height)
 {
     auto& route = view.get<RouteColumns>();
     auto& path = route.paths[index];
@@ -347,7 +351,7 @@ void SimulationWorld::NavigationSystem::set_route(const View& view, const std::s
 // the state navigation does not change, so its result is the same planned early, and those the
 // budget does not reach this tick are planned again in a later one. The result is the serial one
 // (check-battle compares the two).
-void SimulationWorld::NavigationSystem::process_path_queue(const View& view)
+void NavigationSystem::process_path_queue(const View& view)
 {
     auto& route = view.get<RouteColumns>();
     auto& path_queue = view.get<PathQueue>();
@@ -428,7 +432,7 @@ void SimulationWorld::NavigationSystem::process_path_queue(const View& view)
 // member's slot. A member whose leg cannot be found gets a full search of its own. Members are
 // planned in order until the tick's budget is spent; the request keeps its shared path and resumes
 // with the next member in a later tick.
-bool SimulationWorld::NavigationSystem::plan_shared_route(const View& view, PathRequest& request, std::uint64_t spent_before, const bool first_in_tick)
+bool NavigationSystem::plan_shared_route(const View& view, PathRequest& request, std::uint64_t spent_before, const bool first_in_tick)
 {
     auto& placement = view.get<PlacementColumns>();
     auto& ground_mover = view.get<GroundMoverColumns>();
@@ -535,7 +539,7 @@ bool SimulationWorld::NavigationSystem::plan_shared_route(const View& view, Path
     return true;
 }
 
-bool SimulationWorld::NavigationSystem::plan_formation(const View& view, PathRequest& request, const std::uint64_t spent_before, const bool first_in_tick)
+bool NavigationSystem::plan_formation(const View& view, PathRequest& request, const std::uint64_t spent_before, const bool first_in_tick)
 {
     const auto& route = view.get<RouteColumns>();
     const auto& placement = view.get<PlacementColumns>();
@@ -606,7 +610,7 @@ bool SimulationWorld::NavigationSystem::plan_formation(const View& view, PathReq
     return true;
 }
 
-void SimulationWorld::NavigationSystem::form_up(const View& view, PathRequest& request)
+void NavigationSystem::form_up(const View& view, PathRequest& request)
 {
     auto& route = view.get<RouteColumns>();
     const auto& placement = view.get<PlacementColumns>();
@@ -699,7 +703,7 @@ void SimulationWorld::NavigationSystem::form_up(const View& view, PathRequest& r
     formations.push_back(std::move(formation));
 }
 
-SimulationWorld::NavigationSystem::PlannedRoute SimulationWorld::NavigationSystem::plan_member(const View& view, const PathRequest& request, const std::size_t index, const Vector3& goal,
+NavigationSystem::PlannedRoute NavigationSystem::plan_member(const View& view, const PathRequest& request, const std::size_t index, const Vector3& goal,
                                                                                                RouteScratch& scratch)
 {
     const auto& placement = view.get<PlacementColumns>();
@@ -769,7 +773,7 @@ SimulationWorld::NavigationSystem::PlannedRoute SimulationWorld::NavigationSyste
     return planned;
 }
 
-void SimulationWorld::NavigationSystem::update_group_cohesion(const View& view)
+void NavigationSystem::update_group_cohesion(const View& view)
 {
     auto& identity = view.get<IdentityColumns>();
     auto& placement = view.get<PlacementColumns>();
@@ -833,7 +837,7 @@ void SimulationWorld::NavigationSystem::update_group_cohesion(const View& view)
     }
 }
 
-void SimulationWorld::NavigationSystem::plan_space_avoidance(const View& view)
+void NavigationSystem::plan_space_avoidance(const View& view)
 {
     auto& identity = view.get<IdentityColumns>();
     auto& placement = view.get<PlacementColumns>();
@@ -1084,7 +1088,7 @@ void SimulationWorld::NavigationSystem::plan_space_avoidance(const View& view)
     }
 }
 
-std::size_t SimulationWorld::nearest_to_centroid(const PlacementColumns& placement, const std::span<const std::size_t> members)
+std::size_t nearest_to_centroid(const PlacementColumns& placement, const std::span<const std::size_t> members)
 {
     EAW_ASSERT_MSG(!members.empty(), "a group has members");
     double cx = 0.0;
@@ -1110,7 +1114,7 @@ std::size_t SimulationWorld::nearest_to_centroid(const PlacementColumns& placeme
     return nearest;
 }
 
-void SimulationWorld::apply_formation_move(const SimCommand& command)
+void apply_formation_move(const SimCommand& command)
 {
     // On land (movement-redesign branch: group movement removed until the new design), every unit of
     // a group order goes to the ordered point itself, on a route of its own.
@@ -1317,7 +1321,48 @@ void SimulationWorld::apply_formation_move(const SimCommand& command)
     }
 }
 
-void SimulationWorld::measure_remaining_routes(RouteColumns& route, const PlacementColumns& placement)
+void NavigationSystem::measure_agents(const View& view)
+{
+    const auto& identity = view.get<IdentityColumns>();
+    const auto& placement = view.get<PlacementColumns>();
+    const auto& ground_mover = view.get<GroundMoverColumns>();
+    const auto& squads = view.get<ComponentPool<SquadColumns>>();
+    const auto& members = view.get<ComponentPool<SquadMemberColumns>>();
+    auto& avoidance = view.get<Avoidance>();
+    avoidance.radii.assign(identity.ids.size(), 0.0F);
+    avoidance.bodies.assign(identity.ids.size(), FootprintRect{});
+    avoidance.crush_proxies.resize(identity.ids.size());
+    for (std::size_t index = 0; index < identity.ids.size(); ++index)
+    {
+        avoidance.crush_proxies[index] = static_cast<std::uint32_t>(index);
+        const auto slot = slot_of(view, index);
+        if (const auto* squad = squads.find(slot, &SquadColumns::states))
+        {
+            const auto first = squad->members.empty() ? std::nullopt : dense_index(view, squad->members.front());
+            if (first && ground_mover.follows_ground[index] != 0 && !flies(view, index))
+            {
+                avoidance.radii[index] = squad->extent;
+                // The rectangle bounding its soldiers (the owner's squads, pathfinding-design.md 4.7).
+                avoidance.bodies[index] = squad->body;
+                avoidance.crush_proxies[index] = static_cast<std::uint32_t>(*first);
+            }
+        }
+        else if (members.find(slot, &SquadMemberColumns::states) == nullptr && ground_body(view, index))
+        {
+            avoidance.radii[index] = placement.radii[index];
+            avoidance.bodies[index] = placement.bodies[index];
+        }
+    }
+    avoidance.reaches.resize(identity.ids.size());
+    avoidance.facings.resize(identity.ids.size());
+    for (std::size_t index = 0; index < identity.ids.size(); ++index)
+    {
+        avoidance.reaches[index] = avoidance.radii[index] > 0.0F ? footprint_reach(avoidance.bodies[index], avoidance.radii[index]) : 0.0F;
+        avoidance.facings[index] = avoidance.bodies[index].half_width > 0.0F ? facing_of(placement.headings[index]) : Vector2{1.0F, 0.0F};
+    }
+}
+
+void measure_remaining_routes(RouteColumns& route, const PlacementColumns& placement)
 {
     route.remaining.assign(route.move_targets.size(), 0.0F);
     for (std::size_t index = 0; index < route.move_targets.size(); ++index)
@@ -1335,5 +1380,3 @@ void SimulationWorld::measure_remaining_routes(RouteColumns& route, const Placem
         }
     }
 }
-
-} // namespace eaw

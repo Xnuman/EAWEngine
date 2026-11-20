@@ -9,6 +9,8 @@
 #include "assets/type_hardpoints.hpp"
 #include "battle/object_types.hpp"
 
+#include "junk/local_point.hpp"
+
 #include <algorithm>
 #include <array>
 #include <charconv>

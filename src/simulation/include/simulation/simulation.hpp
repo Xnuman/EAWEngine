@@ -12,14 +12,16 @@
 #include "core/random.hpp"
 #include "core/status.hpp"
 #include "simulation/combat.hpp"
-#include "simulation/component_pool.hpp"
-#include "simulation/footprint.hpp"
-#include "simulation/formation.hpp"
-#include "simulation/ground_map.hpp"
-#include "simulation/pathfinding.hpp"
-#include "simulation/simulation_types.hpp"
-#include "simulation/spatial_grid.hpp"
-#include "simulation/system_view.hpp"
+
+#include "navigation/footprint.hpp"
+#include "navigation/formation.hpp"
+#include "navigation/ground_map.hpp"
+#include "navigation/orca.hpp"
+#include "navigation/pathfinding.hpp"
+#include "navigation/spatial_grid.hpp"
+
+#include "junk/entity_id.hpp"
+#include "ecs/component_pool.hpp"
 
 #include <array>
 #include <cstddef>
@@ -965,7 +967,10 @@ private:
         float progress{};
         float turned{};
     };
-    template <class Data> [[nodiscard]] static TurnPoint turn_point(Data& data, std::size_t index, float time) noexcept;
+    
+    template <typename Data>
+    [[nodiscard]] static TurnPoint turnPoint(Data& data, std::size_t index, float time) noexcept;
+
     // Stamps (or removes) an entity's footprint into the ground's passability.
     void stamp_footprint(std::size_t index, bool add);
     // Builds the clearance of each movement class that ground units of the world use, up to the
@@ -1253,6 +1258,10 @@ private:
         // Space ships: the point steered at this tick to pass a unit in the way (navigation's local
         // avoidance); recomputed every tick from the state, so not hashed.
         std::vector<std::optional<Vector3>> detours;
+        // Ground units: the velocity ORCA chose this tick when it differs from the way to the next
+        // waypoint (plan_ground_avoidance); none follows the route. Recomputed every tick from the
+        // state and the last tick's choice, which it smooths, so hashed with the routes.
+        std::vector<std::optional<Vector2>> avoid_velocities;
         // The move order that sent the unit (numbered by the world, shared by the units of one order;
         // 0 for none): who counts as of the same order when units block each other.
         std::vector<std::uint32_t> orders;
@@ -1269,6 +1278,7 @@ private:
             visit(loiter_points);
             visit(remaining);
             visit(detours);
+            visit(avoid_velocities);
             visit(orders);
             visit(blockers);
             visit(priorities);
@@ -1957,6 +1967,10 @@ private:
         // stopped at is kept in RouteColumns::blockers for navigation (the new movement of a single
         // unit, step 7). In space, a ship against ships slides along them, and a wedged one holds still.
         [[nodiscard]] Vector3 keep_apart(const View& view, std::size_t index, Vector3 step);
+        // A ground unit's step along the velocity avoidance chose (turning toward it, at move_speed, no
+        // faster than the velocity, never deeper into a unit); false when that way leaves ground the
+        // unit may stand on, so it follows its route instead.
+        bool avoid_step(const View& view, std::size_t index, Vector2 velocity, float dt);
         // One entity's ground movement this tick, along its route at move_speed (physical movement only:
         // where it goes is the behavior layer's).
         void move_over_ground(const View& view, std::size_t index, float dt);
@@ -1993,177 +2007,6 @@ private:
         std::vector<std::uint32_t> query_;
     };
     MovementSystem movement_;
-
-    // Navigation (simulation_navigation.cpp; docs/ecs-design.md, 6.3, phase 3): route searches under
-    // their budget, the remaining routes, group cohesion, and space avoidance.
-    class NavigationSystem
-    {
-    public:
-        using View = SystemView<Read<IdentityColumns>, Read<PlacementColumns>, Write<LocomotorColumns>, Read<GroundMoverColumns>, Write<RouteColumns>, Read<ComponentPool<FlightColumns>>,
-                                Read<ComponentPool<CombatColumns>>, Write<ComponentPool<GroupColumns>>, Read<GroundState>, Write<Avoidance>, Write<PathQueue>, Write<LandFormations>, Read<SlotTable>,
-                                Read<Clock>, Read<ComponentPool<SquadColumns>>, Read<MotionColumns>, Read<ComponentPool<CrushColumns>>, Read<Rules>, Read<ComponentPool<SquadMemberColumns>>,
-                                Read<ComponentPool<TurnClipColumns>>>;
-        // Route requests under the search budget, remaining routes, group cohesion, and space and
-        // ground avoidance, before movement.
-        void run(const View& view);
-        // The ground changed (set, or a footprint stamped or lifted): the pathfinders' cached regions
-        // are stale.
-        void set_jobs(JobSystem* jobs) noexcept
-        {
-            jobs_ = jobs;
-        }
-        void ground_changed() noexcept
-        {
-            navigation_data_.reset();
-        }
-        // Route searches so far, those that ended partial, and the nodes they expanded; members
-        // planned on a shared route; group members waiting in the last tick, and members released from
-        // their group so far.
-        std::uint64_t path_searches{};
-        std::uint64_t partial_paths{};
-        std::uint64_t path_expansions{};
-        std::uint64_t shared_routes{};
-        std::array<std::uint64_t, route_trace_kind_count> route_changes{};
-        std::uint64_t blocked_stops{};
-        std::size_t waiting_members{};
-        std::uint64_t released_members{};
-
-    private:
-        // Works through queued path requests until the tick's search budget is spent.
-        void process_path_queue(const View& view);
-        // Plans a shared request's members until the tick's budget is spent; false when members remain.
-        [[nodiscard]] bool plan_shared_route(const View& view, PathRequest& request, std::uint64_t spent_before, bool first_in_tick);
-        // A group order on land (the owner's, docs/pathfinding-design.md): every member's route to the
-        // ordered point until the tick's budget is spent (false when members remain), then the
-        // formation (form_up).
-        [[nodiscard]] bool plan_formation(const View& view, PathRequest& request, std::uint64_t spent_before, bool first_in_tick);
-        // Ranks the planned members of `request` by route length (priorities from 1, the shortest
-        // first: the leader), lays the formation out from the leader's arrival (cluster_slots), fits
-        // each slot to the ground, and gives each member its route with the last leg turned to its slot.
-        void form_up(const View& view, PathRequest& request);
-
-        // A route planned but not yet given (route searches run in batches, docs/ecs-design.md 7.5):
-        // its waypoints, or none at all (no ground data: the unit heads straight for its goal), and
-        // what its searches count in the statistics and the tick's budget.
-        struct PlannedRoute
-        {
-            bool unavailable{};
-            // Its part of a group's shared route; and the search's stages while routes are traced.
-            bool shared{};
-            PathTrace trace;
-            std::vector<PathPoint> waypoints;
-            std::uint64_t searches{};
-            std::uint64_t partials{};
-            std::uint64_t expansions{};
-        };
-        // A search's own scratch: one per chunk of a batch searched at once.
-        struct RouteScratch
-        {
-            GridPathfinder route{0, ChunkLayout::refined};
-            // Short legs onto and off a shared path search at most this many nodes.
-            GridPathfinder legs{4096};
-        };
-        // The route of the unit at `index` to `target`: a full search from where it stands, its end
-        // placed where the unit fits (place_route_end). Reads the state only.
-        [[nodiscard]] PlannedRoute plan_route(const View& view, std::size_t index, const Vector3& target, RouteScratch& scratch);
-        // The route of a member of `request` onto its shared path and off it to `goal` (a full search
-        // where that fails). Reads the state only.
-        [[nodiscard]] PlannedRoute plan_member(const View& view, const PathRequest& request, std::size_t index, const Vector3& goal, RouteScratch& scratch);
-        // Moves the end of `planned` to where the unit at `index` fits, turned the way its last leg
-        // points (place_destination), with a leg to it: straight when the ground allows, else searched
-        // from the last leg's start. Reads the state only.
-        void place_route_end(const View& view, std::size_t index, PlannedRoute& planned, RouteScratch& scratch);
-        // Gives the unit at `index` its planned route and counts its searches.
-        void give_route(const View& view, std::size_t index, const Vector3& goal, const PlannedRoute& planned);
-        // Plans batch_ (up to route_batch units, their footings prepared) at once on the job system,
-        // or one after the other without it, into planned_; the navigation data is frozen meanwhile.
-        template <class Plan> void plan_batch(Plan&& plan);
-        // How many routes a batch plans: route_batch on the job system; one without it, where planning
-        // ahead only searches what the budget may not reach this tick.
-        [[nodiscard]] std::size_t batch_limit() const noexcept;
-        struct BatchEntry
-        {
-            std::size_t index{};
-            Vector3 goal;
-        };
-        std::vector<BatchEntry> batch_;
-        std::vector<PlannedRoute> planned_;
-        std::vector<RouteScratch> route_scratch_ = std::vector<RouteScratch>(1);
-        // Local avoidance of space ships: each steering ship's detour (RouteColumns::detours) around
-        // the ships in its way.
-        void plan_space_avoidance(const View& view);
-        // Each ground unit's footprint (Avoidance::radii, bodies, reaches) and the grid keep_apart finds
-        // its neighbours in (simulation_avoidance.cpp).
-        void measure_ground_units(const View& view);
-        // Each entity's avoidance radius and crush proxy (Avoidance::radii, crush_proxies).
-        void measure_agents(const View& view);
-        // Whether the avoidance agent at `index` moves this tick (a target, not waiting, not held, not
-        // giving way): the agents avoidance plans a velocity for.
-        [[nodiscard]] static bool ground_steers(const View& view, std::size_t index) noexcept;
-        // The direction a moving ground unit heads in: toward its next waypoint (zero when there).
-        [[nodiscard]] static Vector2 heading_toward_waypoint(const View& view, std::size_t index) noexcept;
-        // The new movement of a single unit, steps 7 and 8 (docs/pathfinding-design.md): what a ground
-        // unit blocked in the last tick does: wait, go around (plan_around), or end its move.
-        void resolve_blocks(const View& view);
-        // A way for the unit at `index` around `blocker` and the other units near it that block it and
-        // are not of its order: to where its route leaves its 32-cell chunk (or to its destination
-        // within it), the rest of its route kept; else a new route to its destination around them;
-        // false when neither is found.
-        [[nodiscard]] bool plan_around(const View& view, std::size_t index, std::size_t blocker);
-        // A search around a blocker expands at most this many nodes: twice the cells of a 32-cell
-        // chunk, so it stays near the chunk it starts in. An engine choice.
-        static constexpr std::uint32_t around_budget = 2048;
-        // Searches around a blocker (no chunks), the cells they may not enter (one per ground cell,
-        // nonzero blocked), and the cells marked in it.
-        GridPathfinder around_{around_budget};
-        // The second search around blockers, to the destination: a cell search without chunks (a chunk
-        // route knows nothing of units and holds the search to a corridor through them), at most this
-        // many nodes. An engine choice: a 128-cell square's cells.
-        static constexpr std::uint32_t around_whole_budget = 16384;
-        GridPathfinder around_whole_{around_whole_budget};
-        std::vector<std::uint8_t> obstacle_cells_;
-        std::vector<std::uint32_t> marked_cells_;
-        std::vector<std::uint32_t> nearby_;
-        // The last tick's blocks, read before resolve_blocks acts on any.
-        std::vector<EntityId> blocks_;
-        // Sets an entity's route from planned waypoints (the last is its destination).
-        void set_route(const View& view, std::size_t index, const std::vector<PathPoint>& waypoints, float height);
-        // Marks group members that are ahead of their group to wait this tick, and releases members
-        // that stopped making progress (groups form in space only on this branch).
-        void update_group_cohesion(const View& view);
-        // The refined layout, the owner's scheme: across the 76 stock land maps the path audit's
-        // searches expand 0.12 of the plain search's nodes (0.035 before the first stretch is
-        // ready), time 0.38, paths 1.5% longer, against 0.52, 0.61, and 0.5% for one level held to
-        // its corridor (2026-11-15).
-        // The regions and chunk graphs of the ground, which the pathfinders below search with.
-        NavigationData navigation_data_;
-        // Route tracing (SimulationWorld::RouteTrace, simulation_route_trace.cpp): records per entity
-        // (index, generation) and per formation frame (group), at most route_trace_depth each.
-        std::map<std::pair<std::uint32_t, std::uint32_t>, std::deque<RouteTrace>> unit_traces_;
-        void record_route(const View& view, std::size_t index, RouteTraceKind kind, const PathTrace& stages);
-
-    public:
-        void set_tracing(bool tracing);
-        [[nodiscard]] const std::deque<RouteTrace>* unit_traces(EntityId id) const;
-
-    private:
-        GridPathfinder pathfinder_{0, ChunkLayout::refined};
-
-    public:
-        // Builds what searches with `footing` use now (a battle's map load), not in a tick.
-        void prepare(const GroundMap& ground, const Footing& footing)
-        {
-            pathfinder_.prepare(navigation_data_, ground, footing);
-        }
-
-    private:
-        // Where parallel parts run (not owned; none runs them serially, with the same results).
-        JobSystem* jobs_{};
-        // Space avoidance's scratch: the units near a ship, and its neighbours among them.
-        std::vector<std::uint32_t> query_;
-        std::vector<std::uint32_t> neighbours_;
-    };
-    NavigationSystem navigation_;
 
     // Behavior (simulation_behavior.cpp; docs/ecs-design.md, 6.3, phase 2): orders, stances, and
     // targets into steering intents and route requests.

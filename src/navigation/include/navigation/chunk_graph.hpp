@@ -5,8 +5,8 @@
 // labels: a diagonal step needs both side cells), and which parts of neighbouring squares touch. A
 // route plans over the parts first; the cell search is then held to the corridor of parts found.
 
-#include "simulation/clearance.hpp"
-#include "simulation/ground_map.hpp"
+#include "navigation/clearance.hpp"
+#include "navigation/ground_map.hpp"
 
 #include <cstdint>
 #include <utility>

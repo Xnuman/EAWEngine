@@ -140,6 +140,9 @@ add_subdirectory(src/assets)
 add_subdirectory(src/localization)
 add_subdirectory(src/image_compare)
 add_subdirectory(src/simulation)
+add_subdirectory(src/navigation)
+add_subdirectory(src/junk)
+add_subdirectory(src/ecs)
 add_subdirectory(src/script)
 add_subdirectory(src/render)
 if(WIN32)
@@ -155,7 +158,7 @@ if(EAW_BUILD_GUI AND WIN32)
     add_subdirectory(src/imgui_app)
 endif()
 
-# Programs and tools.
+# Programs and tools..
 add_subdirectory(src/engine_app)
 if(WIN32)
     add_subdirectory(src/launcher_app)

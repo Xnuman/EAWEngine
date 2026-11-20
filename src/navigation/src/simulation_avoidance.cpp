@@ -3,8 +3,6 @@
 // footprint into a grid, and movement never ends a step inside another unit (keep_apart, also what
 // keeps space ships apart). A squad counts as one unit, the rectangle bounding its soldiers.
 
-#include "simulation_internal.hpp"
-
 #include "math/scalar.hpp"
 #include "core/profile.hpp"
 #include "jobs/parallel.hpp"
@@ -17,50 +15,9 @@
 
 namespace eaw {
 
-using namespace simulation_detail;
 
-void SimulationWorld::NavigationSystem::measure_agents(const View& view)
-{
-    const auto& identity = view.get<IdentityColumns>();
-    const auto& placement = view.get<PlacementColumns>();
-    const auto& ground_mover = view.get<GroundMoverColumns>();
-    const auto& squads = view.get<ComponentPool<SquadColumns>>();
-    const auto& members = view.get<ComponentPool<SquadMemberColumns>>();
-    auto& avoidance = view.get<Avoidance>();
-    avoidance.radii.assign(identity.ids.size(), 0.0F);
-    avoidance.bodies.assign(identity.ids.size(), FootprintRect{});
-    avoidance.crush_proxies.resize(identity.ids.size());
-    for (std::size_t index = 0; index < identity.ids.size(); ++index)
-    {
-        avoidance.crush_proxies[index] = static_cast<std::uint32_t>(index);
-        const auto slot = slot_of(view, index);
-        if (const auto* squad = squads.find(slot, &SquadColumns::states))
-        {
-            const auto first = squad->members.empty() ? std::nullopt : dense_index(view, squad->members.front());
-            if (first && ground_mover.follows_ground[index] != 0 && !flies(view, index))
-            {
-                avoidance.radii[index] = squad->extent;
-                // The rectangle bounding its soldiers (the owner's squads, pathfinding-design.md 4.7).
-                avoidance.bodies[index] = squad->body;
-                avoidance.crush_proxies[index] = static_cast<std::uint32_t>(*first);
-            }
-        }
-        else if (members.find(slot, &SquadMemberColumns::states) == nullptr && ground_body(view, index))
-        {
-            avoidance.radii[index] = placement.radii[index];
-            avoidance.bodies[index] = placement.bodies[index];
-        }
-    }
-    avoidance.reaches.resize(identity.ids.size());
-    avoidance.facings.resize(identity.ids.size());
-    for (std::size_t index = 0; index < identity.ids.size(); ++index)
-    {
-        avoidance.reaches[index] = avoidance.radii[index] > 0.0F ? footprint_reach(avoidance.bodies[index], avoidance.radii[index]) : 0.0F;
-        avoidance.facings[index] = avoidance.bodies[index].half_width > 0.0F ? facing_of(placement.headings[index]) : Vector2{1.0F, 0.0F};
-    }
-}
 
-bool SimulationWorld::NavigationSystem::ground_steers(const View& view, const std::size_t index) noexcept
+bool NavigationSystem::ground_steers(const View& view, const std::size_t index) noexcept
 {
     const auto& locomotor = view.get<LocomotorColumns>();
     const auto& route = view.get<RouteColumns>();
@@ -69,7 +26,7 @@ bool SimulationWorld::NavigationSystem::ground_steers(const View& view, const st
            locomotor.suspended[index] == 0;
 }
 
-Vector2 SimulationWorld::NavigationSystem::heading_toward_waypoint(const View& view, const std::size_t index) noexcept
+Vector2 NavigationSystem::heading_toward_waypoint(const View& view, const std::size_t index) noexcept
 {
     const auto& placement = view.get<PlacementColumns>();
     const auto& route = view.get<RouteColumns>();
@@ -79,7 +36,7 @@ Vector2 SimulationWorld::NavigationSystem::heading_toward_waypoint(const View& v
     return length(to) > arrival_distance ? normalize_or(to, {}) : Vector2{};
 }
 
-void SimulationWorld::NavigationSystem::measure_ground_units(const View& view)
+void NavigationSystem::measure_ground_units(const View& view)
 {
     const auto& placement = view.get<PlacementColumns>();
     const auto& ground = view.get<GroundState>();
@@ -100,7 +57,139 @@ void SimulationWorld::NavigationSystem::measure_ground_units(const View& view)
     avoidance.grid.build(placement.positions, avoidance.reaches, avoidance_cell_size);
 }
 
-Vector3 SimulationWorld::MovementSystem::keep_apart(const View& view, const std::size_t index, Vector3 step)
+// Serial, in dense order, from the state at the start of the tick and the last tick's choices.
+void NavigationSystem::plan_ground_avoidance(const View& view)
+{
+    const auto& identity = view.get<IdentityColumns>();
+    const auto& placement = view.get<PlacementColumns>();
+    const auto& motion = view.get<MotionColumns>();
+    auto& route = view.get<RouteColumns>();
+    auto& avoidance = view.get<Avoidance>();
+    route.avoid_velocities.resize(identity.ids.size());
+    if (!view.get<GroundState>().map.valid() || avoidance.largest_radius <= 0.0F)
+    {
+        std::ranges::fill(route.avoid_velocities, std::nullopt);
+        return;
+    }
+    const auto& radii = avoidance.radii;
+    const auto step = static_cast<float>(view.get<Clock>().tick_seconds);
+    for (std::size_t index = 0; index < identity.ids.size(); ++index)
+    {
+        const auto last = std::exchange(route.avoid_velocities[index], std::nullopt);
+        if (!ground_steers(view, index))
+        {
+            continue;
+        }
+        const auto heading = heading_toward_waypoint(view, index);
+        if (heading == Vector2{})
+        {
+            continue;
+        }
+        const Vector2 here{placement.positions[index].x, placement.positions[index].y};
+        const auto radius = radii[index];
+        const auto speed = travel_speed(view, index);
+        // On its last leg it means to stop at its goal: no faster than reaches it within the horizon.
+        auto wanted = speed;
+        if (route.paths[index].empty())
+        {
+            wanted = std::min(speed, distance_xy(*route.move_targets[index], placement.positions[index]) / avoidance_horizon_seconds);
+        }
+        const auto preferred = heading * wanted;
+        // Its nearest ground units, nearest first (ties by dense index); not what it crushes.
+        query_.clear();
+        avoidance.grid.query_overlapping(placement.positions[index], avoidance.reaches[index] + std::min(speed * avoidance_horizon_seconds, radius * avoidance_reach_radii), query_);
+        nearest_.clear();
+        for (const auto other : query_)
+        {
+            if (other == index || radii[other] <= 0.0F || can_crush(view, index, avoidance.crush_proxies[other]))
+            {
+                continue;
+            }
+            const auto offset = Vector2{placement.positions[other].x, placement.positions[other].y} - here;
+            nearest_.emplace_back(dot(offset, offset), other);
+        }
+        std::ranges::sort(nearest_);
+        nearest_.resize(std::min(nearest_.size(), avoidance_neighbours));
+        orca_lines_.clear();
+        for (const auto& [distance_squared, other] : nearest_)
+        {
+            const auto offset = Vector2{placement.positions[other].x, placement.positions[other].y} - here;
+            // A standing unit or one of another owner does not make way: this unit takes the whole
+            // avoidance, from the velocity it prefers. Two moving allies share it from their current
+            // velocities: in a formation by priority (the higher takes less: the owner's "who waits
+            // for whom" made continuous), else by footprint area (the larger gives way less).
+            auto share = 1.0F;
+            auto own = preferred;
+            if (ground_steers(view, other) && identity.owners[other] == identity.owners[index])
+            {
+                const auto mine = static_cast<float>(route.priorities[index]);
+                const auto theirs = static_cast<float>(route.priorities[other]);
+                const bool ranked = route.orders[index] != 0 && route.orders[index] == route.orders[other] && mine > 0.0F && theirs > 0.0F;
+                share = ranked ? mine / (mine + theirs) : radii[other] * radii[other] / (radius * radius + radii[other] * radii[other]);
+                own = motion.velocities[index];
+            }
+            const auto room = agent_room(view, index, placement.positions[index], other, placement.positions[other]);
+            orca_lines_.push_back(orca_line(offset, own - motion.velocities[other], room - contact_tolerance, avoidance_horizon_seconds, step, share, own));
+        }
+        if (orca_lines_.empty())
+        {
+            continue;
+        }
+        auto chosen = orca_velocity(orca_lines_, speed, preferred);
+        if (chosen != preferred)
+        {
+            const auto turn_cos = std::cos(avoidance_keep_right);
+            const auto turn_sin = std::sin(avoidance_keep_right);
+            chosen = orca_velocity(orca_lines_, speed, {preferred.x * turn_cos + preferred.y * turn_sin, preferred.y * turn_cos - preferred.x * turn_sin});
+        }
+        // Smoothed against the last tick's choice (or the way it went without one).
+        const auto before = last ? *last : preferred;
+        chosen = before + (chosen - before) * avoidance_smoothing;
+        // Slower than a crawl: it stands still rather than turning toward a velocity whose direction
+        // is noise (near its goal, among others, those directions flipped every tick).
+        if (length(chosen) < avoidance_crawl_fraction * wanted)
+        {
+            chosen = {};
+        }
+        if (length(chosen - preferred) > avoidance_tolerance * speed)
+        {
+            route.avoid_velocities[index] = chosen;
+        }
+    }
+}
+
+bool MovementSystem::avoid_step(const View& view, const std::size_t index, const Vector2 velocity, const float dt)
+{
+    auto& placement = view.get<PlacementColumns>();
+    auto& route = view.get<RouteColumns>();
+    auto& ground = view.get<GroundState>();
+    auto& position = placement.positions[index];
+    const auto wanted = length(velocity);
+    if (wanted <= 0.0F)
+    {
+        // Nowhere to go this tick: it slows to a stop where it is.
+        (void)drive(view, index, 0.0F, dt);
+        return true;
+    }
+    // Whether the longest step this way fits the ground, before the unit turns or speeds up.
+    const auto longest = std::min(travel_speed(view, index), wanted) * dt / wanted;
+    if (!stands_at(view, index, position.x + velocity.x * longest, position.y + velocity.y * longest) && stands_at(view, index, position.x, position.y))
+    {
+        return false;
+    }
+    const auto facing = steer(view, index, std::atan2(velocity.y, velocity.x), dt);
+    const auto distance = std::min(move_speed(view, index, facing, route.remaining[index], dt), wanted) * dt;
+    const auto moved = keep_apart(view, index, {velocity.x / wanted * distance, velocity.y / wanted * distance, 0.0F});
+    const auto next_x = position.x + moved.x;
+    const auto next_y = position.y + moved.y;
+    if (stands_at(view, index, next_x, next_y) || !stands_at(view, index, position.x, position.y))
+    {
+        position = {next_x, next_y, ground.map.surface_height(next_x, next_y)};
+    }
+    return true;
+}
+
+Vector3 MovementSystem::keep_apart(const View& view, const std::size_t index, Vector3 step)
 {
     auto& placement = view.get<PlacementColumns>();
     auto& ground = view.get<GroundState>();

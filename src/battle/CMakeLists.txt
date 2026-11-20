@@ -42,4 +42,4 @@ target_sources(eaw_battle
     ${EAW_BATTLE_SOURCES}
 )
 
-target_link_libraries(eaw_battle PUBLIC eaw_assets eaw_script eaw_simulation)
+target_link_libraries(eaw_battle PUBLIC eaw_assets eaw_script simulation)
